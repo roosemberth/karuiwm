@@ -11,6 +11,7 @@
 #define WBORDER (1)
 #define die(ARGS) warn(ARGS); exit(EXIT_FAILURE)
 #define min(x,y) ((x) < (y) ? (x) : (y))
+#define max(x,y) ((x) < (y) ? (y) : (x))
 
 /* enums */
 enum { CURSOR_NORMAL, CURSOR_RESIZE, CURSOR_MOVE, CURSOR_LAST };
@@ -30,6 +31,7 @@ void handleButton(XEvent *);
 void handleKeyPress(XEvent *);
 void removeClient(void);
 void run(void);
+void setmfact(float);
 void setup(void);
 void tile(void);
 void warn(char const *, ...);
@@ -102,6 +104,12 @@ handleKeyPress(XEvent *e)
 		case XK_q:
 			removeClient();
 			break;
+		case XK_h:
+			setmfact(-0.02);
+			break;
+		case XK_l:
+			setmfact(+0.02);
+			break;
 	}
 }
 
@@ -133,6 +141,15 @@ run(void)
 	while (running && !XNextEvent(dpy, &e)) {
 		handlers[e.type](&e);
 	}
+}
+
+void
+setmfact(float diff)
+{
+	mfact += diff;
+	mfact = max(0.1, mfact);
+	mfact = min(0.9, mfact);
+	tile();
 }
 
 void
