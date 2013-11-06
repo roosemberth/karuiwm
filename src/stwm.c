@@ -1,9 +1,9 @@
 #include <X11/Xlib.h>
 #include <X11/cursorfont.h>
 #include <X11/keysym.h>
-#include <stdio.h>  /* fprintf() */
-#include <stdlib.h> /* NULL, EXIT_FAILURE */
-#include <unistd.h> /* sleep() */
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <stdbool.h>
 #include <stdarg.h>
 
@@ -62,7 +62,7 @@ createClient(void)
 	/* create client */
 	cn = malloc(sizeof(Client));
 	if (cn == NULL) {
-		warn("could not allocate new client\n");
+		warn("Could not allocate new client.\n");
 		return;
 	}
 
@@ -229,8 +229,7 @@ main(int argc, char **argv)
 	/* open the display */
 	dpy = XOpenDisplay(NULL);
 	if (dpy == NULL) {
-		fprintf(stderr, "Could not open X.\n");
-		exit(EXIT_FAILURE);
+		die("Could not open X.\n");
 	}
 
 	setup();
