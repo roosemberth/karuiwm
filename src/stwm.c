@@ -10,6 +10,7 @@
 /* macros */
 #define WBORDER (1)
 #define die(ARGS) warn(ARGS); exit(EXIT_FAILURE)
+#define min(x,y) ((x) < (y) ? (x) : (y))
 
 /* enums */
 enum { CURSOR_NORMAL, CURSOR_RESIZE, CURSOR_MOVE, CURSOR_LAST };
@@ -23,13 +24,14 @@ struct Client {
 };
 
 /* functions */
-void addClient(void);
+void createClient(void);
 void drawClient(Client *);
 void handleButton(XEvent *);
 void handleKeyPress(XEvent *);
 void removeClient(void);
 void run(void);
 void setup(void);
+void tile(void);
 void warn(char const *, ...);
 
 /* handler functions, in an array to allow easier access */
@@ -47,10 +49,11 @@ Window root;
 int screen;
 int sw, sh; /* screen dimensions */
 Client *clients;
-int count;
+int nmaster;
+float mfact;
 
 void
-addClient(void)
+createClient(void)
 {
 	Client *c, *cn;
 
@@ -61,17 +64,9 @@ addClient(void)
 		return;
 	}
 
-	/* initialise client */
-	cn->x = 10*count; /* TODO */
-	cn->y = 10*count;
-	++count;
-	cn->w = 200;
-	cn->h = 140;
-	cn->win = XCreateSimpleWindow(dpy, root, cn->x, cn->y, cn->w, cn->h, WBORDER, cborder, cbg);
+	/* initialise client (TODO initial dimension values) */
+	cn->win = XCreateSimpleWindow(dpy, root, 1, 1, 1, 1, WBORDER, cborder, cbg);
 	cn->next = NULL;
-
-	/* draw client */
-	drawClient(cn);
 
 	/* integrate client */
 	if (clients == NULL) {
@@ -80,6 +75,9 @@ addClient(void)
 		for (c = clients; c->next != NULL; c = c->next);
 		c->next = cn;
 	}
+
+	/* arrange windows */
+	tile();
 }
 
 void
@@ -91,7 +89,7 @@ drawClient(Client *c)
 void
 handleButton(XEvent *e)
 {
-	printf("button pressed\n");
+	/* TODO */
 }
 
 void
@@ -99,9 +97,9 @@ handleKeyPress(XEvent *e)
 {
 	switch (XLookupKeysym(&e->xkey, 0)) {
 		case XK_space:
-			addClient();
+			createClient();
 			break;
-		case XK_d:
+		case XK_q:
 			removeClient();
 			break;
 	}
@@ -115,14 +113,14 @@ removeClient(void)
 		running = false;
 	} else if (clients->next == NULL) {
 		XDestroyWindow(dpy, clients->win);
+		clients = NULL;
 	} else {
 		for (c = clients; c->next->next != NULL; c = c->next);
 		XDestroyWindow(dpy, c->next->win);
 		free(c->next);
 		c->next = false;
-		drawClient(c);
 	}
-	--count;
+	tile();
 }
 
 void
@@ -156,7 +154,47 @@ setup(void)
 	XSelectInput(dpy, root, KeyPressMask|ButtonPressMask);
 
 	/* for positioning the windows */
-	count = 0;
+	nmaster = 1;
+	mfact = 0.6;
+}
+
+void
+tile(void)
+{
+	int nc, ncm, i, x, w, h;
+	Client *c;
+
+	/* get number of windows in master area */
+	for (nc = 0, c = clients; c != NULL; c = c->next, nc++);
+	if (nc == 0) return;
+
+	/* draw master area */
+	ncm = min(nmaster, nc);
+	x = 0;
+	w = nmaster >= nc ? sw : mfact*sw;
+	h = sh/ncm;
+	for (i = 0, c = clients; i < ncm; i++, c = c->next) {
+		c->x = x;
+		c->y = i*h;
+		c->w = w;
+		c->h = h;
+		XMoveResizeWindow(dpy, c->win, c->x, c->y, c->w-2*WBORDER, c->h-2*WBORDER);
+		drawClient(c);
+	}
+	if (ncm == nc) return;
+
+	/* draw stack area */
+	x = mfact*sw;
+	w = sw-x;
+	h = sh/(nc-ncm);
+	for (; i < nc; i++, c = c->next) {
+		c->x = x;
+		c->y = (i-ncm)*h;
+		c->w = w;
+		c->h = h;
+		XMoveResizeWindow(dpy, c->win, c->x, c->y, c->w-2*WBORDER, c->h-2*WBORDER);
+		drawClient(c);
+	}
 }
 
 void
