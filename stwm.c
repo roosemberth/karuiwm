@@ -29,8 +29,7 @@ struct Client {
 };
 
 /* functions */
-void createClient(void);
-void drawClient(Client *);
+void addClient(Window);
 void handleButtonPress(XEvent *);
 void handleClientMessage(XEvent *);
 void handleConfigureRequest(XEvent *);
@@ -47,12 +46,14 @@ void handleMapRequest(XEvent *);
 void handleMotionNotify(XEvent *);
 void handlePropertyNotify(XEvent *);
 void handleUnmapNotify(XEvent *);
-void removeClient(void);
+void removeClient(Window);
 void run(void);
 void setmfact(float);
 void setup(void);
 void stdlog(FILE *, char const *, ...);
 void tile(void);
+int xerror(Display *, XErrorEvent *);
+int (*xerrorxlib)(Display *, XErrorEvent *);
 
 /* handler functions, in an array to allow easier access */
 void (*handle[LASTEvent])(XEvent *) = {
@@ -88,10 +89,11 @@ int nmaster;
 float mfact;
 
 void
-createClient(void)
+addClient(Window w)
 {
 	Client *c, *cn;
 
+	debug("\033[32maddClient()\033[0m\n");
 	/* create client */
 	cn = malloc(sizeof(Client));
 	if (cn == NULL) {
@@ -99,8 +101,8 @@ createClient(void)
 		return;
 	}
 
-	/* initialise client (TODO initial dimension values) */
-	cn->win = XCreateSimpleWindow(dpy, root, 1, 1, 1, 1, WBORDER, cborder, cbg);
+	/* initialise client */
+	cn->win = w;
 	cn->next = NULL;
 
 	/* integrate client */
@@ -116,74 +118,67 @@ createClient(void)
 }
 
 void
-drawClient(Client *c)
-{
-	XMapWindow(dpy, c->win);
-}
-
-void
 handleButtonPress(XEvent *e)
 {
-	debug("ButtonPress! (type=%d)\n", e->type);
+	debug("ButtonPress! (%d)\n", e->type);
 }
 
 void
 handleClientMessage(XEvent *e)
 {
-	debug("ClientMessage! (type=%d)\n", e->type);
+	debug("ClientMessage! (%d)\n", e->type);
 }
 
 void
 handleConfigureRequest(XEvent *e)
 {
-	debug("ConfigureRequest! (type=%d)\n", e->type);
+	debug("ConfigureRequest! (%d)\n", e->type);
 }
 
 void
 handleConfigureNotify(XEvent *e)
 {
-	debug("ConfigureNotify! (type=%d)\n", e->type);
+	debug("ConfigureNotify! (%d)\n", e->type);
 }
 
 void
 handleCreateNotify(XEvent *e)
 {
-	debug("CreateNotify! (type=%d)\n", e->type);
+	debug("CreateNotify! (%d)\n", e->type);
 }
 
 void
 handleDestroyNotify(XEvent *e)
 {
-	debug("DestroyNotify! (type=%d)\n", e->type);
+	debug("DestroyNotify! (%d)\n", e->type);
+	removeClient(e->xdestroywindow.window);
 }
 
 void
 handleEnterNotify(XEvent *e)
 {
-	debug("EnterNotify! (type=%d)\n", e->type);
+	debug("EnterNotify! (%d)\n", e->type);
 }
 
 void
 handleExpose(XEvent *e)
 {
-	debug("Expose! (type=%d)\n", e->type);
+	debug("Expose! (%d)\n", e->type);
 }
 
 void
 handleFocusIn(XEvent *e)
 {
-	debug("FocusIn! (type=%d)\n", e->type);
+	debug("FocusIn! (%d)\n", e->type);
 }
 
 void
 handleKeyPress(XEvent *e)
 {
+	debug("KeyPress! (%d)\n", e->type);
 	switch (XLookupKeysym(&e->xkey, 0)) {
-		case XK_space:
-			createClient();
-			break;
 		case XK_q:
-			removeClient();
+			running = false;
 			break;
 		case XK_h:
 			setmfact(-0.02);
@@ -197,58 +192,65 @@ handleKeyPress(XEvent *e)
 void
 handleMapNotify(XEvent *e)
 {
-	XMapEvent me;
-	Window w;
-
-	me = e->xmap;
-	w = me.window;
-	//XSetInputFocus(dpy, w, RevertToNone, CurrentTime);
+	debug("\033[33mMapNotify! (%d)\033[0m\n", e->type);
+	addClient(e->xmap.window);
+	debug("\033[33mMapNotify! (%d)::end\033[0m\n", e->type);
 }
 
 void
 handleMappingNotify(XEvent *e)
 {
-	debug("MappingNotify! (type=%d)\n", e->type);
+	debug("MappingNotify! (%d)\n", e->type);
 }
 
 void
 handleMapRequest(XEvent *e)
 {
-	debug("MapRequest! (type=%d)\n", e->type);
+	debug("MapRequest! (%d)\n", e->type);
 }
 
 void
 handleMotionNotify(XEvent *e)
 {
-	debug("MotionNotify! (type=%d)\n", e->type);
+	debug("MotionNotify! (%d)\n", e->type);
 }
 
 void
 handlePropertyNotify(XEvent *e)
 {
-	debug("PropertyNotify! (type=%d)\n", e->type);
+	debug("PropertyNotify! (%d)\n", e->type);
 }
 
 void
 handleUnmapNotify(XEvent *e)
 {
-	debug("UnmapNotify! (type=%d)\n", e->type);
+	debug("UnmapNotify! (%d)\n", e->type);
 }
 
 void
-removeClient(void)
+removeClient(Window w)
 {
-	Client *c;
+	Client *c, *c2;
+	debug("\033[31mremoveClient()\033[0m\n");
 	if (clients == NULL) {
-		running = false;
-	} else if (clients->next == NULL) {
-		XDestroyWindow(dpy, clients->win);
-		clients = NULL;
+		warn("Attempt to remove non-existing window!\n");
+		return;
+	}
+	if (clients->win == w) {
+		debug("\033[31mfound!\033[0m\n");
+		c = clients;
+		clients = c->next;
+		free(c);
 	} else {
-		for (c = clients; c->next->next != NULL; c = c->next);
-		XDestroyWindow(dpy, c->next->win);
-		free(c->next);
-		c->next = false;
+		for (c = clients; c->next != NULL; c = c->next) {
+			if (c->next->win == w) {
+				debug("\033[31mfound!\033[0m\n");
+				c2 = c->next->next;
+				free(c->next);
+				c->next = c2;
+				break;
+			}
+		}
 	}
 	tile();
 }
@@ -261,7 +263,7 @@ run(void)
 	/* event loop */
 	running = true;
 	while (running && !XNextEvent(dpy, &e)) {
-		//debug("run(): e.type=%d\n", e.type);
+		debug("\033[1mrun(): e.type=%d\033[0m\n", e.type);
 		handle[e.type](&e);
 	}
 }
@@ -298,9 +300,12 @@ setup(void)
 			StructureNotifyMask|PropertyChangeMask|KeyPressMask);
 	*/
 
-	/* for positioning the windows */
+	/* for positioning the windows (TODO move to config.h) */
 	nmaster = 1;
 	mfact = 0.6;
+
+	/* set X error handler */
+	xerrorxlib = XSetErrorHandler(xerror);
 }
 
 void
@@ -329,6 +334,7 @@ tile(void)
 {
 	int nc, ncm, i, x, w, h;
 	Client *c;
+	debug("\033[35mtile()\033[0m\n");
 
 	/* get number of windows in master area */
 	for (nc = 0, c = clients; c != NULL; c = c->next, nc++);
@@ -345,7 +351,6 @@ tile(void)
 		c->w = w;
 		c->h = (i == ncm-1) ? sh-i*h : h;
 		XMoveResizeWindow(dpy, c->win, c->x, c->y, c->w-2*WBORDER, c->h-2*WBORDER);
-		drawClient(c);
 	}
 	if (ncm == nc) return;
 
@@ -359,8 +364,21 @@ tile(void)
 		c->w = w;
 		c->h = (i == nc-1) ? sh-(i-ncm)*h : h;
 		XMoveResizeWindow(dpy, c->win, c->x, c->y, c->w-2*WBORDER, c->h-2*WBORDER);
-		drawClient(c);
 	}
+}
+
+int
+xerror(Display *dpy, XErrorEvent *ee)
+{
+	/* only display error on this error instead of crashing */
+	if (ee->error_code == BadWindow) {
+		warn("fatal error (request code=%d, error code=%d)\n",
+				ee->request_code, ee->error_code);
+		return 0;
+	}
+
+	/* call default error handler (might call exit) */
+	return xerrorxlib(dpy, ee);
 }
 
 int
@@ -374,6 +392,8 @@ main(int argc, char **argv)
 
 	setup();
 	run();
+
+	debug("Shutting down stwm.\n");
 
 	/* close window */
 	XCloseDisplay(dpy);
