@@ -19,6 +19,9 @@ all: build run
 clean:
 	rm -f $(OBJECTS)
 
-run: $(EXECUTABLE)
+run:
 	xinit ./xinitrc -- :1
+
+xephyr:
+	xinit ./xinitrc -- $(shell which Xephyr) :1
 

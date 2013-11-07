@@ -6,12 +6,16 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <stdarg.h>
+#include <time.h>
 
 /* macros */
+#define DEBUG 1
 #define WBORDER (1)
-#define die(ARGS) warn(ARGS); exit(EXIT_FAILURE)
 #define min(x,y) ((x) < (y) ? (x) : (y))
 #define max(x,y) ((x) < (y) ? (y) : (x))
+#define debug(...) stdlog(stdout, __VA_ARGS__)
+#define warn(...) stdlog(stderr, __VA_ARGS__)
+#define die(...) warn(__VA_ARGS__); exit(EXIT_FAILURE)
 
 /* enums */
 enum { CURSOR_NORMAL, CURSOR_RESIZE, CURSOR_MOVE, CURSOR_LAST };
@@ -27,20 +31,49 @@ struct Client {
 /* functions */
 void createClient(void);
 void drawClient(Client *);
-void handleButton(XEvent *);
+void handleButtonPress(XEvent *);
+void handleClientMessage(XEvent *);
+void handleConfigureRequest(XEvent *);
+void handleConfigureNotify(XEvent *);
+void handleCreateNotify(XEvent *);
+void handleDestroyNotify(XEvent *);
+void handleEnterNotify(XEvent *);
+void handleExpose(XEvent *);
+void handleFocusIn(XEvent *);
 void handleKeyPress(XEvent *);
+void handleMapNotify(XEvent *);
+void handleMappingNotify(XEvent *);
+void handleMapRequest(XEvent *);
+void handleMotionNotify(XEvent *);
+void handlePropertyNotify(XEvent *);
+void handleUnmapNotify(XEvent *);
 void removeClient(void);
 void run(void);
 void setmfact(float);
 void setup(void);
+void stdlog(FILE *, char const *, ...);
 void tile(void);
-void warn(char const *, ...);
 
 /* handler functions, in an array to allow easier access */
-void (*handlers[LASTEvent])(XEvent *e) = {
-	[ButtonPress] = handleButton,
-	[KeyPress] = handleKeyPress
+void (*handle[LASTEvent])(XEvent *) = {
+	[ButtonPress] = handleButtonPress,
+	[ClientMessage] = handleClientMessage,
+	[ConfigureRequest] = handleConfigureRequest,
+	[ConfigureNotify] = handleConfigureNotify,
+	[CreateNotify] = handleCreateNotify,
+	[DestroyNotify] = handleDestroyNotify,
+	[EnterNotify] = handleEnterNotify,
+	[Expose] = handleExpose,
+	[FocusIn] = handleFocusIn,
+	[KeyPress] = handleKeyPress,
+	[MapNotify] = handleMapNotify,
+	[MappingNotify] = handleMappingNotify,
+	[MapRequest] = handleMapRequest,
+	[MotionNotify] = handleMotionNotify,
+	[PropertyNotify] = handlePropertyNotify,
+	[UnmapNotify] = handleUnmapNotify
 };
+
 
 /* variables */
 int cbg, cborder;
@@ -89,9 +122,57 @@ drawClient(Client *c)
 }
 
 void
-handleButton(XEvent *e)
+handleButtonPress(XEvent *e)
 {
-	/* TODO */
+	debug("ButtonPress! (type=%d)\n", e->type);
+}
+
+void
+handleClientMessage(XEvent *e)
+{
+	debug("ClientMessage! (type=%d)\n", e->type);
+}
+
+void
+handleConfigureRequest(XEvent *e)
+{
+	debug("ConfigureRequest! (type=%d)\n", e->type);
+}
+
+void
+handleConfigureNotify(XEvent *e)
+{
+	debug("ConfigureNotify! (type=%d)\n", e->type);
+}
+
+void
+handleCreateNotify(XEvent *e)
+{
+	debug("CreateNotify! (type=%d)\n", e->type);
+}
+
+void
+handleDestroyNotify(XEvent *e)
+{
+	debug("DestroyNotify! (type=%d)\n", e->type);
+}
+
+void
+handleEnterNotify(XEvent *e)
+{
+	debug("EnterNotify! (type=%d)\n", e->type);
+}
+
+void
+handleExpose(XEvent *e)
+{
+	debug("Expose! (type=%d)\n", e->type);
+}
+
+void
+handleFocusIn(XEvent *e)
+{
+	debug("FocusIn! (type=%d)\n", e->type);
 }
 
 void
@@ -111,6 +192,47 @@ handleKeyPress(XEvent *e)
 			setmfact(+0.02);
 			break;
 	}
+}
+
+void
+handleMapNotify(XEvent *e)
+{
+	XMapEvent me;
+	Window w;
+
+	me = e->xmap;
+	w = me.window;
+	//XSetInputFocus(dpy, w, RevertToNone, CurrentTime);
+}
+
+void
+handleMappingNotify(XEvent *e)
+{
+	debug("MappingNotify! (type=%d)\n", e->type);
+}
+
+void
+handleMapRequest(XEvent *e)
+{
+	debug("MapRequest! (type=%d)\n", e->type);
+}
+
+void
+handleMotionNotify(XEvent *e)
+{
+	debug("MotionNotify! (type=%d)\n", e->type);
+}
+
+void
+handlePropertyNotify(XEvent *e)
+{
+	debug("PropertyNotify! (type=%d)\n", e->type);
+}
+
+void
+handleUnmapNotify(XEvent *e)
+{
+	debug("UnmapNotify! (type=%d)\n", e->type);
 }
 
 void
@@ -139,7 +261,8 @@ run(void)
 	/* event loop */
 	running = true;
 	while (running && !XNextEvent(dpy, &e)) {
-		handlers[e.type](&e);
+		//debug("run(): e.type=%d\n", e.type);
+		handle[e.type](&e);
 	}
 }
 
@@ -168,11 +291,37 @@ setup(void)
 	sh = DisplayHeight(dpy, screen);
 
 	/* set mask of input events to handle */
-	XSelectInput(dpy, root, KeyPressMask|ButtonPressMask);
+	XSelectInput(dpy, root, SubstructureNotifyMask|/*EnterWindowMask|*/KeyPressMask);
+	/*
+	XSelectInput(dpy, root, SubstructureRedirectMask|SubstructureNotifyMask|
+			ButtonPressMask|PointerMotionMask|EnterWindowMask|LeaveWindowMask|
+			StructureNotifyMask|PropertyChangeMask|KeyPressMask);
+	*/
 
 	/* for positioning the windows */
 	nmaster = 1;
 	mfact = 0.6;
+}
+
+void
+stdlog(FILE *f, char const *format, ...)
+{
+	if (!DEBUG && f==stdout) return;
+
+	va_list args;
+	time_t rawtime;
+	struct tm *date;
+
+	/* timestamp */
+	time(&rawtime);
+	date = localtime(&rawtime);
+	fprintf(f, "[%02d:%02d:%02d] stwm: ",
+			date->tm_hour, date->tm_min, date->tm_sec);
+
+	/* message */
+	va_start(args, format);
+	vfprintf(f, format, args);
+	va_end(args);
 }
 
 void
@@ -194,7 +343,7 @@ tile(void)
 		c->x = x;
 		c->y = i*h;
 		c->w = w;
-		c->h = h;
+		c->h = (i == ncm-1) ? sh-i*h : h;
 		XMoveResizeWindow(dpy, c->win, c->x, c->y, c->w-2*WBORDER, c->h-2*WBORDER);
 		drawClient(c);
 	}
@@ -208,19 +357,10 @@ tile(void)
 		c->x = x;
 		c->y = (i-ncm)*h;
 		c->w = w;
-		c->h = h;
+		c->h = (i == nc-1) ? sh-(i-ncm)*h : h;
 		XMoveResizeWindow(dpy, c->win, c->x, c->y, c->w-2*WBORDER, c->h-2*WBORDER);
 		drawClient(c);
 	}
-}
-
-void
-warn(char const *format, ...)
-{
-	va_list args;
-	va_start(args, format);
-	vfprintf(stderr, format, args);
-	va_end(args);
 }
 
 int
