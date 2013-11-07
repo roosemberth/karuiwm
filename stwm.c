@@ -9,8 +9,7 @@
 #include <time.h>
 
 /* macros */
-#define DEBUG 1
-#define WBORDER (1)
+#define DEBUG 0 /* enable for debug output */
 #define min(x,y) ((x) < (y) ? (x) : (y))
 #define max(x,y) ((x) < (y) ? (y) : (x))
 #define debug(...) stdlog(stdout, __VA_ARGS__)
@@ -263,7 +262,7 @@ run(void)
 	/* event loop */
 	running = true;
 	while (running && !XNextEvent(dpy, &e)) {
-		debug("\033[1mrun(): e.type=%d\033[0m\n", e.type);
+		//debug("\033[1mrun(): e.type=%d\033[0m\n", e.type);
 		handle[e.type](&e);
 	}
 }
@@ -293,7 +292,7 @@ setup(void)
 	sh = DisplayHeight(dpy, screen);
 
 	/* set mask of input events to handle */
-	XSelectInput(dpy, root, SubstructureNotifyMask|/*EnterWindowMask|*/KeyPressMask);
+	XSelectInput(dpy, root, SubstructureNotifyMask|KeyPressMask);
 	/*
 	XSelectInput(dpy, root, SubstructureRedirectMask|SubstructureNotifyMask|
 			ButtonPressMask|PointerMotionMask|EnterWindowMask|LeaveWindowMask|
@@ -350,7 +349,7 @@ tile(void)
 		c->y = i*h;
 		c->w = w;
 		c->h = (i == ncm-1) ? sh-i*h : h;
-		XMoveResizeWindow(dpy, c->win, c->x, c->y, c->w-2*WBORDER, c->h-2*WBORDER);
+		XMoveResizeWindow(dpy, c->win, c->x, c->y, c->w, c->h);
 	}
 	if (ncm == nc) return;
 
@@ -363,7 +362,7 @@ tile(void)
 		c->y = (i-ncm)*h;
 		c->w = w;
 		c->h = (i == nc-1) ? sh-(i-ncm)*h : h;
-		XMoveResizeWindow(dpy, c->win, c->x, c->y, c->w-2*WBORDER, c->h-2*WBORDER);
+		XMoveResizeWindow(dpy, c->win, c->x, c->y, c->w, c->h);
 	}
 }
 
