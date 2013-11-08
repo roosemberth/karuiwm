@@ -1,5 +1,4 @@
 #include <X11/Xlib.h>
-#include <X11/cursorfont.h>
 #include <X11/keysym.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -326,14 +325,28 @@ focusstep(int s)
 		sel = clients;
 	} else {
 		unfocus(sel);
-		for (c = clients; c != NULL; c = c->next) {
-			if (c == sel) {
-				if (c->next == NULL) {
-					sel = clients;
-				} else {
-					sel = c->next;
+		if (s > 0) {
+			for (c = clients; c != NULL; c = c->next) {
+				if (c == sel) {
+					if (c->next == NULL) {
+						sel = clients;
+					} else {
+						sel = c->next;
+					}
+					break;
 				}
-				break;
+			}
+		} else if (s < 0) {
+			if (sel == clients) {
+				for (c = clients; c->next != NULL; c = c->next);
+				sel = c;
+			} else {
+				for (c = clients; c->next != NULL; c = c->next) {
+					if (c->next == sel) {
+						sel = c;
+						break;
+					}
+				}
 			}
 		}
 	}

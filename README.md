@@ -38,6 +38,6 @@ usage
 * <code>Mod4</code>+<code>l</code> increase the master area
 * <code>Mod4</code>+<code>h</code> decrease the master area
 * <code>Mod4</code>+<code>j</code> set focus to next window
-* <code>Mod4</code>+<code>k</code> set focus to next window
+* <code>Mod4</code>+<code>k</code> set focus to previous window
 * <code>Mod4</code>+<code>q</code> quit stwm
 
