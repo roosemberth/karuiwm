@@ -86,7 +86,7 @@ void (*handle[LASTEvent])(XEvent *) = {
 };
 
 /* variables */
-int cbg, cborder;
+int cbg, cborder; /* TODO */
 Cursor cursor[CURSOR_LAST]; /* TODO */
 Display *dpy;
 bool running;
@@ -94,9 +94,7 @@ Window root;
 int screen;
 int sw, sh; /* screen dimensions */
 Client **clients;
-int nclients;
-int sel;
-int nmaster;
+int nc, nmaster, sel;
 float mfact;
 
 /* HANDLER FUNCTIONS -------------------------------------------------------- */
@@ -256,9 +254,11 @@ attach(Window w)
 		warn("Could not allocate new client.");
 		return;
 	}
-	clients = realloc(clients, ++nclients);
-	clients[nclients-1] = c;
+	clients = realloc(clients, ++nc*sizeof(Client *));
+	clients[nc-1] = c;
 	c->win = w;
+	sel = nc-1;
+	focus(c);
 	tile();
 }
 
@@ -266,7 +266,7 @@ void
 cleanup(void)
 {
 	int i;
-	for (i = 0; i < nclients; i++) {
+	for (i = 0; i < nc; i++) {
 		detach(clients[i]);
 	}
 	free(clients);
@@ -281,19 +281,20 @@ detach(Client *c)
 	if (c == NULL) {
 		warn("detach(NULL)");
 	}
-	if (nclients == 0) {
+	if (nc == 0) {
 		warn("Attempting to detach from an empty list of clients.");
 		return;
 	}
 
 	/* remove */
-	for (i = 0; i < nclients; i++) {
+	for (i = 0; i < nc; i++) {
 		if (clients[i] == c) {
 			free(clients[i]);
-			for (; i < nclients-1; i++) {
+			for (; i < nc-1; i++) {
 				clients[i] = clients[i+1];
 			}
-			nclients--;
+			nc--;
+			clients = realloc(clients, nc*sizeof(Client *));
 			tile();
 			return;
 		}
@@ -310,10 +311,10 @@ focus(Client *c)
 void
 focusstep(int s)
 {
-	if (nclients == 0) {
+	if (nc == 0) {
 		return;
 	}
-	sel = (sel+s)%nclients;
+	sel = (sel+nc+s)%nc;
 	focus(clients[sel]);
 }
 
@@ -424,11 +425,13 @@ tile(void)
 {
 	int ncm, i, x, w, h;
 
+	if (nc == 0) return;
+
 	/* draw master area */
-	ncm = min(nmaster, nclients);
+	ncm = min(nmaster, nc);
 	x = 0;
-	w = nmaster >= nclients ? sw : mfact*sw;
-	h = sh/(nclients-ncm);
+	w = nmaster >= nc ? sw : mfact*sw;
+	h = sh/ncm;
 	for (i = 0; i < ncm; i++) {
 		clients[i]->x = x;
 		clients[i]->y = i*h;
@@ -437,17 +440,17 @@ tile(void)
 		XMoveResizeWindow(dpy, clients[i]->win, clients[i]->x, clients[i]->y,
 				clients[i]->w, clients[i]->h);
 	}
-	if (ncm == nclients) return;
+	if (ncm == nc) return;
 
 	/* draw stack area */
 	x = mfact*sw;
 	w = sw-x;
-	h = sh/(nclients-ncm);
-	for (; i < nclients; i++) {
+	h = sh/(nc-ncm);
+	for (; i < nc; i++) {
 		clients[i]->x = x;
 		clients[i]->y = (i-ncm)*h;
 		clients[i]->w = w;
-		clients[i]->h = (i == nclients-1) ? sh-(i-ncm)*h : h;
+		clients[i]->h = (i == nc-1) ? sh-(i-ncm)*h : h;
 		XMoveResizeWindow(dpy, clients[i]->win, clients[i]->x, clients[i]->y,
 				clients[i]->w, clients[i]->h);
 	}
@@ -463,7 +466,7 @@ Client *
 wintoclient(Window w)
 {
 	int i;
-	for (i = 0; i < nclients; i++) {
+	for (i = 0; i < nc; i++) {
 		if (clients[i]->win == w) {
 			return clients[i];
 		}
