@@ -37,11 +37,14 @@ struct Client {
 void attach(Window);
 void cleanup(void);
 void detach(Client *);
+void focus(Client *);
+void focusstep(int);
 void run(void);
 void setmfact(float);
 void setup(void);
 void stdlog(FILE *, char const *, ...);
 void tile(void);
+void unfocus(Client *);
 Client *wintoclient(Window);
 int xerror(Display *, XErrorEvent *);
 int (*xerrorxlib)(Display *, XErrorEvent *);
@@ -93,29 +96,34 @@ Window root;
 int screen;
 int sw, sh; /* screen dimensions */
 Client *clients;
+Client *sel;
 int nmaster;
 float mfact;
 
 /* HANDLER FUNCTIONS -------------------------------------------------------- */
 
+/* 4 */
 void
 handleButtonPress(XEvent *e)
 {
 	debug("ButtonPress (%d)", e->type);
 }
 
+/* 5 */
+void
+handleButtonRelease(XEvent *e)
+{
+	debug("ButtonRelease (%d)", e->type);
+}
+
+/* 33 */
 void
 handleClientMessage(XEvent *e)
 {
 	debug("ClientMessage (%d)", e->type);
 }
 
-void
-handleConfigureRequest(XEvent *e)
-{
-	debug("ConfigureRequest (%d)", e->type);
-}
-
+/* 22 */
 void
 handleConfigureNotify(XEvent *e)
 {
@@ -123,57 +131,76 @@ handleConfigureNotify(XEvent *e)
 	/* TODO */
 }
 
+/* 23 */
+void
+handleConfigureRequest(XEvent *e)
+{
+	debug("ConfigureRequest (%d)", e->type);
+}
+
+/* 16 */
 void
 handleCreateNotify(XEvent *e)
 {
 	//debug("CreateNotify! (%d)", e->type);
 }
 
+/* 17 */
 void
 handleDestroyNotify(XEvent *e)
 {
 	//debug("DestroyNotify! (%d)", e->type);
 }
 
+/* 7 */
 void
 handleEnterNotify(XEvent *e)
 {
 	debug("EnterNotify (%d)", e->type);
 }
 
+/* 12 */
 void
 handleExpose(XEvent *e)
 {
-	debug("Expose (%d)", e->type);
+	//debug("Expose (%d)", e->type);
 }
 
+/* 9 */
 void
 handleFocusIn(XEvent *e)
 {
-	debug("FocusIn (%d)", e->type);
+	//debug("FocusIn (%d)", e->type);
 }
 
+/* 2 */
 void
 handleKeyPress(XEvent *e)
 {
-	debug("KeyPress (%d)", e->type);
+	//debug("KeyPress (%d)", e->type);
 	if ((&e->xkey)->state != MODKEY) return;
 
 	if (XLookupKeysym(&e->xkey, 0) == XK_h) {
 		setmfact(-0.02);
 	} else if (XLookupKeysym(&e->xkey, 0) == XK_l) {
 		setmfact(+0.02);
+	} else if (XLookupKeysym(&e->xkey, 0) == XK_j) {
+		focusstep(+1);
+	} else if (XLookupKeysym(&e->xkey, 0) == XK_k) {
+		focusstep(-1);
 	} else if (XLookupKeysym(&e->xkey, 0) == XK_q) {
 		running = false;
 	}
 }
 
+/* 3 */
 void
 handleKeyRelease(XEvent *e)
 {
-	debug("KeyRelease! (%d)", e->type);
+	//debug("KeyRelease! (%d)", e->type);
 }
 
+/* 19 */
 void
 handleMapNotify(XEvent *e)
 {
@@ -181,30 +208,35 @@ handleMapNotify(XEvent *e)
 	attach(e->xmap.window);
 }
 
+/* 20 */
 void
 handleMapRequest(XEvent *e)
 {
 	debug("MapRequest (%d)", e->type);
 }
 
+/* 34 */
 void
 handleMappingNotify(XEvent *e)
 {
 	debug("MappingNotify (%d)", e->type);
 }
 
+/* 6 */
 void
 handleMotionNotify(XEvent *e)
 {
 	debug("MotionNotify (%d)", e->type);
 }
 
+/* 28 */
 void
 handlePropertyNotify(XEvent *e)
 {
 	debug("PropertyNotify (%d)", e->type);
 }
 
+/* 18 */
 void
 handleUnmapNotify(XEvent *e)
 {
@@ -254,15 +286,23 @@ detach(Client *c)
 {
 	Client *cp;
 
-	if (clients == NULL || c == NULL) {
-		warn("Attempting window detaching with NULL state.");
+	if (clients == NULL) {
+		warn("Attempting to detach from an empty list of clients.");
+	} else if (c == NULL) {
+		warn("detach(NULL)");
 	} else if (clients == c) {
 		clients = c->next;
+		if (sel == c) {
+			sel = c->next;
+		}
 		free(c);
 	} else {
 		for (cp = clients; cp->next != NULL; cp = cp->next) {
 			if (cp->next == c) {
 				cp->next = c->next;
+				if (sel == c) {
+					sel = c->next;
+				}
 				free(c);
 				break;
 			}
@@ -272,12 +312,47 @@ detach(Client *c)
 }
 
 void
+focus(Client *c)
+{
+	XSetInputFocus(dpy, c->win, RevertToPointerRoot, CurrentTime);
+}
+
+void
+focusstep(int s)
+{
+	Client *c;
+
+	if (sel == NULL) {
+		sel = clients;
+	} else {
+		unfocus(sel);
+		for (c = clients; c != NULL; c = c->next) {
+			if (c == sel) {
+				if (c->next == NULL) {
+					sel = clients;
+				} else {
+					sel = c->next;
+				}
+				break;
+			}
+		}
+	}
+	focus(sel);
+}
+
+void
 grabkeys(void)
 {
-	/* these keys are not passed to a client, but cause a KeyPressed instead */
+	/* these keys are not passed to a client, but cause a KeyPressed instead
+	 * TODO make a list of keys, possibly in config.h
+	 */
 	XGrabKey(dpy, XKeysymToKeycode(dpy, XK_h), MODKEY, root, true,
 			GrabModeAsync, GrabModeAsync);
 	XGrabKey(dpy, XKeysymToKeycode(dpy, XK_l), MODKEY, root, true,
+			GrabModeAsync, GrabModeAsync);
+	XGrabKey(dpy, XKeysymToKeycode(dpy, XK_j), MODKEY, root, true,
+			GrabModeAsync, GrabModeAsync);
+	XGrabKey(dpy, XKeysymToKeycode(dpy, XK_k), MODKEY, root, true,
 			GrabModeAsync, GrabModeAsync);
 	XGrabKey(dpy, XKeysymToKeycode(dpy, XK_q), MODKEY, root, true,
 			GrabModeAsync, GrabModeAsync);
@@ -322,7 +397,8 @@ setup(void)
 	sh = DisplayHeight(dpy, screen);
 
 	/* set mask of input events to handle */
-	XSelectInput(dpy, root, SubstructureNotifyMask|KeyPressMask);
+	XSelectInput(dpy, root, SubstructureNotifyMask|PropertyChangeMask|
+			KeyPressMask);
 	/*
 	XSelectInput(dpy, root, SubstructureRedirectMask|SubstructureNotifyMask|
 			ButtonPressMask|PointerMotionMask|EnterWindowMask|LeaveWindowMask|
@@ -400,6 +476,12 @@ tile(void)
 	}
 }
 
+void
+unfocus(Client *c)
+{
+	/* TODO update border colour */
+}
+
 Client *
 wintoclient(Window w)
 {
@@ -416,10 +498,13 @@ wintoclient(Window w)
 int
 xerror(Display *dpy, XErrorEvent *ee)
 {
+	char es[256];
+
 	/* only display error on this error instead of crashing */
 	if (ee->error_code == BadWindow) {
-		warn("Fatal error (request code=%d, error code=%d)",
-				ee->request_code, ee->error_code);
+		XGetErrorText(dpy, ee->error_code, es, 256);
+		warn("Fatal error %d (%s) after request %d",
+				ee->error_code, es, ee->error_code);
 		return 0;
 	}
 
