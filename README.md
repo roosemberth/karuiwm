@@ -1,31 +1,35 @@
-stwm
-====
+Simple Tiling Window Manager
+============================
 
-Simple Tiling Window Manager.
+**stwm** is an attempt to build a minimalist tiling window manager with Xlib.
+
+It is inspired by and based on [dwm](http://dwm.suckless.org/).
 
 
-build & run
------------
+build
+-----
 
-In order to build stwm, run
+This will create the binary <code>stwm</code>:
 
 	make
 
-This will create the binary <code>stwm</code>.
 
-In order to run stwm correctly, you will need to launch it on a new X display:
+run
+---
+
+This will launch a new X session on display **:1** with stwm as window manager
+and an xterm window already opened:
 
 	make run
 
-This will launch a new X session on display **:1** with stwm as the window
-manager and an xterm window opened. In case the display is occupied, you might
-need to adapt the according rule in the Makefile.
+If you want to open other application at startup, modify <code>xinitrc</code>.
 
-Alternatively, if you have got Xephyr installed, you may also launch
+If you want to launch stwm on another display than **:1**, modify the
+<code>run</code> target in the Makefile.
+
+If you've got Xephyr installed and want to run stwm inside Xephyr:
 
 	make xephyr
-
-to launch stwm inside a window.
 
 
 usage
@@ -33,9 +37,7 @@ usage
 
 * <code>Mod4</code>+<code>l</code> increase the master area
 * <code>Mod4</code>+<code>h</code> decrease the master area
+* <code>Mod4</code>+<code>j</code> set focus to next window
+* <code>Mod4</code>+<code>k</code> set focus to next window
 * <code>Mod4</code>+<code>q</code> quit stwm
-
-Note that there is currently no way to launch an application from within stwm,
-so closing the last terminal will effectively render stwm useless, and the only
-thing you can do is terminate it.
 
