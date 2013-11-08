@@ -54,6 +54,8 @@ void handleMapRequest(XEvent *);
 void handleMotionNotify(XEvent *);
 void handlePropertyNotify(XEvent *);
 void handleUnmapNotify(XEvent *);
+void quit(void);
+void restart(void);
 void run(void);
 void setmfact(float);
 void setup(void);
@@ -89,7 +91,7 @@ void (*handle[LASTEvent])(XEvent *) = {
 int cbg, cborder; /* TODO */
 Cursor cursor[CURSOR_LAST]; /* TODO */
 Display *dpy;
-bool running;
+bool running, restarting;
 Window root;
 int screen;
 int sw, sh; /* screen dimensions */
@@ -185,8 +187,10 @@ handleKeyPress(XEvent *e)
 		focusstep(+1);
 	} else if (XLookupKeysym(&e->xkey, 0) == XK_k) {
 		focusstep(-1);
+	} else if (XLookupKeysym(&e->xkey, 0) == XK_r) {
+		restart();
 	} else if (XLookupKeysym(&e->xkey, 0) == XK_q) {
-		running = false;
+		quit();
 	}
 }
 
@@ -332,8 +336,24 @@ grabkeys(void)
 			GrabModeAsync, GrabModeAsync);
 	XGrabKey(dpy, XKeysymToKeycode(dpy, XK_k), MODKEY, root, true,
 			GrabModeAsync, GrabModeAsync);
+	XGrabKey(dpy, XKeysymToKeycode(dpy, XK_r), MODKEY, root, true,
+			GrabModeAsync, GrabModeAsync);
 	XGrabKey(dpy, XKeysymToKeycode(dpy, XK_q), MODKEY, root, true,
 			GrabModeAsync, GrabModeAsync);
+}
+
+void
+quit(void)
+{
+	restarting = false;
+	running = false;
+}
+
+void
+restart(void)
+{
+	restarting = true;
+	running = false;
 }
 
 void
@@ -494,21 +514,18 @@ xerror(Display *dpy, XErrorEvent *ee)
 int
 main(int argc, char **argv)
 {
-	/* open the display */
 	dpy = XOpenDisplay(NULL);
 	if (dpy == NULL) {
 		die("Could not open X.");
 	}
-
 	setup();
 	run();
 	cleanup();
-
-	stdlog(stdout, "Shutting down stwm.");
-
-	/* close window */
 	XCloseDisplay(dpy);
-
+	if (restarting) {
+		stdlog(stdout, "Restarting.");
+		execl("stwm", "stwm", NULL);
+	}
 	return EXIT_SUCCESS;
 }
 
