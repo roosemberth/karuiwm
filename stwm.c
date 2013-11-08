@@ -255,13 +255,16 @@ detach(Client *c)
 
 	if (clients == NULL || c == NULL) {
 		warn("Attempting window detaching with NULL state.");
-	}
-
-	for (cp = clients; cp->next != NULL; cp = cp->next) {
-		if (cp->next == c) {
-			cp->next = c->next;
-			free(c);
-			break;
+	} else if (clients == c) {
+		clients = c->next;
+		free(c);
+	} else {
+		for (cp = clients; cp->next != NULL; cp = cp->next) {
+			if (cp->next == c) {
+				cp->next = c->next;
+				free(c);
+				break;
+			}
 		}
 	}
 	tile();
