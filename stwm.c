@@ -28,7 +28,6 @@ struct Client {
 	int x,y,w,h;
 	long flags;
 	char name[256];
-	Client *next;
 	Window win;
 };
 
@@ -38,17 +37,6 @@ void cleanup(void);
 void detach(Client *);
 void focus(Client *);
 void focusstep(int);
-void run(void);
-void setmfact(float);
-void setup(void);
-void stdlog(FILE *, char const *, ...);
-void tile(void);
-void unfocus(Client *);
-Client *wintoclient(Window);
-int xerror(Display *, XErrorEvent *);
-int (*xerrorxlib)(Display *, XErrorEvent *);
-
-/* handler functions */
 void handleButtonPress(XEvent *);
 void handleClientMessage(XEvent *);
 void handleConfigureRequest(XEvent *);
@@ -66,6 +54,17 @@ void handleMapRequest(XEvent *);
 void handleMotionNotify(XEvent *);
 void handlePropertyNotify(XEvent *);
 void handleUnmapNotify(XEvent *);
+void run(void);
+void setmfact(float);
+void setup(void);
+void stdlog(FILE *, char const *, ...);
+void tile(void);
+void unfocus(Client *);
+Client *wintoclient(Window);
+int xerror(Display *, XErrorEvent *);
+int (*xerrorxlib)(Display *, XErrorEvent *);
+
+/* event handlers, as array to allow O(1) access */
 void (*handle[LASTEvent])(XEvent *) = {
 	[ButtonPress] = handleButtonPress,
 	[ClientMessage] = handleClientMessage,
@@ -94,8 +93,9 @@ bool running;
 Window root;
 int screen;
 int sw, sh; /* screen dimensions */
-Client *clients;
-Client *sel;
+Client **clients;
+int nclients;
+int sel;
 int nmaster;
 float mfact;
 
@@ -248,66 +248,57 @@ handleUnmapNotify(XEvent *e)
 void
 attach(Window w)
 {
-	Client *c, *cn;
+	Client *c;
 
 	/* create client */
-	cn = malloc(sizeof(Client));
-	if (cn == NULL) {
+	c = malloc(sizeof(Client));
+	if (c == NULL) {
 		warn("Could not allocate new client.");
 		return;
 	}
-
-	/* initialise client */
-	cn->win = w;
-	cn->next = NULL;
-
-	/* integrate client */
-	if (clients == NULL) {
-		clients = cn;
-	} else {
-		for (c = clients; c->next != NULL; c = c->next);
-		c->next = cn;
-	}
+	clients = realloc(clients, ++nclients);
+	clients[nclients-1] = c;
+	c->win = w;
 	tile();
 }
 
 void
 cleanup(void)
 {
-	Client *c;
-	for (c = clients; c != NULL; c = c->next) {
-		detach(c);
+	int i;
+	for (i = 0; i < nclients; i++) {
+		detach(clients[i]);
 	}
+	free(clients);
 }
 
 void
 detach(Client *c)
 {
-	Client *cp;
+	int i;
 
-	if (clients == NULL) {
-		warn("Attempting to detach from an empty list of clients.");
-	} else if (c == NULL) {
+	/* check */
+	if (c == NULL) {
 		warn("detach(NULL)");
-	} else if (clients == c) {
-		clients = c->next;
-		if (sel == c) {
-			sel = c->next;
-		}
-		free(c);
-	} else {
-		for (cp = clients; cp->next != NULL; cp = cp->next) {
-			if (cp->next == c) {
-				cp->next = c->next;
-				if (sel == c) {
-					sel = c->next;
-				}
-				free(c);
-				break;
+	}
+	if (nclients == 0) {
+		warn("Attempting to detach from an empty list of clients.");
+		return;
+	}
+
+	/* remove */
+	for (i = 0; i < nclients; i++) {
+		if (clients[i] == c) {
+			free(clients[i]);
+			for (; i < nclients-1; i++) {
+				clients[i] = clients[i+1];
 			}
+			nclients--;
+			tile();
+			return;
 		}
 	}
-	tile();
+	warn("Attempt to detach a non-existing client.");
 }
 
 void
@@ -319,38 +310,11 @@ focus(Client *c)
 void
 focusstep(int s)
 {
-	Client *c;
-
-	if (sel == NULL) {
-		sel = clients;
-	} else {
-		unfocus(sel);
-		if (s > 0) {
-			for (c = clients; c != NULL; c = c->next) {
-				if (c == sel) {
-					if (c->next == NULL) {
-						sel = clients;
-					} else {
-						sel = c->next;
-					}
-					break;
-				}
-			}
-		} else if (s < 0) {
-			if (sel == clients) {
-				for (c = clients; c->next != NULL; c = c->next);
-				sel = c;
-			} else {
-				for (c = clients; c->next != NULL; c = c->next) {
-					if (c->next == sel) {
-						sel = c;
-						break;
-					}
-				}
-			}
-		}
+	if (nclients == 0) {
+		return;
 	}
-	focus(sel);
+	sel = (sel+s)%nclients;
+	focus(clients[sel]);
 }
 
 void
@@ -427,6 +391,9 @@ setup(void)
 
 	/* grab special keys */
 	grabkeys();
+
+	/* clients */
+	clients = malloc(sizeof(Client *));
 }
 
 void
@@ -455,37 +422,34 @@ stdlog(FILE *f, char const *format, ...)
 void
 tile(void)
 {
-	int nc, ncm, i, x, w, h;
-	Client *c;
-
-	/* get number of windows in master area */
-	for (nc = 0, c = clients; c != NULL; c = c->next, nc++);
-	if (nc == 0) return;
+	int ncm, i, x, w, h;
 
 	/* draw master area */
-	ncm = min(nmaster, nc);
+	ncm = min(nmaster, nclients);
 	x = 0;
-	w = nmaster >= nc ? sw : mfact*sw;
-	h = sh/ncm;
-	for (i = 0, c = clients; i < ncm; i++, c = c->next) {
-		c->x = x;
-		c->y = i*h;
-		c->w = w;
-		c->h = (i == ncm-1) ? sh-i*h : h;
-		XMoveResizeWindow(dpy, c->win, c->x, c->y, c->w, c->h);
+	w = nmaster >= nclients ? sw : mfact*sw;
+	h = sh/(nclients-ncm);
+	for (i = 0; i < ncm; i++) {
+		clients[i]->x = x;
+		clients[i]->y = i*h;
+		clients[i]->w = w;
+		clients[i]->h = (i == ncm-1) ? sh-i*h : h;
+		XMoveResizeWindow(dpy, clients[i]->win, clients[i]->x, clients[i]->y,
+				clients[i]->w, clients[i]->h);
 	}
-	if (ncm == nc) return;
+	if (ncm == nclients) return;
 
 	/* draw stack area */
 	x = mfact*sw;
 	w = sw-x;
-	h = sh/(nc-ncm);
-	for (; i < nc; i++, c = c->next) {
-		c->x = x;
-		c->y = (i-ncm)*h;
-		c->w = w;
-		c->h = (i == nc-1) ? sh-(i-ncm)*h : h;
-		XMoveResizeWindow(dpy, c->win, c->x, c->y, c->w, c->h);
+	h = sh/(nclients-ncm);
+	for (; i < nclients; i++) {
+		clients[i]->x = x;
+		clients[i]->y = (i-ncm)*h;
+		clients[i]->w = w;
+		clients[i]->h = (i == nclients-1) ? sh-(i-ncm)*h : h;
+		XMoveResizeWindow(dpy, clients[i]->win, clients[i]->x, clients[i]->y,
+				clients[i]->w, clients[i]->h);
 	}
 }
 
@@ -498,11 +462,10 @@ unfocus(Client *c)
 Client *
 wintoclient(Window w)
 {
-	Client *c;
-
-	for (c = clients; c != NULL; c = c->next) {
-		if (c->win == w) {
-			return c;
+	int i;
+	for (i = 0; i < nclients; i++) {
+		if (clients[i]->win == w) {
+			return clients[i];
 		}
 	}
 	return NULL;
