@@ -101,62 +101,62 @@ float mfact;
 void
 handleButtonPress(XEvent *e)
 {
-	debug("ButtonPress! (%d)", e->type);
+	debug("ButtonPress (%d)", e->type);
 }
 
 void
 handleClientMessage(XEvent *e)
 {
-	debug("ClientMessage! (%d)", e->type);
+	debug("ClientMessage (%d)", e->type);
 }
 
 void
 handleConfigureRequest(XEvent *e)
 {
-	debug("ConfigureRequest! (%d)", e->type);
+	debug("ConfigureRequest (%d)", e->type);
 }
 
 void
 handleConfigureNotify(XEvent *e)
 {
-	debug("ConfigureNotify! (%d)", e->type);
+	debug("ConfigureNotify (%d)", e->type);
+	/* TODO */
 }
 
 void
 handleCreateNotify(XEvent *e)
 {
-	debug("CreateNotify! (%d)", e->type);
+	//debug("CreateNotify! (%d)", e->type);
 }
 
 void
 handleDestroyNotify(XEvent *e)
 {
-	debug("DestroyNotify! (%d)", e->type);
-	detach(wintoclient(e->xdestroywindow.window));
+	//debug("DestroyNotify! (%d)", e->type);
 }
 
 void
 handleEnterNotify(XEvent *e)
 {
-	debug("EnterNotify! (%d)", e->type);
+	debug("EnterNotify (%d)", e->type);
 }
 
 void
 handleExpose(XEvent *e)
 {
-	debug("Expose! (%d)", e->type);
+	debug("Expose (%d)", e->type);
 }
 
 void
 handleFocusIn(XEvent *e)
 {
-	debug("FocusIn! (%d)", e->type);
+	debug("FocusIn (%d)", e->type);
 }
 
 void
 handleKeyPress(XEvent *e)
 {
-	debug("KeyPress! (%d)", e->type);
+	debug("KeyPress (%d)", e->type);
 	if ((&e->xkey)->state != MODKEY) return;
 
 	if (XLookupKeysym(&e->xkey, 0) == XK_h) {
@@ -177,38 +177,39 @@ handleKeyRelease(XEvent *e)
 void
 handleMapNotify(XEvent *e)
 {
-	debug("MapNotify! (%d)", e->type);
+	//debug("MapNotify (%d)", e->type);
 	attach(e->xmap.window);
-}
-
-void
-handleMappingNotify(XEvent *e)
-{
-	debug("MappingNotify! (%d)", e->type);
 }
 
 void
 handleMapRequest(XEvent *e)
 {
-	debug("MapRequest! (%d)", e->type);
+	debug("MapRequest (%d)", e->type);
+}
+
+void
+handleMappingNotify(XEvent *e)
+{
+	debug("MappingNotify (%d)", e->type);
 }
 
 void
 handleMotionNotify(XEvent *e)
 {
-	debug("MotionNotify! (%d)", e->type);
+	debug("MotionNotify (%d)", e->type);
 }
 
 void
 handlePropertyNotify(XEvent *e)
 {
-	debug("PropertyNotify! (%d)", e->type);
+	debug("PropertyNotify (%d)", e->type);
 }
 
 void
 handleUnmapNotify(XEvent *e)
 {
-	debug("UnmapNotify! (%d)", e->type);
+	//debug("UnmapNotify (%d)", e->type);
+	detach(wintoclient(e->xdestroywindow.window));
 }
 
 /* OTHER FUNCTIONS ---------------------------------------------------------- */
@@ -290,7 +291,7 @@ run(void)
 	/* event loop (XEvent numerical found in /usr/include/X11/X.h:181++) */
 	running = true;
 	while (running && !XNextEvent(dpy, &e)) {
-		debug("\033[1;30mrun(): e.type=%d\033[0m", e.type);
+		//debug("\033[1;30mrun(): e.type=%d\033[0m", e.type);
 		handle[e.type](&e);
 	}
 	stdlog(stderr, "Received shutdown signal.");
@@ -367,7 +368,6 @@ tile(void)
 {
 	int nc, ncm, i, x, w, h;
 	Client *c;
-	debug("\033[35mtile()\033[0m");
 
 	/* get number of windows in master area */
 	for (nc = 0, c = clients; c != NULL; c = c->next, nc++);

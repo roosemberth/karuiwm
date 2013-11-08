@@ -31,11 +31,11 @@ to launch stwm inside a window.
 usage
 -----
 
-* <code>Mod4</code>+<code>q</code> quit stdwm
 * <code>Mod4</code>+<code>l</code> increase the master area
 * <code>Mod4</code>+<code>h</code> decrease the master area
+* <code>Mod4</code>+<code>q</code> quit stwm
 
-Note that there is currently no way to launch an application from *bare* stwm,
+Note that there is currently no way to launch an application from within stwm,
 so closing the last terminal will effectively render stwm useless, and the only
 thing you can do is terminate it.
 
