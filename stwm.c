@@ -120,15 +120,39 @@ handleButtonRelease(XEvent *e)
 void
 handleClientMessage(XEvent *e)
 {
-	debug("ClientMessage (%d)", e->type);
+	long *l = e->xclient.data.l;
+	short *s = e->xclient.data.s;
+	char *b = e->xclient.data.b;
+
+	debug("ClientMessage", e->type);
+	debug("  send_event=%s", e->xclient.send_event ? "true" : "false");
+	debug("  window=%d", e->xclient.window);
+	debug("  format=%d", e->xclient.format);
+	switch (e->xclient.format) {
+		case 32:
+			debug("  l={%ld,%ld,%ld,%ld,%ld}",
+					l[0],l[1],l[2],l[3],l[4]);
+			break;
+		case 16:
+			debug("  s={%hd,%hd,%hd,%hd,%hd,%hd,%hd,%hd,%hd,%hd}",
+					s[0],s[1],s[2],s[3],s[4],s[5],s[6],s[7],s[8],s[9]);
+			break;
+		case 8:
+			debug("  s={%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c}",
+					b[0],b[1],b[2],b[3],b[4],b[5],b[6],b[7],b[8],b[9],
+					b[10],b[11],b[12],b[13],b[14],b[15],b[16],b[17],b[18],b[19]);
+			break;
+		default:
+			debug("  unknown data format: %d", e->xclient.format);
+	}
 }
 
 /* 22 */
 void
 handleConfigureNotify(XEvent *e)
 {
-	debug("ConfigureNotify (%d)", e->type);
-	/* TODO */
+	debug("\033[35mconfigure window %d%s\033[0m", e->xconfigure.window,
+			e->xconfigure.override_redirect ? " => with override_redirect":"");
 }
 
 /* 23 */
@@ -142,14 +166,17 @@ handleConfigureRequest(XEvent *e)
 void
 handleCreateNotify(XEvent *e)
 {
-	//debug("CreateNotify! (%d)", e->type);
+	debug("\033[32mcreate window %d on window %d (%c= root)%s\033[0m",
+			e->xcreatewindow.window, e->xcreatewindow.parent,
+			e->xcreatewindow.parent == root ? '=' : '!',
+			e->xcreatewindow.override_redirect?" => with override_redirect":"");
 }
 
 /* 17 */
 void
 handleDestroyNotify(XEvent *e)
 {
-	//debug("DestroyNotify! (%d)", e->type);
+	debug("\033[31mdestroy window %d\033[0m", e->xdestroywindow.window);
 }
 
 /* 7 */
@@ -206,7 +233,9 @@ handleKeyRelease(XEvent *e)
 void
 handleMapNotify(XEvent *e)
 {
-	//debug("MapNotify (%d)", e->type);
+	debug("\033[1;32mmap window %d on window %d (%c= root)%s\033[0m",
+			e->xmap.window, e->xmap.event, e->xmap.event == root ? '=' : '!',
+			e->xmap.override_redirect ? " with override_redirect" : "");
 	attach(e->xmap.window);
 }
 
@@ -221,7 +250,7 @@ handleMapRequest(XEvent *e)
 void
 handleMappingNotify(XEvent *e)
 {
-	debug("MappingNotify (%d)", e->type);
+	//debug("MappingNotify (%d)", e->type);
 }
 
 /* 6 */
@@ -242,7 +271,9 @@ handlePropertyNotify(XEvent *e)
 void
 handleUnmapNotify(XEvent *e)
 {
-	//debug("UnmapNotify (%d)", e->type);
+	debug("\033[1;31munmap window %d from window %d (%c= root)%s\033[0m",
+			e->xmap.window, e->xmap.event, e->xmap.event == root ? '=' : '!',
+			e->xmap.override_redirect ? " with override_redirect" : "");
 	detach(wintoclient(e->xdestroywindow.window));
 }
 
@@ -377,18 +408,29 @@ scan(void)
 	XWindowAttributes wa;
 	Window p, r, *wins = NULL;
 	unsigned int i, nwins;
+	debug("1");
 	if (!XQueryTree(dpy, root, &r, &p, &wins, &nwins)) {
+		debug("2");
 		warn("XQueryTree() failed");
+		debug("3");
 		return;
 	}
 	debug("nwins=%d", nwins);
 	for (i = 0; i < nwins; i++) {
+		debug("4");
+		debug("wins[%d] == %d %c= root == %d", i, wins[i],
+				wins[i] == root ? '=' : '!', root);
 		if (!XGetWindowAttributes(dpy, wins[i], &wa)) {
+			debug("5");
 			warn("XGetWindowAttributes() failed for window %d", i);
+			debug("6");
 			continue;
 		}
+		debug("7");
 		attach(wins[i]);
+		debug("8");
 	}
+	debug("9");
 }
 
 void
