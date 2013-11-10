@@ -284,6 +284,7 @@ detach(Client *c)
 	/* check */
 	if (c == NULL) {
 		warn("detach(NULL)");
+		return;
 	}
 	if (nc == 0) {
 		warn("Attempting to detach from an empty list of clients.");
@@ -367,7 +368,6 @@ run(void)
 		//debug("\033[1;30mrun(): e.type=%d\033[0m", e.type);
 		handle[e.type](&e);
 	}
-	stdlog(stderr, "Received shutdown signal.");
 }
 
 void
@@ -518,9 +518,11 @@ main(int argc, char **argv)
 	if (dpy == NULL) {
 		die("Could not open X.");
 	}
+	stdlog(stdout, "Starting.");
 	setup();
 	run();
 	cleanup();
+	stdlog(stdout, "Shutting down.");
 	XCloseDisplay(dpy);
 	if (restarting) {
 		stdlog(stdout, "Restarting.");
