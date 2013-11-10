@@ -57,6 +57,7 @@ void handleUnmapNotify(XEvent *);
 void quit(void);
 void restart(void);
 void run(void);
+void scan(void);
 void setmfact(float);
 void setup(void);
 void stdlog(FILE *, char const *, ...);
@@ -371,6 +372,26 @@ run(void)
 }
 
 void
+scan(void)
+{
+	XWindowAttributes wa;
+	Window p, r, *wins = NULL;
+	unsigned int i, nwins;
+	if (!XQueryTree(dpy, root, &r, &p, &wins, &nwins)) {
+		warn("XQueryTree() failed");
+		return;
+	}
+	debug("nwins=%d", nwins);
+	for (i = 0; i < nwins; i++) {
+		if (!XGetWindowAttributes(dpy, wins[i], &wa)) {
+			warn("XGetWindowAttributes() failed for window %d", i);
+			continue;
+		}
+		attach(wins[i]);
+	}
+}
+
+void
 setmfact(float diff)
 {
 	mfact += diff;
@@ -520,6 +541,7 @@ main(int argc, char **argv)
 	}
 	stdlog(stdout, "Starting.");
 	setup();
+	scan();
 	run();
 	cleanup();
 	stdlog(stdout, "Shutting down.");
