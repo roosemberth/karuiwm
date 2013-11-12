@@ -12,8 +12,8 @@
 #define DEBUG 1 /* enable for debug output */
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
 #define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
-#define HANDLED(c) (!c->override && c->mapped)
-#define debug(...) stdlog(stdout, "\033[34mDBG\033[0m "__VA_ARGS__)
+#define HANDLED(C) (!C->override && C->mapped)
+#define debug(...) if (DEBUG) stdlog(stdout, "\033[34mDBG\033[0m "__VA_ARGS__)
 #define warn(...) stdlog(stderr, "\033[33mWRN\033[0m "__VA_ARGS__)
 #define die(...) warn("\033[31mERR\033[0m "__VA_ARGS__); exit(EXIT_FAILURE)
 
@@ -33,7 +33,7 @@ void buttonrelease(XEvent *);
 void clientmessage(XEvent *);
 void configurerequest(XEvent *);
 void configurenotify(XEvent *);
-void create(Window, XWindowAttributes);
+void create(Window);
 void createnotify(XEvent *);
 void destroynotify(XEvent *);
 void enternotify(XEvent *);
@@ -174,9 +174,10 @@ configurerequest(XEvent *e)
 }
 
 void
-create(Window w, XWindowAttributes wa)
+create(Window w)
 {
 	Client *c;
+	XWindowAttributes wa;
 
 	/* create client */
 	c = malloc(sizeof(Client));
@@ -192,6 +193,10 @@ create(Window w, XWindowAttributes wa)
 	clients[nc-1] = c;
 
 	/* set client data */
+	if (!XGetWindowAttributes(dpy, w, &wa)) {
+		warn("XGetWindowAttributes() failed for window %d", w);
+		return;
+	}
 	c->win = w;
 	c->mapped = wa.map_state;
 	c->override = wa.override_redirect;
@@ -208,9 +213,7 @@ createnotify(XEvent *e)
 {
 	debug("\033[32mcreatenotify(%d)\033[0m", e->xcreatewindow.window);
 
-	XWindowAttributes wa;
-	XGetWindowAttributes(dpy, e->xcreatewindow.window, &wa);
-	create(e->xcreatewindow.window, wa);
+	create(e->xcreatewindow.window);
 }
 
 void
@@ -268,8 +271,6 @@ focusin(XEvent *e)
 void
 focusstep(int s)
 {
-	debug("focusstep(): sel=%d, s=%d", sel, s);
-
 	int i;
 
 	if (!nc) {
@@ -412,22 +413,15 @@ run(void)
 void
 scan(void)
 {
-	XWindowAttributes wa;
 	Window p, r, *wins = NULL;
 	unsigned int i, nwins;
 	if (!XQueryTree(dpy, root, &r, &p, &wins, &nwins)) {
 		warn("XQueryTree() failed");
 		return;
 	}
-	debug("scan(): nwins=%d", nwins);
+	debug("restoring %d windows from last session", nwins);
 	for (i = 0; i < nwins; i++) {
-		debug("wins[%d] == %d %c= root == %d", i, wins[i],
-				wins[i] == root ? '=' : '!', root);
-		if (!XGetWindowAttributes(dpy, wins[i], &wa)) {
-			warn("XGetWindowAttributes() failed for window %d", i);
-			continue;
-		}
-		create(wins[i], wa);
+		create(wins[i]);
 	}
 }
 
@@ -467,8 +461,6 @@ setup(void)
 void
 stdlog(FILE *f, char const *format, ...)
 {
-	if (!DEBUG && f==stdout) return;
-
 	va_list args;
 	time_t rawtime;
 	struct tm *date;
