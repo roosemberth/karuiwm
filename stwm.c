@@ -10,14 +10,20 @@
 
 /* macros */
 #define DEBUG 1 /* enable for debug output */
-#define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
-#define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
-#define HANDLED(C) (!C->override && C->mapped)
 #define debug(...) if (DEBUG) stdlog(stdout, "\033[34mDBG\033[0m "__VA_ARGS__)
 #define warn(...) stdlog(stderr, "\033[33mWRN\033[0m "__VA_ARGS__)
 #define die(...) warn("\033[31mERR\033[0m "__VA_ARGS__); exit(EXIT_FAILURE)
+#define HANDLED(C) (!C->override && C->mapped)
+#define LENGTH(ARR) (sizeof(ARR)/sizeof(ARR[0]))
+#define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
+#define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
 
-/* structs */
+typedef union {
+	int i;
+	float f;
+	const void *v;
+} Arg;
+
 typedef struct Client Client;
 struct Client {
 	int x,y,w,h;
@@ -25,6 +31,13 @@ struct Client {
 	Window win;
 	bool floating, override, mapped;
 };
+
+typedef struct {
+	unsigned int mod;
+	KeySym keysym;
+	void (*func)(Arg const *);
+	Arg const arg;
+} Key;
 
 /* functions */
 void cleanup(void);
@@ -40,7 +53,7 @@ void enternotify(XEvent *);
 void expose(XEvent *);
 void focus(Client *);
 void focusin(XEvent *);
-void focusstep(int);
+void focusstep(Arg const *);
 void keypress(XEvent *);
 void keyrelease(XEvent *);
 void mapnotify(XEvent *);
@@ -48,11 +61,11 @@ void mappingnotify(XEvent *);
 void maprequest(XEvent *);
 void motionnotify(XEvent *);
 void propertynotify(XEvent *);
-void quit(void);
-void restart(void);
+void quit(Arg const *);
+void restart(Arg const *);
 void run(void);
 void scan(void);
-void setmfact(float);
+void setmfact(Arg const *);
 void setup(void);
 void stdlog(FILE *, char const *, ...);
 void tile(void);
@@ -269,14 +282,14 @@ focusin(XEvent *e)
 }
 
 void
-focusstep(int s)
+focusstep(Arg const *arg)
 {
 	int i;
 
 	if (!nc) {
 		return;
 	}
-	if (s > 0) {
+	if (arg->i > 0) {
 		for (i = (sel+1)%nc; !clients[i]->mapped && i != sel; i = (i+1)%nc);
 	} else {
 		for (i = (sel-1+nc)%nc; !clients[i]->mapped && i != sel; i = (i-1+nc)%nc);
@@ -291,6 +304,7 @@ grabkeys(void)
 	/* these keys are not passed to a client, but cause a KeyPress instead
 	 * TODO make a list of keys, possibly in config.h
 	 */
+	XUngrabKey(dpy, AnyKey, AnyModifier, root);
 	XGrabKey(dpy, XKeysymToKeycode(dpy, XK_h), MODKEY, root, true,
 			GrabModeAsync, GrabModeAsync);
 	XGrabKey(dpy, XKeysymToKeycode(dpy, XK_l), MODKEY, root, true,
@@ -301,7 +315,7 @@ grabkeys(void)
 			GrabModeAsync, GrabModeAsync);
 	XGrabKey(dpy, XKeysymToKeycode(dpy, XK_r), MODKEY, root, true,
 			GrabModeAsync, GrabModeAsync);
-	XGrabKey(dpy, XKeysymToKeycode(dpy, XK_q), MODKEY, root, true,
+	XGrabKey(dpy, XKeysymToKeycode(dpy, XK_q), MODKEY|ShiftMask, root, true,
 			GrabModeAsync, GrabModeAsync);
 }
 
@@ -310,20 +324,14 @@ keypress(XEvent *e)
 {
 	debug("keypress(%d)", e->xkey.window);
 
-	if ((&e->xkey)->state != MODKEY) {
-		return;
-	}
+	unsigned int i;
+	KeySym keysym = XLookupKeysym(&e->xkey, 0);
 
-	/* these keys are not passed to a client, but cause a KeyPress instead
-	 * TODO make a list of keys, possibly in config.h
-	 */
-	switch (XLookupKeysym(&e->xkey, 0)) {
-		case XK_h: setmfact(-0.02); break;
-		case XK_l: setmfact(+0.02); break;
-		case XK_j: focusstep(+1); break;
-		case XK_k: focusstep(-1); break;
-		case XK_r: restart(); break;
-		case XK_q: quit(); break;
+	for (i = 0; i < LENGTH(keys); i++) {
+		if (keys[i].mod == e->xkey.state && keys[i].keysym == keysym &&
+				keys[i].func) {
+			keys[i].func(&keys[i].arg);
+		}
 	}
 }
 
@@ -384,14 +392,14 @@ propertynotify(XEvent *e)
 }
 
 void
-quit(void)
+quit(Arg const *arg)
 {
 	restarting = false;
 	running = false;
 }
 
 void
-restart(void)
+restart(Arg const *arg)
 {
 	restarting = true;
 	running = false;
@@ -426,11 +434,10 @@ scan(void)
 }
 
 void
-setmfact(float diff)
+setmfact(Arg const *arg)
 {
-	mfact += diff;
-	mfact = MAX(0.1, mfact);
-	mfact = MIN(0.9, mfact);
+	mfact += arg->f;
+	mfact = MAX(0.1, MIN(0.9, mfact));
 	tile();
 }
 

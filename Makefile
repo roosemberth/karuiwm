@@ -14,13 +14,10 @@ $(EXECUTABLE): $(OBJECTS)
 .c.o:
 	$(CC) -c $(CFLAGS) $? -o $@
 
-all: build xephyr
+all: clean build xephyr
 
 clean:
 	rm -f $(OBJECTS)
-
-purge: clean
-	rm $(EXECUTABLE)
 
 run:
 	xinit ./xinitrc -- :1
