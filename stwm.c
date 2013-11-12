@@ -41,6 +41,7 @@ void buttonrelease(XEvent *);
 void clientmessage(XEvent *);
 void configurerequest(XEvent *);
 void configurenotify(XEvent *);
+void create(Window, XWindowAttributes);
 void createnotify(XEvent *);
 void destroynotify(XEvent *);
 void enternotify(XEvent *);
@@ -118,12 +119,8 @@ buttonrelease(XEvent *e)
 void
 cleanup(void)
 {
-	debug("cleanup() %d windows", nc);
-
 	int i;
 	for (i = 0; i < nc; i++) {
-		debug("cleanup(): clients[%d] = %d (%smapped)", i, clients[i]->win,
-				clients[i]->mapped ? "" : "un");
 		free(clients[i]);
 	}
 }
@@ -131,8 +128,10 @@ cleanup(void)
 void
 clientmessage(XEvent *e)
 {
-	debug("\033[36mclientmessage(%d)\033[0m", e->xclient.window);
+	debug("clientmessage(%d)", e->xclient.window);
+	/* TODO */
 
+	/*
 	long *l = e->xclient.data.l;
 	short *s = e->xclient.data.s;
 	char *b = e->xclient.data.b;
@@ -155,12 +154,13 @@ clientmessage(XEvent *e)
 		default:
 			debug("  unknown data format: %d", e->xclient.format);
 	}
+	*/
 }
 
 void
 configurenotify(XEvent *e)
 {
-	debug("\033[1;34mconfigurenotify(%d)%s\033[0m", e->xconfigure.window,
+	debug("configurenotify(%d)%s", e->xconfigure.window,
 			e->xconfigure.override_redirect ? " => with override_redirect":"");
 
 	Client *c = wintoclient(e->xconfigure.window);
@@ -179,10 +179,8 @@ configurerequest(XEvent *e)
 }
 
 void
-createnotify(XEvent *e)
+create(Window w, XWindowAttributes wa)
 {
-	debug("\033[32mcreatenotify(%d)\033[0m", e->xcreatewindow.window);
-
 	Client *c;
 
 	/* create client */
@@ -199,9 +197,25 @@ createnotify(XEvent *e)
 	clients[nc-1] = c;
 
 	/* set client data */
-	c->win = e->xcreatewindow.window;
-	c->mapped = false;
-	c->override = e->xcreatewindow.override_redirect;
+	c->win = w;
+	c->mapped = wa.map_state;
+	c->override = wa.override_redirect;
+
+	/* update screen, if necessary (= if client is already mapped) */
+	if (HANDLED(c)) {
+		sel = nc-1;
+		tile();
+	}
+}
+
+void
+createnotify(XEvent *e)
+{
+	debug("\033[32mcreatenotify(%d)\033[0m", e->xcreatewindow.window);
+
+	XWindowAttributes wa;
+	XGetWindowAttributes(dpy, e->xcreatewindow.window, &wa);
+	create(e->xcreatewindow.window, wa);
 }
 
 void
@@ -418,7 +432,7 @@ scan(void)
 			warn("XGetWindowAttributes() failed for window %d", i);
 			continue;
 		}
-		/* TODO: detect (un)mapped windows */
+		create(wins[i], wa);
 	}
 }
 
