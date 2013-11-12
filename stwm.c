@@ -1,269 +1,114 @@
-#include <X11/Xlib.h>
-#include <X11/keysym.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdbool.h>
 #include <stdarg.h>
 #include <time.h>
+#include <X11/Xlib.h>
+#include <X11/keysym.h>
+#include <X11/Xproto.h>
 
 /* macros */
 #define DEBUG 1 /* enable for debug output */
-#define min(x,y) ((x) < (y) ? (x) : (y))
-#define max(x,y) ((x) < (y) ? (y) : (x))
-#define debug(...) stdlog(stdout, __VA_ARGS__)
-#define warn(...) stdlog(stderr, __VA_ARGS__)
-#define die(...) warn(__VA_ARGS__); exit(EXIT_FAILURE)
-#define MODKEY Mod4Mask
-
-/* enums */
-enum { CURSOR_NORMAL, CURSOR_RESIZE, CURSOR_MOVE, CURSOR_LAST };
-enum Flag {
-	CLIENT_FLOATING = 1
-};
+#define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
+#define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
+#define HANDLED(c) (!c->override && c->mapped)
+#define debug(...) stdlog(stdout, "\033[34mDBG\033[0m "__VA_ARGS__)
+#define warn(...) stdlog(stderr, "\033[33mWRN\033[0m "__VA_ARGS__)
+#define die(...) warn("\033[31mERR\033[0m "__VA_ARGS__); exit(EXIT_FAILURE)
 
 /* structs */
 typedef struct Client Client;
 struct Client {
 	int x,y,w,h;
-	long flags;
 	char name[256];
 	Window win;
+	bool floating, override, mapped;
 };
 
 /* functions */
-void attach(Window);
 void cleanup(void);
-void detach(Client *);
+void buttonpress(XEvent *);
+void buttonrelease(XEvent *);
+void clientmessage(XEvent *);
+void configurerequest(XEvent *);
+void configurenotify(XEvent *);
+void create(Window, XWindowAttributes);
+void createnotify(XEvent *);
+void destroynotify(XEvent *);
+void enternotify(XEvent *);
+void expose(XEvent *);
 void focus(Client *);
+void focusin(XEvent *);
 void focusstep(int);
-void handleButtonPress(XEvent *);
-void handleClientMessage(XEvent *);
-void handleConfigureRequest(XEvent *);
-void handleConfigureNotify(XEvent *);
-void handleCreateNotify(XEvent *);
-void handleDestroyNotify(XEvent *);
-void handleEnterNotify(XEvent *);
-void handleExpose(XEvent *);
-void handleFocusIn(XEvent *);
-void handleKeyPress(XEvent *);
-void handleKeyRelease(XEvent *);
-void handleMapNotify(XEvent *);
-void handleMappingNotify(XEvent *);
-void handleMapRequest(XEvent *);
-void handleMotionNotify(XEvent *);
-void handlePropertyNotify(XEvent *);
-void handleUnmapNotify(XEvent *);
+void keypress(XEvent *);
+void keyrelease(XEvent *);
+void mapnotify(XEvent *);
+void mappingnotify(XEvent *);
+void maprequest(XEvent *);
+void motionnotify(XEvent *);
+void propertynotify(XEvent *);
 void quit(void);
 void restart(void);
 void run(void);
+void scan(void);
 void setmfact(float);
 void setup(void);
 void stdlog(FILE *, char const *, ...);
 void tile(void);
 void unfocus(Client *);
+void unmapnotify(XEvent *);
 Client *wintoclient(Window);
 int xerror(Display *, XErrorEvent *);
 int (*xerrorxlib)(Display *, XErrorEvent *);
 
-/* event handlers, as array to allow O(1) access */
+/* event handlers, as array to allow O(1) access; codes in X.h */
 void (*handle[LASTEvent])(XEvent *) = {
-	[ButtonPress] = handleButtonPress,
-	[ClientMessage] = handleClientMessage,
-	[ConfigureRequest] = handleConfigureRequest,
-	[ConfigureNotify] = handleConfigureNotify,
-	[CreateNotify] = handleCreateNotify,
-	[DestroyNotify] = handleDestroyNotify,
-	[EnterNotify] = handleEnterNotify,
-	[Expose] = handleExpose,
-	[FocusIn] = handleFocusIn,
-	[KeyPress] = handleKeyPress,
-	[KeyRelease] = handleKeyRelease,
-	[MapNotify] = handleMapNotify,
-	[MappingNotify] = handleMappingNotify,
-	[MapRequest] = handleMapRequest,
-	[MotionNotify] = handleMotionNotify,
-	[PropertyNotify] = handlePropertyNotify,
-	[UnmapNotify] = handleUnmapNotify
+	[ButtonPress]      = buttonpress,      /* 4*/
+	[ButtonRelease]    = buttonrelease,    /* 5*/
+	[ClientMessage]    = clientmessage,    /*33*/
+	[ConfigureNotify]  = configurenotify,  /*22*/
+	[ConfigureRequest] = configurerequest, /*23*/
+	[CreateNotify]     = createnotify,     /*16*/
+	[DestroyNotify]    = destroynotify,    /*17*/
+	[EnterNotify]      = enternotify,      /* 7*/
+	[Expose]           = expose,           /*12*/
+	[FocusIn]          = focusin,          /* 9*/
+	[KeyPress]         = keypress,         /* 2*/
+	[KeyRelease]       = keyrelease,       /* 3*/
+	[MapNotify]        = mapnotify,        /*19*/
+	[MapRequest]       = maprequest,       /*20*/
+	[MappingNotify]    = mappingnotify,    /*34*/
+	[MotionNotify]     = motionnotify,     /* 6*/
+	[PropertyNotify]   = propertynotify,   /*28*/
+	[UnmapNotify]      = unmapnotify       /*18*/
 };
 
 /* variables */
-int cbg, cborder; /* TODO */
-Cursor cursor[CURSOR_LAST]; /* TODO */
+char *appname;
 Display *dpy;
 bool running, restarting;
 Window root;
 int screen;
 int sw, sh; /* screen dimensions */
 Client **clients;
-int nc, nmaster, sel;
-float mfact;
+int nc, sel;
 
-/* HANDLER FUNCTIONS -------------------------------------------------------- */
+/* configuration */
+#include "config.h"
 
-/* 4 */
 void
-handleButtonPress(XEvent *e)
+buttonpress(XEvent *e)
 {
-	debug("ButtonPress (%d)", e->type);
-}
-
-/* 5 */
-void
-handleButtonRelease(XEvent *e)
-{
-	debug("ButtonRelease (%d)", e->type);
-}
-
-/* 33 */
-void
-handleClientMessage(XEvent *e)
-{
-	debug("ClientMessage (%d)", e->type);
-}
-
-/* 22 */
-void
-handleConfigureNotify(XEvent *e)
-{
-	debug("ConfigureNotify (%d)", e->type);
+	debug("buttonpress(%d)", e->xbutton.window);
 	/* TODO */
 }
 
-/* 23 */
 void
-handleConfigureRequest(XEvent *e)
+buttonrelease(XEvent *e)
 {
-	debug("ConfigureRequest (%d)", e->type);
-}
-
-/* 16 */
-void
-handleCreateNotify(XEvent *e)
-{
-	//debug("CreateNotify! (%d)", e->type);
-}
-
-/* 17 */
-void
-handleDestroyNotify(XEvent *e)
-{
-	//debug("DestroyNotify! (%d)", e->type);
-}
-
-/* 7 */
-void
-handleEnterNotify(XEvent *e)
-{
-	debug("EnterNotify (%d)", e->type);
-}
-
-/* 12 */
-void
-handleExpose(XEvent *e)
-{
-	//debug("Expose (%d)", e->type);
-}
-
-/* 9 */
-void
-handleFocusIn(XEvent *e)
-{
-	//debug("FocusIn (%d)", e->type);
-}
-
-/* 2 */
-void
-handleKeyPress(XEvent *e)
-{
-	//debug("KeyPress (%d)", e->type);
-	if ((&e->xkey)->state != MODKEY) return;
-
-	if (XLookupKeysym(&e->xkey, 0) == XK_h) {
-		setmfact(-0.02);
-	} else if (XLookupKeysym(&e->xkey, 0) == XK_l) {
-		setmfact(+0.02);
-	} else if (XLookupKeysym(&e->xkey, 0) == XK_j) {
-		focusstep(+1);
-	} else if (XLookupKeysym(&e->xkey, 0) == XK_k) {
-		focusstep(-1);
-	} else if (XLookupKeysym(&e->xkey, 0) == XK_r) {
-		restart();
-	} else if (XLookupKeysym(&e->xkey, 0) == XK_q) {
-		quit();
-	}
-}
-
-/* 3 */
-void
-handleKeyRelease(XEvent *e)
-{
-	//debug("KeyRelease! (%d)", e->type);
-}
-
-/* 19 */
-void
-handleMapNotify(XEvent *e)
-{
-	//debug("MapNotify (%d)", e->type);
-	attach(e->xmap.window);
-}
-
-/* 20 */
-void
-handleMapRequest(XEvent *e)
-{
-	debug("MapRequest (%d)", e->type);
-}
-
-/* 34 */
-void
-handleMappingNotify(XEvent *e)
-{
-	debug("MappingNotify (%d)", e->type);
-}
-
-/* 6 */
-void
-handleMotionNotify(XEvent *e)
-{
-	debug("MotionNotify (%d)", e->type);
-}
-
-/* 28 */
-void
-handlePropertyNotify(XEvent *e)
-{
-	debug("PropertyNotify (%d)", e->type);
-}
-
-/* 18 */
-void
-handleUnmapNotify(XEvent *e)
-{
-	//debug("UnmapNotify (%d)", e->type);
-	detach(wintoclient(e->xdestroywindow.window));
-}
-
-/* OTHER FUNCTIONS ---------------------------------------------------------- */
-
-void
-attach(Window w)
-{
-	Client *c;
-
-	/* create client */
-	c = malloc(sizeof(Client));
-	if (c == NULL) {
-		warn("Could not allocate new client.");
-		return;
-	}
-	clients = realloc(clients, ++nc*sizeof(Client *));
-	clients[nc-1] = c;
-	c->win = w;
-	sel = nc-1;
-	focus(c);
-	tile();
+	debug("buttonrelease(%d)", e->xbutton.window);
+	/* TODO */
 }
 
 void
@@ -271,40 +116,140 @@ cleanup(void)
 {
 	int i;
 	for (i = 0; i < nc; i++) {
-		detach(clients[i]);
+		free(clients[i]);
 	}
-	free(clients);
 }
 
 void
-detach(Client *c)
+clientmessage(XEvent *e)
 {
+	debug("clientmessage(%d)", e->xclient.window);
+	/* TODO */
+
+	/*
+	long *l = e->xclient.data.l;
+	short *s = e->xclient.data.s;
+	char *b = e->xclient.data.b;
+
+	debug("  bool send_event=%s", e->xclient.send_event ? "true" : "false");
+	switch (e->xclient.format) {
+		case 32:
+			debug("  l={%ld,%ld,%ld,%ld,%ld}",
+					l[0],l[1],l[2],l[3],l[4]);
+			break;
+		case 16:
+			debug("  s={%hd,%hd,%hd,%hd,%hd,%hd,%hd,%hd,%hd,%hd}",
+					s[0],s[1],s[2],s[3],s[4],s[5],s[6],s[7],s[8],s[9]);
+			break;
+		case 8:
+			debug("  s={%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c}",
+					b[0],b[1],b[2],b[3],b[4],b[5],b[6],b[7],b[8],b[9],
+					b[10],b[11],b[12],b[13],b[14],b[15],b[16],b[17],b[18],b[19]);
+			break;
+		default:
+			debug("  unknown data format: %d", e->xclient.format);
+	}
+	*/
+}
+
+void
+configurenotify(XEvent *e)
+{
+	debug("configurenotify(%d)%s", e->xconfigure.window,
+			e->xconfigure.override_redirect ? " => with override_redirect":"");
+
+	Client *c = wintoclient(e->xconfigure.window);
+
+	c->override = e->xconfigure.override_redirect;
+	if (HANDLED(c)) {
+		tile();
+	}
+}
+
+void
+configurerequest(XEvent *e)
+{
+	debug("\033[34mconfigurerequest(%d)\033[0m", e->xconfigurerequest.window);
+	/* TODO */
+}
+
+void
+create(Window w, XWindowAttributes wa)
+{
+	Client *c;
+
+	/* create client */
+	c = malloc(sizeof(Client));
+	if (!c) {
+		die("could not allocate new client (%d bytes)", sizeof(Client));
+	}
+
+	/* add to list */
+	clients = realloc(clients, ++nc*sizeof(Client *));
+	if (!clients) {
+		die("could not allocate new entry in client list (%d bytes)", sizeof(Client *));
+	}
+	clients[nc-1] = c;
+
+	/* set client data */
+	c->win = w;
+	c->mapped = wa.map_state;
+	c->override = wa.override_redirect;
+
+	/* update screen, if necessary (= if client is already mapped) */
+	if (HANDLED(c)) {
+		sel = nc-1;
+		tile();
+	}
+}
+
+void
+createnotify(XEvent *e)
+{
+	debug("\033[32mcreatenotify(%d)\033[0m", e->xcreatewindow.window);
+
+	XWindowAttributes wa;
+	XGetWindowAttributes(dpy, e->xcreatewindow.window, &wa);
+	create(e->xcreatewindow.window, wa);
+}
+
+void
+destroynotify(XEvent *e)
+{
+	debug("\033[31mdestroynotify(%d)\033[0m", e->xdestroywindow.window);
+
 	int i;
 
-	/* check */
-	if (c == NULL) {
-		warn("detach(NULL)");
-		return;
-	}
-	if (nc == 0) {
-		warn("Attempting to detach from an empty list of clients.");
-		return;
-	}
-
-	/* remove */
+	/* remove from list */
 	for (i = 0; i < nc; i++) {
-		if (clients[i] == c) {
+		if (clients[i]->win == e->xdestroywindow.window) {
+			if (clients[i]->mapped) {
+				warn("destroying mapped window %d", clients[i]->win);
+			}
 			free(clients[i]);
-			for (; i < nc-1; i++) {
+			nc--;
+			for (; i < nc; i++) {
 				clients[i] = clients[i+1];
 			}
-			nc--;
 			clients = realloc(clients, nc*sizeof(Client *));
-			tile();
 			return;
 		}
 	}
-	warn("Attempt to detach a non-existing client.");
+	warn("attempt to destroy non-existing window");
+}
+
+void
+enternotify(XEvent *e)
+{
+	debug("enternotify(?)");
+	/* TODO */
+}
+
+void
+expose(XEvent *e)
+{
+	debug("expose(%d)", e->xexpose.window);
+	/* TODO */
 }
 
 void
@@ -314,19 +259,35 @@ focus(Client *c)
 }
 
 void
+focusin(XEvent *e)
+{
+	debug("focusin(%d)", e->xfocus.window);
+	/* TODO */
+}
+
+void
 focusstep(int s)
 {
-	if (nc == 0) {
+	debug("focusstep(): sel=%d, s=%d", sel, s);
+
+	int i;
+
+	if (!nc) {
 		return;
 	}
-	sel = (sel+nc+s)%nc;
+	if (s > 0) {
+		for (i = (sel+1)%nc; !clients[i]->mapped && i != sel; i = (i+1)%nc);
+	} else {
+		for (i = (sel-1+nc)%nc; !clients[i]->mapped && i != sel; i = (i-1+nc)%nc);
+	}
+	sel = i;
 	focus(clients[sel]);
 }
 
 void
 grabkeys(void)
 {
-	/* these keys are not passed to a client, but cause a KeyPressed instead
+	/* these keys are not passed to a client, but cause a KeyPress instead
 	 * TODO make a list of keys, possibly in config.h
 	 */
 	XGrabKey(dpy, XKeysymToKeycode(dpy, XK_h), MODKEY, root, true,
@@ -341,6 +302,84 @@ grabkeys(void)
 			GrabModeAsync, GrabModeAsync);
 	XGrabKey(dpy, XKeysymToKeycode(dpy, XK_q), MODKEY, root, true,
 			GrabModeAsync, GrabModeAsync);
+}
+
+void
+keypress(XEvent *e)
+{
+	debug("keypress(%d)", e->xkey.window);
+
+	if ((&e->xkey)->state != MODKEY) {
+		return;
+	}
+
+	/* these keys are not passed to a client, but cause a KeyPress instead
+	 * TODO make a list of keys, possibly in config.h
+	 */
+	switch (XLookupKeysym(&e->xkey, 0)) {
+		case XK_h: setmfact(-0.02); break;
+		case XK_l: setmfact(+0.02); break;
+		case XK_j: focusstep(+1); break;
+		case XK_k: focusstep(-1); break;
+		case XK_r: restart(); break;
+		case XK_q: quit(); break;
+	}
+}
+
+void
+keyrelease(XEvent *e)
+{
+	debug("keyrelease(%d)", e->xkey.window);
+	/* TODO */
+}
+
+void
+mapnotify(XEvent *e)
+{
+	debug("\033[1;32mmapnotify(%d)\033[0m", e->xmap.window);
+
+	Client *c = wintoclient(e->xmap.window);
+	if (!c) {
+		warn("trying to map non-existing window %d", e->xmap.window);
+		return;
+	}
+	c->mapped = true;
+	c->override = e->xmap.override_redirect;
+
+	/* update focus */
+	for (sel = 0; sel < nc && clients[sel]->win != e->xmap.window; sel++);
+	focus(c);
+
+	/* update screen */
+	tile();
+}
+
+void
+maprequest(XEvent *e)
+{
+	debug("\033[32mmaprequest(%d)\033[0m", e->xmaprequest.window);
+	/* TODO */
+}
+
+void
+mappingnotify(XEvent *e)
+{
+	debug("mappingnotify(%d)", e->xmapping.window);
+	/* TODO */
+}
+
+void
+motionnotify(XEvent *e)
+{
+	debug("motionnotify(%d)", e->xmotion.window);
+	/* TODO */
+}
+
+void
+propertynotify(XEvent *e)
+{
+	debug("propertynotify(%d)", e->xproperty.window);
+	/* TODO */
 }
 
 void
@@ -361,12 +400,34 @@ void
 run(void)
 {
 	XEvent e;
-
-	/* event loop (XEvent numerical found in /usr/include/X11/X.h:181++) */
 	running = true;
 	while (running && !XNextEvent(dpy, &e)) {
 		//debug("\033[1;30mrun(): e.type=%d\033[0m", e.type);
-		handle[e.type](&e);
+		if (handle[e.type]) {
+			handle[e.type](&e);
+		}
+	}
+}
+
+void
+scan(void)
+{
+	XWindowAttributes wa;
+	Window p, r, *wins = NULL;
+	unsigned int i, nwins;
+	if (!XQueryTree(dpy, root, &r, &p, &wins, &nwins)) {
+		warn("XQueryTree() failed");
+		return;
+	}
+	debug("scan(): nwins=%d", nwins);
+	for (i = 0; i < nwins; i++) {
+		debug("wins[%d] == %d %c= root == %d", i, wins[i],
+				wins[i] == root ? '=' : '!', root);
+		if (!XGetWindowAttributes(dpy, wins[i], &wa)) {
+			warn("XGetWindowAttributes() failed for window %d", i);
+			continue;
+		}
+		create(wins[i], wa);
 	}
 }
 
@@ -374,18 +435,14 @@ void
 setmfact(float diff)
 {
 	mfact += diff;
-	mfact = max(0.1, mfact);
-	mfact = min(0.9, mfact);
+	mfact = MAX(0.1, mfact);
+	mfact = MIN(0.9, mfact);
 	tile();
 }
 
 void
 setup(void)
 {
-	/* get colours */
-	cbg = BlackPixel(dpy, screen);
-	cborder = WhitePixel(dpy, screen);
-
 	/* get root window */
 	screen = DefaultScreen(dpy);
 	root = RootWindow(dpy, screen);
@@ -395,17 +452,7 @@ setup(void)
 	sh = DisplayHeight(dpy, screen);
 
 	/* set mask of input events to handle */
-	XSelectInput(dpy, root, SubstructureNotifyMask|PropertyChangeMask|
-			KeyPressMask);
-	/*
-	XSelectInput(dpy, root, SubstructureRedirectMask|SubstructureNotifyMask|
-			ButtonPressMask|PointerMotionMask|EnterWindowMask|LeaveWindowMask|
-			StructureNotifyMask|PropertyChangeMask|KeyPressMask);
-	*/
-
-	/* for positioning the windows (TODO move to config.h) */
-	nmaster = 1;
-	mfact = 0.6;
+	XSelectInput(dpy, root, SubstructureNotifyMask|KeyPressMask);
 
 	/* set X error handler */
 	xerrorxlib = XSetErrorHandler(xerror);
@@ -413,8 +460,8 @@ setup(void)
 	/* grab special keys */
 	grabkeys();
 
-	/* clients */
-	clients = malloc(sizeof(Client *));
+	/* initial number of (un)mapped clients */
+	nc = 0;
 }
 
 void
@@ -429,8 +476,8 @@ stdlog(FILE *f, char const *format, ...)
 	/* timestamp */
 	time(&rawtime);
 	date = localtime(&rawtime);
-	fprintf(f, "[%02d:%02d:%02d] stwm: ",
-			date->tm_hour, date->tm_min, date->tm_sec);
+	fprintf(f, "[%02d:%02d:%02d] [%s] ",
+			date->tm_hour, date->tm_min, date->tm_sec, appname);
 
 	/* message */
 	va_start(args, format);
@@ -443,43 +490,75 @@ stdlog(FILE *f, char const *format, ...)
 void
 tile(void)
 {
-	int ncm, i, x, w, h;
+	int nct, ncm, i, x, w, h;
+	Client **tiled = calloc(nc, sizeof(Client *));
 
-	if (nc == 0) return;
+	/* get tiled windows */
+	for (i = 0, nct = 0; i < nc; i++) {
+		if (HANDLED(clients[i])) {
+			tiled[nct++] = clients[i];
+		}
+	}
+	if (!nct) {
+		free(tiled);
+		return;
+	}
 
 	/* draw master area */
-	ncm = min(nmaster, nc);
+	ncm = MIN(nmaster, nct);
 	x = 0;
-	w = nmaster >= nc ? sw : mfact*sw;
+	w = nmaster >= nct ? sw : mfact*sw;
 	h = sh/ncm;
 	for (i = 0; i < ncm; i++) {
-		clients[i]->x = x;
-		clients[i]->y = i*h;
-		clients[i]->w = w;
-		clients[i]->h = (i == ncm-1) ? sh-i*h : h;
-		XMoveResizeWindow(dpy, clients[i]->win, clients[i]->x, clients[i]->y,
-				clients[i]->w, clients[i]->h);
+		tiled[i]->x = x;
+		tiled[i]->y = i*h;
+		tiled[i]->w = w;
+		tiled[i]->h = h;
+		XMoveResizeWindow(dpy, tiled[i]->win, tiled[i]->x, tiled[i]->y,
+				tiled[i]->w, tiled[i]->h);
 	}
-	if (ncm == nc) return;
+	if (ncm == nct) {
+		free(tiled);
+		return;
+	}
 
 	/* draw stack area */
 	x = mfact*sw;
 	w = sw-x;
-	h = sh/(nc-ncm);
-	for (; i < nc; i++) {
-		clients[i]->x = x;
-		clients[i]->y = (i-ncm)*h;
-		clients[i]->w = w;
-		clients[i]->h = (i == nc-1) ? sh-(i-ncm)*h : h;
-		XMoveResizeWindow(dpy, clients[i]->win, clients[i]->x, clients[i]->y,
-				clients[i]->w, clients[i]->h);
+	h = sh/(nct-ncm);
+	for (; i < nct; i++) {
+		tiled[i]->x = x;
+		tiled[i]->y = (i-ncm)*h;
+		tiled[i]->w = w;
+		tiled[i]->h = h;
+		XMoveResizeWindow(dpy, tiled[i]->win, tiled[i]->x, tiled[i]->y,
+				tiled[i]->w, tiled[i]->h);
 	}
+	free(tiled);
 }
 
 void
 unfocus(Client *c)
 {
 	/* TODO update border colour */
+}
+
+void
+unmapnotify(XEvent *e)
+{
+	debug("\033[1;31munmapnotify(%d)\033[0m", e->xunmap.window);
+
+	Client *c = wintoclient(e->xunmap.window);
+	if (!c) {
+		warn("attempt to unmap non-existing window %d", e->xunmap.window);
+		return;
+	}
+	c->mapped = false;
+	sel = MIN(sel-1, 0);
+	if (nc) {
+		focus(clients[0]);
+	}
+	tile();
 }
 
 Client *
@@ -500,9 +579,12 @@ xerror(Display *dpy, XErrorEvent *ee)
 	char es[256];
 
 	/* only display error on this error instead of crashing */
-	if (ee->error_code == BadWindow) {
+	if (
+		(ee->error_code == BadWindow) ||
+		(ee->request_code == X_SetInputFocus && ee->error_code == BadMatch)
+	) {
 		XGetErrorText(dpy, ee->error_code, es, 256);
-		warn("Fatal error %d (%s) after request %d",
+		warn("%d: %s (after request %d)",
 				ee->error_code, es, ee->error_code);
 		return 0;
 	}
@@ -514,19 +596,21 @@ xerror(Display *dpy, XErrorEvent *ee)
 int
 main(int argc, char **argv)
 {
-	dpy = XOpenDisplay(NULL);
-	if (dpy == NULL) {
-		die("Could not open X.");
+	appname = argv[0];
+	if (!(dpy = XOpenDisplay(NULL))) {
+		die("could not open X");
 	}
-	stdlog(stdout, "Starting.");
+	stdlog(stdout, "starting ...");
 	setup();
+	scan();
 	run();
 	cleanup();
-	stdlog(stdout, "Shutting down.");
 	XCloseDisplay(dpy);
 	if (restarting) {
-		stdlog(stdout, "Restarting.");
+		stdlog(stdout, "restarting ...");
 		execl("stwm", "stwm", NULL);
+	} else {
+		stdlog(stdout, "shutting down ...");
 	}
 	return EXIT_SUCCESS;
 }
