@@ -1,6 +1,6 @@
 #!/bin/sh
 
 [ -f ~/.Xresources ] && xrdb ~/.Xresources
-xterm
+xterm &
 exec ./stwm
 
