@@ -1,20 +1,12 @@
-/* CONFIG ------------------------------------------------------------------- */
-
-#define MODKEY Mod4Mask
-int nmaster = 1;         /* number of windows in the master area */
-float mfact = 0.6;       /* size of master area */
-
-/* CONFIG END --------------------------------------------------------------- */
-
-#include <X11/Xlib.h>
-#include <X11/keysym.h>
-#include <X11/Xproto.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdbool.h>
 #include <stdarg.h>
 #include <time.h>
+#include <X11/Xlib.h>
+#include <X11/keysym.h>
+#include <X11/Xproto.h>
 
 /* macros */
 #define DEBUG 1 /* enable for debug output */
@@ -101,6 +93,9 @@ int screen;
 int sw, sh; /* screen dimensions */
 Client **clients;
 int nc, sel;
+
+/* configuration */
+#include "config.h"
 
 void
 buttonpress(XEvent *e)
