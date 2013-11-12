@@ -103,9 +103,9 @@ Display *dpy;
 bool running, restarting;
 Window root;
 int screen;
-int sw, sh; /* screen dimensions */
+unsigned int sw, sh; /* screen dimensions */
 Client **clients;
-int nc, sel;
+unsigned int nc, sel;
 
 /* configuration */
 #include "config.h"
@@ -127,7 +127,7 @@ buttonrelease(XEvent *e)
 void
 cleanup(void)
 {
-	int i;
+	unsigned int i;
 	for (i = 0; i < nc; i++) {
 		free(clients[i]);
 	}
@@ -138,39 +138,11 @@ clientmessage(XEvent *e)
 {
 	debug("clientmessage(%d)", e->xclient.window);
 	/* TODO */
-
-	/*
-	long *l = e->xclient.data.l;
-	short *s = e->xclient.data.s;
-	char *b = e->xclient.data.b;
-
-	debug("  bool send_event=%s", e->xclient.send_event ? "true" : "false");
-	switch (e->xclient.format) {
-		case 32:
-			debug("  l={%ld,%ld,%ld,%ld,%ld}",
-					l[0],l[1],l[2],l[3],l[4]);
-			break;
-		case 16:
-			debug("  s={%hd,%hd,%hd,%hd,%hd,%hd,%hd,%hd,%hd,%hd}",
-					s[0],s[1],s[2],s[3],s[4],s[5],s[6],s[7],s[8],s[9]);
-			break;
-		case 8:
-			debug("  s={%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c,%c}",
-					b[0],b[1],b[2],b[3],b[4],b[5],b[6],b[7],b[8],b[9],
-					b[10],b[11],b[12],b[13],b[14],b[15],b[16],b[17],b[18],b[19]);
-			break;
-		default:
-			debug("  unknown data format: %d", e->xclient.format);
-	}
-	*/
 }
 
 void
 configurenotify(XEvent *e)
 {
-	debug("configurenotify(%d)%s", e->xconfigure.window,
-			e->xconfigure.override_redirect ? " => with override_redirect":"");
-
 	Client *c = wintoclient(e->xconfigure.window);
 
 	c->override = e->xconfigure.override_redirect;
@@ -182,7 +154,7 @@ configurenotify(XEvent *e)
 void
 configurerequest(XEvent *e)
 {
-	debug("\033[34mconfigurerequest(%d)\033[0m", e->xconfigurerequest.window);
+	debug("configurerequest(%d)", e->xconfigurerequest.window);
 	/* TODO */
 }
 
@@ -224,19 +196,13 @@ create(Window w)
 void
 createnotify(XEvent *e)
 {
-	debug("\033[32mcreatenotify(%d)\033[0m", e->xcreatewindow.window);
-
 	create(e->xcreatewindow.window);
 }
 
 void
 destroynotify(XEvent *e)
 {
-	debug("\033[31mdestroynotify(%d)\033[0m", e->xdestroywindow.window);
-
-	int i;
-
-	/* remove from list */
+	unsigned int i;
 	for (i = 0; i < nc; i++) {
 		if (clients[i]->win == e->xdestroywindow.window) {
 			if (clients[i]->mapped) {
@@ -284,7 +250,7 @@ focusin(XEvent *e)
 void
 focusstep(Arg const *arg)
 {
-	int i;
+	unsigned int i;
 
 	if (!nc) {
 		return;
@@ -313,8 +279,6 @@ grabkeys(void)
 void
 keypress(XEvent *e)
 {
-	debug("keypress(%d)", e->xkey.window);
-
 	unsigned int i;
 	KeySym keysym = XLookupKeysym(&e->xkey, 0);
 
@@ -336,8 +300,6 @@ keyrelease(XEvent *e)
 void
 mapnotify(XEvent *e)
 {
-	debug("\033[1;32mmapnotify(%d)\033[0m", e->xmap.window);
-
 	Client *c = wintoclient(e->xmap.window);
 	if (!c) {
 		warn("trying to map non-existing window %d", e->xmap.window);
@@ -357,7 +319,7 @@ mapnotify(XEvent *e)
 void
 maprequest(XEvent *e)
 {
-	debug("\033[32mmaprequest(%d)\033[0m", e->xmaprequest.window);
+	debug("maprequest(%d)", e->xmaprequest.window);
 	/* TODO */
 }
 
@@ -412,13 +374,14 @@ run(void)
 void
 scan(void)
 {
-	Window p, r, *wins = NULL;
 	unsigned int i, nwins;
+	Window p, r, *wins = NULL;
+
 	if (!XQueryTree(dpy, root, &r, &p, &wins, &nwins)) {
 		warn("XQueryTree() failed");
 		return;
 	}
-	debug("restoring %d windows from last session", nwins);
+	stdlog(stdout, "restoring %d windows from last session", nwins);
 	for (i = 0; i < nwins; i++) {
 		create(wins[i]);
 	}
@@ -466,7 +429,7 @@ stdlog(FILE *f, char const *format, ...)
 	/* timestamp */
 	time(&rawtime);
 	date = localtime(&rawtime);
-	fprintf(f, "[%02d:%02d:%02d] [%s] ",
+	fprintf(f, "[%02d:%02d:%02d][%s] ",
 			date->tm_hour, date->tm_min, date->tm_sec, appname);
 
 	/* message */
@@ -536,8 +499,6 @@ unfocus(Client *c)
 void
 unmapnotify(XEvent *e)
 {
-	debug("\033[1;31munmapnotify(%d)\033[0m", e->xunmap.window);
-
 	Client *c = wintoclient(e->xunmap.window);
 	if (!c) {
 		warn("attempt to unmap non-existing window %d", e->xunmap.window);
@@ -598,7 +559,7 @@ main(int argc, char **argv)
 	XCloseDisplay(dpy);
 	if (restarting) {
 		stdlog(stdout, "restarting ...");
-		execl("stwm", "stwm", NULL);
+		execl("stwm", appname, NULL);
 	} else {
 		stdlog(stdout, "shutting down ...");
 	}
