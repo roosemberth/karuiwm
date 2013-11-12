@@ -71,7 +71,7 @@ void stdlog(FILE *, char const *, ...);
 void tile(void);
 void unfocus(Client *);
 void unmapnotify(XEvent *);
-Client *wintoclient(Window);
+Client *wintoclient(Window, unsigned int *);
 int xerror(Display *, XErrorEvent *);
 int (*xerrorxlib)(Display *, XErrorEvent *);
 
@@ -143,7 +143,7 @@ clientmessage(XEvent *e)
 void
 configurenotify(XEvent *e)
 {
-	Client *c = wintoclient(e->xconfigure.window);
+	Client *c = wintoclient(e->xconfigure.window, NULL);
 
 	c->override = e->xconfigure.override_redirect;
 	if (HANDLED(c)) {
@@ -178,11 +178,11 @@ create(Window w)
 	clients[nc-1] = c;
 
 	/* set client data */
+	c->win = w;
 	if (!XGetWindowAttributes(dpy, w, &wa)) {
 		warn("XGetWindowAttributes() failed for window %d", w);
 		return;
 	}
-	c->win = w;
 	c->mapped = wa.map_state;
 	c->override = wa.override_redirect;
 
@@ -300,7 +300,7 @@ keyrelease(XEvent *e)
 void
 mapnotify(XEvent *e)
 {
-	Client *c = wintoclient(e->xmap.window);
+	Client *c = wintoclient(e->xmap.window, &sel);
 	if (!c) {
 		warn("trying to map non-existing window %d", e->xmap.window);
 		return;
@@ -308,11 +308,7 @@ mapnotify(XEvent *e)
 	c->mapped = true;
 	c->override = e->xmap.override_redirect;
 
-	/* update focus */
-	for (sel = 0; sel < nc && clients[sel]->win != e->xmap.window; sel++);
 	focus(c);
-
-	/* update screen */
 	tile();
 }
 
@@ -381,7 +377,6 @@ scan(void)
 		warn("XQueryTree() failed");
 		return;
 	}
-	stdlog(stdout, "restoring %d windows from last session", nwins);
 	for (i = 0; i < nwins; i++) {
 		create(wins[i]);
 	}
@@ -398,24 +393,13 @@ setmfact(Arg const *arg)
 void
 setup(void)
 {
-	/* get root window */
 	screen = DefaultScreen(dpy);
 	root = RootWindow(dpy, screen);
-
-	/* get screen dimensions */
 	sw = DisplayWidth(dpy, screen);
 	sh = DisplayHeight(dpy, screen);
-
-	/* set mask of input events to handle */
 	XSelectInput(dpy, root, SubstructureNotifyMask|KeyPressMask);
-
-	/* set X error handler */
 	xerrorxlib = XSetErrorHandler(xerror);
-
-	/* grab special keys */
 	grabkeys();
-
-	/* initial number of (un)mapped clients */
 	nc = 0;
 }
 
@@ -499,25 +483,37 @@ unfocus(Client *c)
 void
 unmapnotify(XEvent *e)
 {
-	Client *c = wintoclient(e->xunmap.window);
+	unsigned int i;
+	Client *c = wintoclient(e->xunmap.window, NULL);
+
 	if (!c) {
 		warn("attempt to unmap non-existing window %d", e->xunmap.window);
 		return;
 	}
-	c->mapped = false;
-	sel = MIN(sel-1, 0);
-	if (nc) {
-		focus(clients[0]);
+	if (!c->mapped) {
+		warn("attempt to unmap unmapped window %d", e->xunmap.window);
+		return;
 	}
+	c->mapped = false;
 	tile();
+
+	/* update focus */
+	for (i = (sel-1+nc)%nc; !clients[i]->mapped && i != sel; i = (i-1+nc)%nc);
+	sel = i;
+	if (nc && clients[sel]->mapped) {
+		focus(clients[sel]);
+	}
 }
 
 Client *
-wintoclient(Window w)
+wintoclient(Window w, unsigned int *pos)
 {
-	int i;
+	unsigned int i;
 	for (i = 0; i < nc; i++) {
 		if (clients[i]->win == w) {
+			if (pos) {
+				*pos = i;
+			}
 			return clients[i];
 		}
 	}
@@ -557,11 +553,9 @@ main(int argc, char **argv)
 	run();
 	cleanup();
 	XCloseDisplay(dpy);
+	stdlog(stdout, "shutting down ...");
 	if (restarting) {
-		stdlog(stdout, "restarting ...");
-		execl("stwm", appname, NULL);
-	} else {
-		stdlog(stdout, "shutting down ...");
+		execl("stwm", appname, NULL); /* TODO change to execlp */
 	}
 	return EXIT_SUCCESS;
 }
