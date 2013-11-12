@@ -29,8 +29,6 @@ with stwm as window manager and an xterm window already opened:
 	make run
 
 If you want to open other application at startup, modify <code>xinitrc</code>.
-Note that it is currently not possible to launch an application from *within*
-stwm, so once you close your last terminal, all you can do is shut down stwm.
 
 In case you've got Xephyr installed and want to run stwm inside Xephyr:
 
@@ -40,10 +38,11 @@ In case you've got Xephyr installed and want to run stwm inside Xephyr:
 usage
 -----
 
-* <code>Mod4</code>+<code>l</code> increase the master area
-* <code>Mod4</code>+<code>h</code> decrease the master area
+* <code>Mod4</code>+<code>l</code> increase master area size
+* <code>Mod4</code>+<code>h</code> decrease master area size
 * <code>Mod4</code>+<code>j</code> set focus to next window
 * <code>Mod4</code>+<code>k</code> set focus to previous window
-* <code>Mod4</code>+<code>r</code> restart stwm
-* <code>Mod4</code>+<code>q</code> quit stwm
+* <code>Mod4</code>+<code>Return</code> open a new xterm window
+* <code>Mod4</code>+<code>q</code> restart stwm
+* <code>Mod4</code>+<code>Shift</code>+<code>q</code> quit stwm
 

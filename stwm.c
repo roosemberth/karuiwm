@@ -67,6 +67,7 @@ void run(void);
 void scan(void);
 void setmfact(Arg const *);
 void setup(void);
+void spawn(Arg const *);
 void stdlog(FILE *, char const *, ...);
 void tile(void);
 void unfocus(Client *);
@@ -401,6 +402,19 @@ setup(void)
 	xerrorxlib = XSetErrorHandler(xerror);
 	grabkeys();
 	nc = 0;
+}
+
+void
+spawn(Arg const *arg)
+{
+	pid_t pid = vfork();
+	if (pid == 0) {
+		execvp(((char const **)arg->v)[0], (char **)arg->v);
+		warn("execvp(%s) failed", ((char const **)arg->v)[0]);
+		_exit(EXIT_FAILURE);
+	} else if (pid < 0) {
+		warn("vfork() failed with code %d", pid);
+	}
 }
 
 void
