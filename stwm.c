@@ -34,7 +34,7 @@ struct Client {
 
 typedef struct {
 	unsigned int mod;
-	KeySym keysym;
+	KeySym key;
 	void (*func)(Arg const *);
 	Arg const arg;
 } Key;
@@ -301,22 +301,13 @@ focusstep(Arg const *arg)
 void
 grabkeys(void)
 {
-	/* these keys are not passed to a client, but cause a KeyPress instead
-	 * TODO make a list of keys, possibly in config.h
-	 */
+	int i;
+
 	XUngrabKey(dpy, AnyKey, AnyModifier, root);
-	XGrabKey(dpy, XKeysymToKeycode(dpy, XK_h), MODKEY, root, true,
-			GrabModeAsync, GrabModeAsync);
-	XGrabKey(dpy, XKeysymToKeycode(dpy, XK_l), MODKEY, root, true,
-			GrabModeAsync, GrabModeAsync);
-	XGrabKey(dpy, XKeysymToKeycode(dpy, XK_j), MODKEY, root, true,
-			GrabModeAsync, GrabModeAsync);
-	XGrabKey(dpy, XKeysymToKeycode(dpy, XK_k), MODKEY, root, true,
-			GrabModeAsync, GrabModeAsync);
-	XGrabKey(dpy, XKeysymToKeycode(dpy, XK_r), MODKEY, root, true,
-			GrabModeAsync, GrabModeAsync);
-	XGrabKey(dpy, XKeysymToKeycode(dpy, XK_q), MODKEY|ShiftMask, root, true,
-			GrabModeAsync, GrabModeAsync);
+	for (i = 0; i < LENGTH(keys); i++) {
+		XGrabKey(dpy, XKeysymToKeycode(dpy, keys[i].key), keys[i].mod, root,
+				true, GrabModeAsync, GrabModeAsync);
+	}
 }
 
 void
@@ -328,7 +319,7 @@ keypress(XEvent *e)
 	KeySym keysym = XLookupKeysym(&e->xkey, 0);
 
 	for (i = 0; i < LENGTH(keys); i++) {
-		if (keys[i].mod == e->xkey.state && keys[i].keysym == keysym &&
+		if (keys[i].mod == e->xkey.state && keys[i].key == keysym &&
 				keys[i].func) {
 			keys[i].func(&keys[i].arg);
 		}
