@@ -1,3 +1,11 @@
+/* CONFIG ------------------------------------------------------------------- */
+
+#define MODKEY Mod4Mask
+int nmaster = 1;         /* number of windows in the master area */
+float mfact = 0.6;       /* size of master area */
+
+/* CONFIG END --------------------------------------------------------------- */
+
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
 #include <X11/Xproto.h>
@@ -16,7 +24,6 @@
 #define debug(...) stdlog(stdout, "\033[34mDBG\033[0m "__VA_ARGS__)
 #define warn(...) stdlog(stderr, "\033[33mWRN\033[0m "__VA_ARGS__)
 #define die(...) warn("\033[31mERR\033[0m "__VA_ARGS__); exit(EXIT_FAILURE)
-#define MODKEY Mod4Mask /* TODO move to config.h */
 
 /* structs */
 typedef struct Client Client;
@@ -29,8 +36,6 @@ struct Client {
 
 /* functions */
 void cleanup(void);
-void focus(Client *);
-void focusstep(int);
 void buttonpress(XEvent *);
 void buttonrelease(XEvent *);
 void clientmessage(XEvent *);
@@ -40,7 +45,9 @@ void createnotify(XEvent *);
 void destroynotify(XEvent *);
 void enternotify(XEvent *);
 void expose(XEvent *);
+void focus(Client *);
 void focusin(XEvent *);
+void focusstep(int);
 void keypress(XEvent *);
 void keyrelease(XEvent *);
 void mapnotify(XEvent *);
@@ -48,7 +55,6 @@ void mappingnotify(XEvent *);
 void maprequest(XEvent *);
 void motionnotify(XEvent *);
 void propertynotify(XEvent *);
-void unmapnotify(XEvent *);
 void quit(void);
 void restart(void);
 void run(void);
@@ -58,6 +64,7 @@ void setup(void);
 void stdlog(FILE *, char const *, ...);
 void tile(void);
 void unfocus(Client *);
+void unmapnotify(XEvent *);
 Client *wintoclient(Window);
 int xerror(Display *, XErrorEvent *);
 int (*xerrorxlib)(Display *, XErrorEvent *);
@@ -92,8 +99,7 @@ Window root;
 int screen;
 int sw, sh; /* screen dimensions */
 Client **clients;
-int nc, nmaster, sel;
-float mfact;
+int nc, sel;
 
 void
 buttonpress(XEvent *e)
@@ -217,7 +223,7 @@ destroynotify(XEvent *e)
 				clients[i] = clients[i+1];
 			}
 			clients = realloc(clients, nc*sizeof(Client *));
-			break;
+			return;
 		}
 	}
 	warn("attempt to destroy non-existing window");
@@ -253,6 +259,8 @@ focusin(XEvent *e)
 void
 focusstep(int s)
 {
+	debug("focusstep(): sel=%d, s=%d", sel, s);
+
 	int i;
 
 	if (!nc) {
@@ -399,7 +407,7 @@ scan(void)
 	Window p, r, *wins = NULL;
 	unsigned int i, nwins;
 	if (!XQueryTree(dpy, root, &r, &p, &wins, &nwins)) {
-		warn("scan(): XQueryTree() failed");
+		warn("XQueryTree() failed");
 		return;
 	}
 	debug("scan(): nwins=%d", nwins);
@@ -407,7 +415,7 @@ scan(void)
 		debug("wins[%d] == %d %c= root == %d", i, wins[i],
 				wins[i] == root ? '=' : '!', root);
 		if (!XGetWindowAttributes(dpy, wins[i], &wa)) {
-			warn("scan(): XGetWindowAttributes() failed for window %d", i);
+			warn("XGetWindowAttributes() failed for window %d", i);
 			continue;
 		}
 		/* TODO: detect (un)mapped windows */
@@ -436,10 +444,6 @@ setup(void)
 
 	/* set mask of input events to handle */
 	XSelectInput(dpy, root, SubstructureNotifyMask|KeyPressMask);
-
-	/* for positioning the windows (TODO move to config.h) */
-	nmaster = 1;
-	mfact = 0.6;
 
 	/* set X error handler */
 	xerrorxlib = XSetErrorHandler(xerror);
