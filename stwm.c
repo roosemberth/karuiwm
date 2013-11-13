@@ -13,7 +13,6 @@
 #define debug(...) if (DEBUG) stdlog(stdout, "\033[34mDBG\033[0m "__VA_ARGS__)
 #define warn(...) stdlog(stderr, "\033[33mWRN\033[0m "__VA_ARGS__)
 #define die(...) warn("\033[31mERR\033[0m "__VA_ARGS__); exit(EXIT_FAILURE)
-#define HANDLED(C) (!C->override && C->mapped)
 #define LENGTH(ARR) (sizeof(ARR)/sizeof(ARR[0]))
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
 #define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
@@ -29,7 +28,7 @@ struct Client {
 	int x,y,w,h;
 	char name[256];
 	Window win;
-	bool floating, override, mapped;
+	bool floating;
 };
 
 typedef struct {
@@ -47,21 +46,22 @@ static void buttonrelease(XEvent *);
 static void clientmessage(XEvent *);
 static void configurerequest(XEvent *);
 static void configurenotify(XEvent *);
-static void create(Window);
 static void createnotify(XEvent *);
 static void destroynotify(XEvent *);
 static void enternotify(XEvent *);
 static void expose(XEvent *);
-static void focus(Client *);
 static void focusin(XEvent *);
 static void focusstep(Arg const *);
 static void keypress(XEvent *);
 static void keyrelease(XEvent *);
+static void manage(Window);
 static void mapnotify(XEvent *);
 static void mappingnotify(XEvent *);
 static void maprequest(XEvent *);
 static void motionnotify(XEvent *);
+static void pop(Client *);
 static void propertynotify(XEvent *);
+static void push(Client *);
 static void quit(Arg const *);
 static void restart(Arg const *);
 static void run(void);
@@ -72,6 +72,7 @@ static void spawn(Arg const *);
 static void stdlog(FILE *, char const *, ...);
 static void tile(void);
 static void unmapnotify(XEvent *);
+static void updatefocus(void);
 static Client *wintoclient(Window, unsigned int *);
 static int xerror(Display *, XErrorEvent *);
 static int (*xerrorxlib)(Display *, XErrorEvent *);
@@ -105,8 +106,8 @@ static bool running, restarting;
 static Window root;
 static int screen;
 static unsigned int sw, sh; /* screen dimensions */
-static Client **clients;
-static unsigned int nc, sel;
+static Client **clients, **stack;
+static unsigned int nc, ns;
 
 /* configuration */
 #include "config.h"
@@ -116,15 +117,11 @@ arrange(void)
 {
 	unsigned int i = 0;
 	for (i = 0; i < nc; i++) {
-		if (clients[i]->mapped) {
-			XSelectInput(dpy, clients[i]->win, 0);
-		}
+		XSelectInput(dpy, clients[i]->win, 0);
 	}
 	tile();
 	for (i = 0; i < nc; i++) {
-		if (clients[i]->mapped) {
-			XSelectInput(dpy, clients[i]->win, EnterWindowMask);
-		}
+		XSelectInput(dpy, clients[i]->win, EnterWindowMask);
 	}
 }
 
@@ -165,21 +162,17 @@ configurenotify(XEvent *e)
 
 	XWindowAttributes wa;
 	Client *c = wintoclient(e->xconfigure.window, NULL);
+
+	/* check if window is managed */
 	if (!c) {
-		warn("attempt to configure non-existing window %d", e->xconfigure.window);
-		return;
-	}
-
-	if (!HANDLED(c)) {
-		return;
-	}
-
-	if (!XGetWindowAttributes(dpy, c->win, &wa)) {
-		warn("XGetWindowAttributes(%d) failed", c->win);
 		return;
 	}
 
 	/* correct the size of the window if necessary (size hints) */
+	if (!XGetWindowAttributes(dpy, c->win, &wa)) {
+		warn("XGetWindowAttributes(%d) failed", c->win);
+		return;
+	}
 	if (wa.x != c->x || wa.y != c->y || wa.width != c->w || wa.height != c->h) {
 		XMoveResizeWindow(dpy, c->win, c->x, c->y, c->w-2*borderwidth,
 				c->h-2*borderwidth);
@@ -194,71 +187,17 @@ configurerequest(XEvent *e)
 }
 
 void
-create(Window w)
-{
-	Client *c;
-	XWindowAttributes wa;
-
-	/* create client */
-	c = malloc(sizeof(Client));
-	if (!c) {
-		die("could not allocate new client (%d bytes)", sizeof(Client));
-	}
-
-	/* add to list */
-	clients = realloc(clients, ++nc*sizeof(Client *));
-	if (!clients) {
-		die("could not allocate new entry in client list (%d bytes)",
-				sizeof(Client *));
-	}
-	clients[nc-1] = c;
-
-	/* set client data */
-	c->win = w;
-	if (!XGetWindowAttributes(dpy, w, &wa)) {
-		warn("XGetWindowAttributes() failed for window %d", w);
-		return;
-	}
-	c->mapped = wa.map_state == IsViewable;
-	c->override = wa.override_redirect;
-
-	/* update screen, if necessary (= if client is already mapped) */
-	if (HANDLED(c)) {
-		focus(c);
-		arrange();
-	}
-}
-
-void
 createnotify(XEvent *e)
 {
 	debug("\033[32mcreatenotify(%d)\033[0m", e->xcreatewindow.window);
-
-	create(e->xcreatewindow.window);
+	/* TODO */
 }
 
 void
 destroynotify(XEvent *e)
 {
 	debug("\033[31mdestroynotify(%d)\033[0m", e->xdestroywindow.window);
-
-	unsigned int i;
-	for (i = 0; i < nc; i++) {
-		if (clients[i]->win == e->xdestroywindow.window) {
-			if (clients[i]->mapped) {
-				warn("destroying mapped window %d", clients[i]->win);
-			}
-			free(clients[i]);
-			nc--;
-			sel -= sel > i;
-			for (; i < nc; i++) {
-				clients[i] = clients[i+1];
-			}
-			clients = realloc(clients, nc*sizeof(Client *));
-			return;
-		}
-	}
-	warn("attempt to destroy non-existing window");
+	/* TODO */
 }
 
 void
@@ -266,7 +205,14 @@ enternotify(XEvent *e)
 {
 	debug("enternotify(%d)", e->xcrossing.window);
 
-	focus(wintoclient(e->xcrossing.window, NULL));
+	Client *c = wintoclient(e->xcrossing.window, NULL);
+	if (!c) {
+		warn("attempt to enter unhandled window %d", e->xcrossing.window);
+		return;
+	}
+
+	push(c);
+	updatefocus();
 }
 
 void
@@ -274,32 +220,6 @@ expose(XEvent *e)
 {
 	debug("expose(%d)", e->xexpose.window);
 	/* TODO */
-}
-
-void
-focus(Client *c)
-{
-	/*
-	unsigned int i;
-	debug("focus(%d) with sel=%d", c->win, sel);
-	for (i = 0; i < nc; i++) {
-		debug("  %sclients[%d]->win = %d\033[0m%s",
-				clients[i]->mapped ? "" : "\033[1;30m" , i, clients[i]->win,
-				sel == i ? " <old" : clients[i]->win == c->win ? " <new" : "");
-	}
-	*/
-	if (!c->mapped) {
-		warn("attempt to focus unmapped window %d", c->win);
-		return;
-	}
-	if (HANDLED(c)) {
-		if (clients[sel]->mapped) {
-			XSetWindowBorder(dpy, clients[sel]->win, cbordernorm);
-		}
-		wintoclient(c->win, &sel);
-		XSetWindowBorder(dpy, c->win, cbordersel);
-	}
-	XSetInputFocus(dpy, c->win, RevertToPointerRoot, CurrentTime);
 }
 
 void
@@ -317,12 +237,9 @@ focusstep(Arg const *arg)
 	if (!nc) {
 		return;
 	}
-	if (arg->i > 0) {
-		for (i=(sel+1)%nc; !clients[i]->mapped && i != sel; i=(i+1)%nc);
-	} else {
-		for (i=(sel-1+nc)%nc; !clients[i]->mapped && i != sel; i=(i-1+nc)%nc);
-	}
-	focus(clients[i]);
+	wintoclient(stack[ns-1]->win, &i);
+	push(clients[(i+nc+arg->i)%nc]);
+	updatefocus();
 }
 
 void
@@ -361,25 +278,50 @@ keyrelease(XEvent *e)
 }
 
 void
+manage(Window w)
+{
+	Client *c;
+	XWindowAttributes wa;
+
+	/* don't manage junk windows */
+	if (!XGetWindowAttributes(dpy, w, &wa)) {
+		warn("XGetWindowAttributes() failed for window %d", w);
+		return;
+	}
+	if (wa.override_redirect || wa.map_state != IsViewable) {
+		return;
+	}
+
+	/* create client */
+	c = malloc(sizeof(Client));
+	if (!c) {
+		die("could not allocate new client (%d bytes)", sizeof(Client));
+	}
+
+	/* add to list */
+	clients = realloc(clients, ++nc*sizeof(Client *));
+	if (!clients) {
+		die("could not allocate %d bytes for client list", nc*sizeof(Client *));
+	}
+	clients[nc-1] = c;
+
+	/* configure */
+	c->win = w;
+	XSelectInput(dpy, c->win, EnterWindowMask);
+	XSetWindowBorderWidth(dpy, c->win, borderwidth);
+
+	/* update layout */
+	arrange();
+	push(c);
+	updatefocus();
+}
+
+void
 mapnotify(XEvent *e)
 {
 	debug("\033[1;32mmapnotify(%d)\033[0m", e->xmap.window);
 
-	Client *c;
-
-	c = wintoclient(e->xmap.window, NULL);
-	if (!c) {
-		warn("trying to map non-existing window %d", e->xmap.window);
-		return;
-	}
-	c->mapped = true;
-	c->override = e->xmap.override_redirect;
-	if (HANDLED(c)) {
-		XSetWindowBorderWidth(dpy, c->win, borderwidth);
-		arrange();
-	}
-	XSelectInput(dpy, c->win, EnterWindowMask);
-	focus(c);
+	manage(e->xmap.window);
 }
 
 void
@@ -404,10 +346,51 @@ motionnotify(XEvent *e)
 }
 
 void
+pop(Client *c)
+{
+	unsigned int i;
+
+	if (!c) {
+		warn("attempt to pop NULL client");
+		return;
+	}
+
+	for (i = 0; i < ns; i++) {
+		if (stack[i] == c) {
+			ns--;
+			for (; i < ns; i++) {
+				stack[i] = stack[i+1];
+			}
+			stack = realloc(stack, ns*sizeof(Client *));
+			if (ns && !stack) {
+				die("could not allocate %d bytes for stack",ns*sizeof(Client*));
+			}
+			return;
+		}
+	}
+	debug("pop() unmapped window %d", c->win);
+}
+
+void
 propertynotify(XEvent *e)
 {
 	debug("propertynotify(%d)", e->xproperty.window);
 	/* TODO */
+}
+
+void
+push(Client *c)
+{
+	if (!c) {
+		warn("attempt to push NULL client");
+	}
+
+	pop(c);
+	stack = realloc(stack, ++ns*sizeof(Client *));
+	if (!stack) {
+		die("could not allocated %d bytes for stack", ns*sizeof(Client *));
+	}
+	stack[ns-1] = c;
 }
 
 void
@@ -448,7 +431,7 @@ scan(void)
 		return;
 	}
 	for (i = 0; i < nwins; i++) {
-		create(wins[i]);
+		manage(wins[i]); /* manage() will do the necessary checks */
 	}
 }
 
@@ -512,54 +495,39 @@ tile(void)
 {
 	debug("\033[34mtile()\033[0m");
 
-	int nct, ncm, i, x, w, h;
-	Client **tiled = calloc(nc, sizeof(Client *));
-	if (!tiled) {
-		die("could not allocate %d bytes for tiled list", nc*sizeof(Client *));
-	}
+	int ncm, i, x, w, h;
 
 	/* get tiled windows */
-	for (i = 0, nct = 0; i < nc; i++) {
-		if (HANDLED(clients[i])) {
-			tiled[nct++] = clients[i];
-		}
-	}
-	if (!nct) {
-		free(tiled);
-		return;
-	}
 
 	/* draw master area */
-	ncm = MIN(nmaster, nct);
+	ncm = MIN(nmaster, nc);
 	x = 0;
-	w = nmaster >= nct ? sw : mfact*sw;
+	w = nmaster >= nc ? sw : mfact*sw;
 	h = sh/ncm;
 	for (i = 0; i < ncm; i++) {
-		tiled[i]->x = x;
-		tiled[i]->y = i*h;
-		tiled[i]->w = w;
-		tiled[i]->h = h;
-		XMoveResizeWindow(dpy, tiled[i]->win, tiled[i]->x, tiled[i]->y,
-				tiled[i]->w-2, tiled[i]->h-2);
+		clients[i]->x = x;
+		clients[i]->y = i*h;
+		clients[i]->w = w;
+		clients[i]->h = h;
+		XMoveResizeWindow(dpy, clients[i]->win, clients[i]->x, clients[i]->y,
+				clients[i]->w-2, clients[i]->h-2);
 	}
-	if (ncm == nct) {
-		free(tiled);
+	if (ncm == nc) {
 		return;
 	}
 
 	/* draw stack area */
 	x = mfact*sw;
 	w = sw-x;
-	h = sh/(nct-ncm);
-	for (; i < nct; i++) {
-		tiled[i]->x = x;
-		tiled[i]->y = (i-ncm)*h;
-		tiled[i]->w = w;
-		tiled[i]->h = h;
-		XMoveResizeWindow(dpy, tiled[i]->win, tiled[i]->x, tiled[i]->y,
-				tiled[i]->w-2*borderwidth, tiled[i]->h-2*borderwidth);
+	h = sh/(nc-ncm);
+	for (; i < nc; i++) {
+		clients[i]->x = x;
+		clients[i]->y = (i-ncm)*h;
+		clients[i]->w = w;
+		clients[i]->h = h;
+		XMoveResizeWindow(dpy, clients[i]->win, clients[i]->x, clients[i]->y,
+				clients[i]->w-2*borderwidth, clients[i]->h-2*borderwidth);
 	}
-	free(tiled);
 }
 
 void
@@ -569,25 +537,35 @@ unmapnotify(XEvent *e)
 
 	unsigned int i;
 	Client *c = wintoclient(e->xunmap.window, &i);
-
 	if (!c) {
-		warn("attempt to unmap non-existing window %d", e->xunmap.window);
-		return;
-	}
-	if (!c->mapped) {
 		warn("attempt to unmap unmapped window %d", e->xunmap.window);
 		return;
 	}
-	c->mapped = false;
 
-	/* update focus */
-	if (i == sel) {
-		for (i=(sel-1+nc)%nc; !clients[i]->mapped && i != sel; i=(i-1+nc)%nc);
-		if (i != sel) {
-			focus(clients[i]);
-		}
+	/* remove from stack */
+	pop(c);
+
+	/* remove client */
+	free(c);
+	nc--;
+	for (; i < nc; i++) {
+		clients[i] = clients[i+1];
 	}
+
+	/* update layout */
 	arrange();
+	updatefocus();
+}
+
+void
+updatefocus(void)
+{
+	unsigned int i;
+	for (i = 0; i < ns-1; i++) {
+		XSetWindowBorder(dpy, stack[i]->win, cbordernorm);
+	}
+	XSetWindowBorder(dpy, stack[ns-1]->win, cbordersel);
+	XSetInputFocus(dpy, stack[ns-1]->win, RevertToPointerRoot, CurrentTime);
 }
 
 Client *
@@ -614,6 +592,7 @@ xerror(Display *dpy, XErrorEvent *ee)
 	if (
 		(ee->error_code == BadWindow) ||
 		(ee->request_code == X_ChangeWindowAttributes && ee->error_code == BadMatch) ||
+		(ee->request_code == X_ConfigureWindow && ee->error_code == BadMatch) ||
 		(ee->request_code == X_SetInputFocus && ee->error_code == BadMatch)
 	) {
 		XGetErrorText(dpy, ee->error_code, es, 256);
