@@ -8,8 +8,9 @@ and based on [dwm](http://dwm.suckless.org/).
 configure
 ---------
 
-<code>config.h</code> holds values to configure the behaviour and look of stwm.
-It is included from <code>dwm.c</code> upon compilation.
+<code>config.h</code> holds the configuration of stwm and gets included by
+<code>stwm.c</code> upon compilation. It defines look and behaviour related
+things and defines special keys.
 
 
 build
@@ -23,12 +24,12 @@ This will create the binary <code>stwm</code>:
 run
 ---
 
-This will launch a new X session on display **:1** (modify Makefile to change)
-with stwm as window manager and an xterm window already opened:
+This will launch a new X session on display **:1** (modify the Makefile to
+change) with stwm as window manager and an open xterm window:
 
 	make run
 
-If you want to open other application at startup, modify <code>xinitrc</code>.
+If you want to open other applications at startup, modify <code>xinitrc</code>.
 
 In case you've got Xephyr installed and want to run stwm inside Xephyr:
 
