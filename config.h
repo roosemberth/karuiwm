@@ -1,9 +1,10 @@
 /* stwm configuration */
 
-static int nmaster = 1;         /* number of windows in the master area */
-static float mfact = 0.6;       /* size of master area */
+static unsigned int nmaster = 1; /* number of windows in the master area */
+static float mfact = 0.6;        /* size of master area */
 
 /* colours */
+static unsigned int borderwidth = 1;
 static unsigned long cbordernorm = 0x222222;
 static unsigned long cbordersel  = 0xAFD700;
 
