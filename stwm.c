@@ -497,7 +497,9 @@ tile(void)
 
 	int ncm, i, x, w, h;
 
-	/* get tiled windows */
+	if (!nc) {
+		return;
+	}
 
 	/* draw master area */
 	ncm = MIN(nmaster, nc);
@@ -561,9 +563,17 @@ void
 updatefocus(void)
 {
 	unsigned int i;
+
+	if (!ns) {
+		return;
+	}
+
+	/* unfocus all but the top of the stack */
 	for (i = 0; i < ns-1; i++) {
 		XSetWindowBorder(dpy, stack[i]->win, cbordernorm);
 	}
+
+	/* focus top of the stack */
 	XSetWindowBorder(dpy, stack[ns-1]->win, cbordersel);
 	XSetInputFocus(dpy, stack[ns-1]->win, RevertToPointerRoot, CurrentTime);
 }
