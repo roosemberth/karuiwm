@@ -116,6 +116,8 @@ void
 arrange(void)
 {
 	unsigned int i = 0;
+
+	/* disable EnterWindowMask, so the focus won't change at every rearrange */
 	for (i = 0; i < nc; i++) {
 		XSelectInput(dpy, clients[i]->win, 0);
 	}
@@ -365,10 +367,9 @@ pop(Client *c)
 			if (ns && !stack) {
 				die("could not allocate %d bytes for stack",ns*sizeof(Client*));
 			}
-			return;
+			break;
 		}
 	}
-	debug("pop() unmapped window %d", c->win);
 }
 
 void
@@ -540,7 +541,6 @@ unmapnotify(XEvent *e)
 	unsigned int i;
 	Client *c = wintoclient(e->xunmap.window, &i);
 	if (!c) {
-		warn("attempt to unmap unmapped window %d", e->xunmap.window);
 		return;
 	}
 
