@@ -1,9 +1,17 @@
-#define MODKEY Mod4Mask  /* main modifier key for stwm */
-int nmaster = 1;         /* number of windows in the master area */
-float mfact = 0.6;       /* size of master area */
-char const *termcmd[] = { "xterm", NULL };
+/* stwm configuration */
 
-Key keys[] = {
+static int nmaster = 1;         /* number of windows in the master area */
+static float mfact = 0.6;       /* size of master area */
+
+/* colours */
+static unsigned long cbordernorm = 0x222222;
+static unsigned long cbordersel  = 0xAFD700;
+
+/* commands */
+static char const *termcmd[] = { "xterm", NULL };
+
+#define MODKEY Mod4Mask
+static Key keys[] = {
 	{ MODKEY,           XK_j,       focusstep,   { .i=+1 } },
 	{ MODKEY,           XK_k,       focusstep,   { .i=-1 } },
 	{ MODKEY,           XK_l,       setmfact,    { .f=+0.02 } },

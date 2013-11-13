@@ -1,7 +1,7 @@
 CC=gcc
 LDLIBS=-lX11
 LDFLAGS=
-CFLAGS=-DHOST_$(shell hostname) -Wall -Wpedantic -std=c99 -g
+CFLAGS=-Wall -Wpedantic -std=c99
 SOURCES=stwm.c
 OBJECTS=$(SOURCES:.c=.o)
 EXECUTABLE=stwm
