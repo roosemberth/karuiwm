@@ -40,6 +40,7 @@ typedef struct {
 
 typedef struct {
 	Client **clients, **stack;
+	Client *selcli;
 	unsigned int nc, ns;
 	unsigned int nmaster;
 	float mfact;
@@ -241,13 +242,13 @@ focusin(XEvent *e)
 void
 focusstep(Arg const *arg)
 {
-	unsigned int i;
+	unsigned int pos;
 
 	if (!ws.nc) {
 		return;
 	}
-	wintoclient(ws.stack[ws.ns-1]->win, &i);
-	push(ws.clients[(i+ws.nc+arg->i)%ws.nc]);
+	wintoclient(ws.selcli->win, &pos);
+	push(ws.clients[(pos+ws.nc+arg->i)%ws.nc]);
 	updatefocus();
 }
 
@@ -586,9 +587,9 @@ updatefocus(void)
 	}
 
 	/* focus top of the stack */
-	XSetWindowBorder(dpy, ws.stack[ws.ns-1]->win, cbordersel);
-	XSetInputFocus(dpy, ws.stack[ws.ns-1]->win, RevertToPointerRoot,
-			CurrentTime);
+	ws.selcli = ws.stack[ws.ns-1];
+	XSetWindowBorder(dpy, ws.selcli->win, cbordersel);
+	XSetInputFocus(dpy, ws.selcli->win, RevertToPointerRoot, CurrentTime);
 }
 
 Client *
@@ -638,10 +639,9 @@ zoom(Arg const *arg)
 		return;
 	}
 
-	c = wintoclient(ws.stack[ws.ns-1]->win, &pos);
+	c = wintoclient(ws.selcli->win, &pos);
 	if (!c) {
-		warn("attempt to zoom non-existing window %d",
-				ws.stack[ws.ns-1]->win);
+		warn("attempt to zoom non-existing window %d", ws.selcli->win);
 		return;
 	}
 
