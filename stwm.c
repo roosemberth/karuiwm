@@ -9,7 +9,7 @@
 #include <X11/Xproto.h>
 
 /* macros */
-#define DEBUG 1 /* enable for debug output */
+#define DEBUG 0 /* enable for debug output */
 #define debug(...) if (DEBUG) stdlog(stdout, "\033[34mDBG\033[0m "__VA_ARGS__)
 #define warn(...) stdlog(stderr, "\033[33mWRN\033[0m "__VA_ARGS__)
 #define die(...) warn("\033[31mERR\033[0m "__VA_ARGS__); exit(EXIT_FAILURE)
@@ -76,6 +76,7 @@ static void updatefocus(void);
 static Client *wintoclient(Window, unsigned int *);
 static int xerror(Display *, XErrorEvent *);
 static int (*xerrorxlib)(Display *, XErrorEvent *);
+static void zoom(Arg const *);
 
 /* event handlers, as array to allow O(1) access; codes in X.h */
 static void (*handle[LASTEvent])(XEvent *) = {
@@ -613,6 +614,42 @@ xerror(Display *dpy, XErrorEvent *ee)
 
 	/* call default error handler (might call exit) */
 	return xerrorxlib(dpy, ee);
+}
+
+void
+zoom(Arg const *arg)
+{
+	unsigned int i, pos;
+	Client *c;
+
+	if (!nc) {
+		return;
+	}
+
+	c = wintoclient(stack[ns-1]->win, &pos);
+	if (!c) {
+		warn("attempt to zoom non-existing window %d", stack[ns-1]->win);
+		return;
+	}
+
+	if (!pos) {
+		/* window is at the top */
+		if (nc > 1) {
+			clients[0] = clients[1];
+			clients[1] = c;
+			push(clients[0]);
+			updatefocus();
+		} else {
+			return;
+		}
+	} else {
+		/* window is somewhere else */
+		for (i = pos; i > 0; i--) {
+			clients[i] = clients[i-1];
+		}
+		clients[0] = c;
+	}
+	arrange();
 }
 
 int

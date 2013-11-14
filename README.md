@@ -39,11 +39,22 @@ In case you've got Xephyr installed and want to run stwm inside Xephyr:
 usage
 -----
 
-* <code>Mod4</code>+<code>l</code> increase master area size
-* <code>Mod4</code>+<code>h</code> decrease master area size
-* <code>Mod4</code>+<code>j</code> set focus to next window
-* <code>Mod4</code>+<code>k</code> set focus to previous window
-* <code>Mod4</code>+<code>Return</code> open a new xterm window
-* <code>Mod4</code>+<code>q</code> restart stwm
-* <code>Mod4</code>+<code>Shift</code>+<code>q</code> quit stwm
+Applications:
+* <code>Mod</code>+<code>n</code> launch xterm
+* <code>Mod</code>+<code>p</code> launch dmenu
+
+Windows:
+* <code>Mod</code>+<code>l</code> increase master area size
+* <code>Mod</code>+<code>h</code> decrease master area size
+* <code>Mod</code>+<code>j</code> set focus to next window
+* <code>Mod</code>+<code>k</code> set focus to previous window
+* <code>Mod</code>+<code>Return</code> move selected window to master area
+
+Session:
+* <code>Mod</code>+<code>q</code> restart stwm
+* <code>Mod</code>+<code>Shift</code>+<code>q</code> quit stwm
+
+The <code>Mod</code> key is set to Mod4 (*Windows* key). Note that these are
+just the default settings; key combinations can be modified in
+<code>config.h</code>.
 
