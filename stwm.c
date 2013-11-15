@@ -9,13 +9,20 @@
 #include <X11/Xproto.h>
 
 /* macros */
-#define DEBUG 0 /* enable for debug output */
+#define DEBUG 1 /* enable for debug output */
 #define debug(...) if (DEBUG) stdlog(stdout, "\033[34mDBG\033[0m "__VA_ARGS__)
 #define warn(...) stdlog(stderr, "\033[33mWRN\033[0m "__VA_ARGS__)
 #define die(...) warn("\033[31mERR\033[0m "__VA_ARGS__); exit(EXIT_FAILURE)
 #define LENGTH(ARR) (sizeof(ARR)/sizeof(ARR[0]))
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
 #define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
+#define WSSTEP_LEFT  (1<<0)
+#define WSSTEP_RIGHT (1<<1)
+#define WSSTEP_UP    (1<<2)
+#define WSSTEP_DOWN  (1<<3)
+
+typedef struct Client Client;
+typedef struct Workspace Workspace;
 
 typedef union {
 	int i;
@@ -23,7 +30,6 @@ typedef union {
 	const void *v;
 } Arg;
 
-typedef struct Client Client;
 struct Client {
 	int x,y,w,h;
 	char name[256];
@@ -38,19 +44,20 @@ typedef struct {
 	Arg const arg;
 } Key;
 
-typedef struct {
+struct Workspace {
 	Client **clients, **stack;
 	Client *selcli;
-	unsigned int nc, ns;
+	unsigned int nc,ns;
 	unsigned int nmaster;
 	float mfact;
-} Workspace;
+	int x,y;
+};
 
 /* functions */
 static void arrange(void);
-static void cleanup(void);
 static void buttonpress(XEvent *);
 static void buttonrelease(XEvent *);
+static void cleanup(void);
 static void clientmessage(XEvent *);
 static void configurerequest(XEvent *);
 static void configurenotify(XEvent *);
@@ -60,16 +67,18 @@ static void enternotify(XEvent *);
 static void expose(XEvent *);
 static void focusin(XEvent *);
 static void focusstep(Arg const *);
+static void hide(Client *);
 static void keypress(XEvent *);
 static void keyrelease(XEvent *);
+static void killclient(Arg const *);
 static void manage(Window);
 static void mapnotify(XEvent *);
 static void mappingnotify(XEvent *);
 static void maprequest(XEvent *);
 static void motionnotify(XEvent *);
-static void pop(Client *);
+static void pop(Workspace *, Client *);
 static void propertynotify(XEvent *);
-static void push(Client *);
+static void push(Workspace *, Client *);
 static void quit(Arg const *);
 static void restart(Arg const *);
 static void run(void);
@@ -81,7 +90,13 @@ static void stdlog(FILE *, char const *, ...);
 static void tile(void);
 static void unmapnotify(XEvent *);
 static void updatefocus(void);
-static Client *wintoclient(Window, unsigned int *);
+static bool wintoclient(Workspace **, Client **, unsigned int *, Window);
+static void wsattach(Workspace *);
+static void wsdetach(Workspace *);
+static Workspace *wsfind(int, int, unsigned int *);
+static bool wshasneighbour(int, int);
+static void wshide(Workspace *);
+static void wsstep(Arg const *);
 static int xerror(Display *, XErrorEvent *);
 static int (*xerrorxlib)(Display *, XErrorEvent *);
 static void zoom(Arg const *);
@@ -115,7 +130,9 @@ static bool running, restarting;
 static Window root;
 static int screen;
 static unsigned int sw, sh; /* screen dimensions */
-static Workspace ws;
+static Workspace *selws;
+static Workspace **workspaces;
+static unsigned int nws;
 
 /* configuration */
 #include "config.h"
@@ -126,12 +143,12 @@ arrange(void)
 	unsigned int i = 0;
 
 	/* disable EnterWindowMask, so the focus won't change at every rearrange */
-	for (i = 0; i < ws.nc; i++) {
-		XSelectInput(dpy, ws.clients[i]->win, 0);
+	for (i = 0; i < selws->nc; i++) {
+		XSelectInput(dpy, selws->clients[i]->win, 0);
 	}
 	tile();
-	for (i = 0; i < ws.nc; i++) {
-		XSelectInput(dpy, ws.clients[i]->win, EnterWindowMask);
+	for (i = 0; i < selws->nc; i++) {
+		XSelectInput(dpy, selws->clients[i]->win, EnterWindowMask);
 	}
 }
 
@@ -153,8 +170,8 @@ void
 cleanup(void)
 {
 	unsigned int i;
-	for (i = 0; i < ws.nc; i++) {
-		free(ws.clients[i]);
+	for (i = 0; i < selws->nc; i++) {
+		free(selws->clients[i]);
 	}
 }
 
@@ -170,11 +187,12 @@ configurenotify(XEvent *e)
 {
 	//debug("configurenotify(%d)", e->xconfigure.window);
 
+	unsigned int pos;
+	Workspace *ws;
+	Client *c;
 	XWindowAttributes wa;
-	Client *c = wintoclient(e->xconfigure.window, NULL);
 
-	/* check if window is managed */
-	if (!c) {
+	if (!wintoclient(&ws, &c, &pos, e->xconfigure.window)) {
 		return;
 	}
 
@@ -184,8 +202,12 @@ configurenotify(XEvent *e)
 		return;
 	}
 	if (wa.x != c->x || wa.y != c->y || wa.width != c->w || wa.height != c->h) {
-		XMoveResizeWindow(dpy, c->win, c->x, c->y, c->w-2*borderwidth,
-				c->h-2*borderwidth);
+		XResizeWindow(dpy, c->win, c->w-2*borderwidth, c->h-2*borderwidth);
+	}
+
+	/* make sure window stays invisible if not on current workspace */
+	if (ws != selws) {
+		hide(c);
 	}
 }
 
@@ -215,13 +237,17 @@ enternotify(XEvent *e)
 {
 	debug("enternotify(%d)", e->xcrossing.window);
 
-	Client *c = wintoclient(e->xcrossing.window, NULL);
-	if (!c) {
-		warn("attempt to enter unhandled window %d", e->xcrossing.window);
+	unsigned int pos;
+	Workspace *ws;
+	Client *c;
+
+	if (!wintoclient(&ws, &c, &pos, e->xcrossing.window) || ws != selws) {
+		warn("attempt to enter unhandled/invisible window %d",
+				e->xcrossing.window);
 		return;
 	}
 
-	push(c);
+	push(selws, c);
 	updatefocus();
 }
 
@@ -244,11 +270,11 @@ focusstep(Arg const *arg)
 {
 	unsigned int pos;
 
-	if (!ws.nc) {
+	if (!selws->nc) {
 		return;
 	}
-	wintoclient(ws.selcli->win, &pos);
-	push(ws.clients[(pos+ws.nc+arg->i)%ws.nc]);
+	wintoclient(NULL, NULL, &pos, selws->selcli->win);
+	push(selws, selws->clients[(pos+selws->nc+arg->i)%selws->nc]);
 	updatefocus();
 }
 
@@ -262,6 +288,12 @@ grabkeys(void)
 		XGrabKey(dpy, XKeysymToKeycode(dpy, keys[i].key), keys[i].mod, root,
 				true, GrabModeAsync, GrabModeAsync);
 	}
+}
+
+void
+hide(Client *c)
+{
+	XMoveWindow(dpy, c->win, -2*c->w, c->y);
 }
 
 void
@@ -288,6 +320,13 @@ keyrelease(XEvent *e)
 }
 
 void
+killclient(Arg const *arg)
+{
+	XKillClient(dpy, selws->selcli->win);
+	XSync(dpy, false);
+}
+
+void
 manage(Window w)
 {
 	Client *c;
@@ -308,13 +347,18 @@ manage(Window w)
 		die("could not allocate new client (%d bytes)", sizeof(Client));
 	}
 
-	/* add to list */
-	ws.clients = realloc(ws.clients, ++ws.nc*sizeof(Client *));
-	if (!ws.clients) {
-		die("could not allocate %d bytes for client list",
-				ws.nc*sizeof(Client *));
+	/* attach workspace if this is the first client */
+	if (!selws->nc) {
+		wsattach(selws);
 	}
-	ws.clients[ws.nc-1] = c;
+
+	/* add to list */
+	selws->clients = realloc(selws->clients, ++selws->nc*sizeof(Client *));
+	if (!selws->clients) {
+		die("could not allocate %d bytes for client list",
+				selws->nc*sizeof(Client *));
+	}
+	selws->clients[selws->nc-1] = c;
 
 	/* configure */
 	c->win = w;
@@ -323,7 +367,7 @@ manage(Window w)
 
 	/* update layout */
 	arrange();
-	push(c);
+	push(selws, c);
 	updatefocus();
 }
 
@@ -357,7 +401,7 @@ motionnotify(XEvent *e)
 }
 
 void
-pop(Client *c)
+pop(Workspace *ws, Client *c)
 {
 	unsigned int i;
 
@@ -366,16 +410,16 @@ pop(Client *c)
 		return;
 	}
 
-	for (i = 0; i < ws.ns; i++) {
-		if (ws.stack[i] == c) {
-			ws.ns--;
-			for (; i < ws.ns; i++) {
-				ws.stack[i] = ws.stack[i+1];
+	for (i = 0; i < ws->ns; i++) {
+		if (ws->stack[i] == c) {
+			ws->ns--;
+			for (; i < ws->ns; i++) {
+				ws->stack[i] = ws->stack[i+1];
 			}
-			ws.stack = realloc(ws.stack, ws.ns*sizeof(Client *));
-			if (ws.ns && !ws.stack) {
+			ws->stack = realloc(ws->stack, ws->ns*sizeof(Client *));
+			if (ws->ns && !ws->stack) {
 				die("could not allocate %d bytes for stack",
-						ws.ns*sizeof(Client*));
+						ws->ns*sizeof(Client*));
 			}
 			break;
 		}
@@ -390,18 +434,18 @@ propertynotify(XEvent *e)
 }
 
 void
-push(Client *c)
+push(Workspace *ws, Client *c)
 {
 	if (!c) {
 		warn("attempt to push NULL client");
 	}
 
-	pop(c);
-	ws.stack = realloc(ws.stack, ++ws.ns*sizeof(Client *));
-	if (!ws.stack) {
-		die("could not allocated %d bytes for stack", ws.ns*sizeof(Client *));
+	pop(ws, c);
+	ws->stack = realloc(ws->stack, ++ws->ns*sizeof(Client *));
+	if (!ws->stack) {
+		die("could not allocated %d bytes for stack", ws->ns*sizeof(Client *));
 	}
-	ws.stack[ws.ns-1] = c;
+	ws->stack[ws->ns-1] = c;
 }
 
 void
@@ -449,7 +493,7 @@ scan(void)
 void
 setmfact(Arg const *arg)
 {
-	ws.mfact = MAX(0.1, MIN(0.9, ws.mfact+arg->f));
+	selws->mfact = MAX(0.1, MIN(0.9, selws->mfact+arg->f));
 	arrange();
 }
 
@@ -463,9 +507,15 @@ setup(void)
 	XSelectInput(dpy, root, SubstructureNotifyMask|KeyPressMask);
 	xerrorxlib = XSetErrorHandler(xerror);
 	grabkeys();
-	ws.nc = 0;
-	ws.nmaster = nmaster;
-	ws.mfact = mfact;
+	selws = malloc(sizeof(Workspace));
+	if (!selws) {
+		die("could not allocate %d bytes for workspace", sizeof(Workspace));
+	}
+	selws->clients = selws->stack = NULL;
+	selws->nc = selws->ns = 0;
+	selws->x = selws->y = 0;
+	selws->nmaster = nmaster;
+	selws->mfact = mfact;
 }
 
 void
@@ -509,40 +559,42 @@ tile(void)
 
 	int ncm, i, x, w, h;
 
-	if (!ws.nc) {
+	if (!selws->nc) {
 		return;
 	}
 
 	/* draw master area */
-	ncm = MIN(ws.nmaster, ws.nc);
+	ncm = MIN(selws->nmaster, selws->nc);
 	x = 0;
-	w = ws.nmaster >= ws.nc ? sw : ws.mfact*sw;
+	w = selws->nmaster >= selws->nc ? sw : selws->mfact*sw;
 	h = sh/ncm;
 	for (i = 0; i < ncm; i++) {
-		ws.clients[i]->x = x;
-		ws.clients[i]->y = i*h;
-		ws.clients[i]->w = w;
-		ws.clients[i]->h = h;
-		XMoveResizeWindow(dpy, ws.clients[i]->win,
-				ws.clients[i]->x, ws.clients[i]->y,
-				ws.clients[i]->w-2*borderwidth, ws.clients[i]->h-2*borderwidth);
+		selws->clients[i]->x = x;
+		selws->clients[i]->y = i*h;
+		selws->clients[i]->w = w;
+		selws->clients[i]->h = h;
+		XMoveResizeWindow(dpy, selws->clients[i]->win,
+				selws->clients[i]->x, selws->clients[i]->y,
+				selws->clients[i]->w-2*borderwidth,
+				selws->clients[i]->h-2*borderwidth);
 	}
-	if (ncm == ws.nc) {
+	if (ncm == selws->nc) {
 		return;
 	}
 
 	/* draw stack area */
-	x = ws.mfact*sw;
+	x = selws->mfact*sw;
 	w = sw-x;
-	h = sh/(ws.nc-ncm);
-	for (; i < ws.nc; i++) {
-		ws.clients[i]->x = x;
-		ws.clients[i]->y = (i-ncm)*h;
-		ws.clients[i]->w = w;
-		ws.clients[i]->h = h;
-		XMoveResizeWindow(dpy, ws.clients[i]->win,
-				ws.clients[i]->x, ws.clients[i]->y,
-				ws.clients[i]->w-2*borderwidth, ws.clients[i]->h-2*borderwidth);
+	h = sh/(selws->nc-ncm);
+	for (; i < selws->nc; i++) {
+		selws->clients[i]->x = x;
+		selws->clients[i]->y = (i-ncm)*h;
+		selws->clients[i]->w = w;
+		selws->clients[i]->h = h;
+		XMoveResizeWindow(dpy, selws->clients[i]->win,
+				selws->clients[i]->x, selws->clients[i]->y,
+				selws->clients[i]->w-2*borderwidth,
+				selws->clients[i]->h-2*borderwidth);
 	}
 }
 
@@ -552,24 +604,36 @@ unmapnotify(XEvent *e)
 	debug("\033[1;31munmapnotify(%d)\033[0m", e->xunmap.window);
 
 	unsigned int i;
-	Client *c = wintoclient(e->xunmap.window, &i);
-	if (!c) {
+	Client *c;
+	Workspace *ws;
+
+	if (!wintoclient(&ws, &c, &i, e->xunmap.window)) {
 		return;
 	}
 
 	/* remove from stack */
-	pop(c);
+	pop(ws, c);
 
 	/* remove client */
 	free(c);
-	ws.nc--;
-	for (; i < ws.nc; i++) {
-		ws.clients[i] = ws.clients[i+1];
+	ws->nc--;
+	for (; i < ws->nc; i++) {
+		ws->clients[i] = ws->clients[i+1];
 	}
 
-	/* update layout */
-	arrange();
-	updatefocus();
+	/* update layout if the client was removed from the current workspace */
+	if (ws == selws) {
+		debug("window removed from current workspace, rearranging");
+		arrange();
+		updatefocus();
+	}
+
+	/* remove the layout if the last client was removed */
+	if (!ws->nc) {
+		debug("removed last window from workspace [%d,%d], detaching",
+				ws->x, ws->y);
+		wsdetach(ws);
+	}
 }
 
 void
@@ -577,34 +641,165 @@ updatefocus(void)
 {
 	unsigned int i;
 
-	if (!ws.ns) {
+	if (!selws->ns) {
 		return;
 	}
 
 	/* unfocus all but the top of the stack */
-	for (i = 0; i < ws.ns-1; i++) {
-		XSetWindowBorder(dpy, ws.stack[i]->win, cbordernorm);
+	for (i = 0; i < selws->ns-1; i++) {
+		XSetWindowBorder(dpy, selws->stack[i]->win, cbordernorm);
 	}
 
 	/* focus top of the stack */
-	ws.selcli = ws.stack[ws.ns-1];
-	XSetWindowBorder(dpy, ws.selcli->win, cbordersel);
-	XSetInputFocus(dpy, ws.selcli->win, RevertToPointerRoot, CurrentTime);
+	selws->selcli = selws->stack[selws->ns-1];
+	XSetWindowBorder(dpy, selws->selcli->win, cbordersel);
+	XSetInputFocus(dpy, selws->selcli->win, RevertToPointerRoot, CurrentTime);
 }
 
-Client *
-wintoclient(Window w, unsigned int *pos)
+bool
+wintoclient(Workspace **ws, Client **c, unsigned int *pos, Window w)
+{
+	unsigned int i, j;
+
+	/* search current workspace */
+	for (i = 0; i < selws->nc; i++) {
+		if (selws->clients[i]->win == w) {
+			if (ws) *ws = selws;
+			if (c) *c = selws->clients[i];
+			if (pos) *pos = i;
+			return true;
+		}
+	}
+	/* search all the other workspaces */
+	for (j = 0; j < nws; j++) {
+		for (i = 0; i < workspaces[j]->nc; i++) {
+			if (workspaces[j]->clients[i]->win == w) {
+				if (ws) *ws = workspaces[j];
+				if (c) *c = workspaces[j]->clients[i];
+				if (pos) *pos = i;
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+void
+wsattach(Workspace *ws)
+{
+	workspaces = realloc(workspaces, ++nws*sizeof(Workspace *));
+	if (!workspaces) {
+		die("could not allocate %d bytes for workspace list",
+				nws*sizeof(Workspace *));
+	}
+	workspaces[nws-1] = ws;
+}
+
+void
+wsdetach(Workspace *ws)
 {
 	unsigned int i;
-	for (i = 0; i < ws.nc; i++) {
-		if (ws.clients[i]->win == w) {
+
+	ws = wsfind(ws->x, ws->y, &i);
+	if (!ws) {
+		warn("attempt to detach non-existing workspace");
+		return;
+	}
+
+	nws--;
+	for (; i < nws; i++) {
+		workspaces[i] = workspaces[i+1];
+	}
+	workspaces = realloc(workspaces, nws*sizeof(Workspace *));
+	if (!workspaces && nws) {
+		die("could not allocate %d bytes for workspaces",
+				nws*sizeof(Workspace *));
+	}
+}
+
+Workspace *
+wsfind(int x, int y, unsigned int *pos)
+{
+	unsigned int i;
+	for (i = 0; i < nws; i++) {
+		if (workspaces[i]->x == x && workspaces[i]->y == y) {
 			if (pos) {
 				*pos = i;
 			}
-			return ws.clients[i];
+			return workspaces[i];
 		}
 	}
 	return NULL;
+}
+
+bool
+wshasneighbour(int x, int y)
+{
+	debug("wshasneighbour(%d, %d)", x, y);
+
+	unsigned int i;
+	for (i = 0; i < nws; i++) {
+		if ((workspaces[i]->x == x-1 && workspaces[i]->y == y) ||
+			(workspaces[i]->x == x+1 && workspaces[i]->y == y) ||
+			(workspaces[i]->x == x && workspaces[i]->y-1 == y) ||
+			(workspaces[i]->x == x && workspaces[i]->y+1 == y)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+void
+wshide(Workspace *ws)
+{
+	unsigned int i;
+	for (i = 0; i < ws->nc; i++) {
+		hide(ws->clients[i]);
+	}
+}
+
+void
+wsstep(Arg const *arg)
+{
+	Workspace *next;
+	int x=selws->x, y=selws->y;
+
+	switch (arg->i) {
+		case WSSTEP_LEFT:  x = selws->x-1; debug("wsleft");  break;
+		case WSSTEP_RIGHT: x = selws->x+1; debug("wsright"); break;
+		case WSSTEP_UP:    y = selws->y-1; debug("wsup");    break;
+		case WSSTEP_DOWN:  y = selws->y+1; debug("wsdown");  break;
+	}
+
+	/* either the current, the next, or a neighbour workspace must exist */
+	next = wsfind(x, y, NULL);
+	if (next || selws->nc || wshasneighbour(x, y)) {
+		debug("%d, %d (dst) valid", x, y);
+		if (!next) {
+			debug("%d, %d (dst) empty, creating", x, y);
+			next = malloc(sizeof(Workspace));
+			if (!next) {
+				die("could not allocate %d bytes for workspace",
+						sizeof(Workspace));
+			}
+			next->x = x;
+			next->y = y;
+			next->clients = next->stack = NULL;
+			next->nc = next->ns = 0;
+			next->mfact = mfact;
+			next->nmaster = nmaster;
+		}
+		/* if leaving an empty workspace, destroy it */
+		if (!selws->nc) {
+			debug("%d, %d (src) empty, destroying", selws->x, selws->y);
+			free(selws);
+		} else {
+			wshide(selws);
+		}
+		selws = next;
+		arrange();
+		updatefocus();
+	}
 }
 
 int
@@ -635,22 +830,21 @@ zoom(Arg const *arg)
 	unsigned int i, pos;
 	Client *c;
 
-	if (!ws.nc) {
+	if (!selws->nc) {
 		return;
 	}
 
-	c = wintoclient(ws.selcli->win, &pos);
-	if (!c) {
-		warn("attempt to zoom non-existing window %d", ws.selcli->win);
+	if (!wintoclient(NULL, &c, &pos, selws->selcli->win)) {
+		warn("attempt to zoom non-existing window %d", selws->selcli->win);
 		return;
 	}
 
 	if (!pos) {
 		/* window is at the top */
-		if (ws.nc > 1) {
-			ws.clients[0] = ws.clients[1];
-			ws.clients[1] = c;
-			push(ws.clients[0]);
+		if (selws->nc > 1) {
+			selws->clients[0] = selws->clients[1];
+			selws->clients[1] = c;
+			push(selws, selws->clients[0]);
 			updatefocus();
 		} else {
 			return;
@@ -658,9 +852,9 @@ zoom(Arg const *arg)
 	} else {
 		/* window is somewhere else */
 		for (i = pos; i > 0; i--) {
-			ws.clients[i] = ws.clients[i-1];
+			selws->clients[i] = selws->clients[i-1];
 		}
-		ws.clients[0] = c;
+		selws->clients[0] = c;
 	}
 	arrange();
 }

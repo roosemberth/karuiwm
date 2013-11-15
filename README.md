@@ -10,7 +10,7 @@ configure
 
 <code>config.h</code> holds the configuration of stwm and gets included by
 <code>stwm.c</code> upon compilation. It defines look and behaviour related
-things and defines special keys.
+things and special keys.
 
 
 build
@@ -44,11 +44,14 @@ Applications:
 * <code>Mod</code>+<code>p</code> launch dmenu
 
 Windows:
-* <code>Mod</code>+<code>l</code> increase master area size
-* <code>Mod</code>+<code>h</code> decrease master area size
-* <code>Mod</code>+<code>j</code> set focus to next window
-* <code>Mod</code>+<code>k</code> set focus to previous window
+* <code>Mod</code>+<code>l|h</code> increase/decrease master area size
+* <code>Mod</code>+<code>j|k</code> set focus to next/previous window
+
+Layout:
 * <code>Mod</code>+<code>Return</code> move selected window to master area
+
+Workspaces:
+* <code>Mod</code>+<code>h|j|k|l</code> move view to adjacent workspace
 
 Session:
 * <code>Mod</code>+<code>q</code> restart stwm
@@ -57,4 +60,40 @@ Session:
 The <code>Mod</code> key is set to Mod4 (*Windows* key). Note that these are
 just the default settings; key combinations can be modified in
 <code>config.h</code>.
+
+
+workspaces
+----------
+
+Workspaces in stwm are arranged in a two-dimensional grid, and they are created
+and destroyed dynamically. A workspace may either be considered *persistent* (if
+there is at least one window placed in it) or *temporary* (if the workspace is
+empty).
+
+If a persistent workspace is left, it gets destroyed, whereas a persistent
+workspace remains (as the name suggests).
+
+Once a window is placed inside a temporary workspace, it is automatically turned
+into a persistent workspace; the same way a persistent workspace is
+automatically turned into a temporary one once its last window is removed.
+
+It is possible to move to a temporary workspace as long as there is at least one
+adjacent persistent workspace, for example:
+
+	             +---+                           +   +
+	X = focus    |   | = persistent workspace          = temporary workspace
+	             +---+                           +   +
+	
+	
+	+---+                         +---+   +
+	| X |      ====moveright===>  |   | X      OK, move to temporary workspace
+	+---+                         +---+   +
+	
+	+---+   +                     +---+   +
+	|   | X    ====moveright===>  |   | X      not OK, stay at current workspace
+	+---+   +                     +---+   +
+	
+	+---+   +                     +---+---+
+	|   | X    ==createwindow==>  |   | X |    OK, make workspace persistent
+	+---+   +                     +---+---+
 
