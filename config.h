@@ -26,6 +26,8 @@ static Key keys[] = {
 	{ MODKEY|ShiftMask,   XK_i,      killclient,      { 0 } },
 
 	/* layout */
+	{ MODKEY|ShiftMask,   XK_j,      shift,           { .i=+1 } },
+	{ MODKEY|ShiftMask,   XK_k,      shift,           { .i=-1 } },
 	{ MODKEY,             XK_Return, zoom,            { 0 } },
 
 	/* workspaces */

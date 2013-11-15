@@ -9,7 +9,7 @@
 #include <X11/Xproto.h>
 
 /* macros */
-#define DEBUG 1 /* enable for debug output */
+#define DEBUG 0 /* enable for debug output */
 #define debug(...) if (DEBUG) stdlog(stdout, "\033[34mDBG\033[0m "__VA_ARGS__)
 #define warn(...) stdlog(stderr, "\033[33mWRN\033[0m "__VA_ARGS__)
 #define die(...) warn("\033[31mERR\033[0m "__VA_ARGS__); exit(EXIT_FAILURE)
@@ -85,6 +85,7 @@ static void run(void);
 static void scan(void);
 static void setmfact(Arg const *);
 static void setup(void);
+static void shift(Arg const *);
 static void spawn(Arg const *);
 static void stdlog(FILE *, char const *, ...);
 static void tile(void);
@@ -516,6 +517,23 @@ setup(void)
 	selws->x = selws->y = 0;
 	selws->nmaster = nmaster;
 	selws->mfact = mfact;
+}
+
+void
+shift(Arg const *arg)
+{
+	unsigned int pos;
+
+	if (selws->ns < 2) {
+		return;
+	}
+	if (!wintoclient(NULL, NULL, &pos, selws->selcli->win)) {
+		warn("attempt to shift non-existent window %d", selws->selcli->win);
+	}
+	selws->clients[pos] = selws->clients[(pos+selws->nc+arg->i)%selws->nc];
+	selws->clients[(pos+selws->nc+arg->i)%selws->nc] = selws->selcli;
+
+	arrange();
 }
 
 void
