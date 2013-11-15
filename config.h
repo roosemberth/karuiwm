@@ -15,18 +15,27 @@ static char const *dmenucmd[] = { "dmenu_run", NULL };
 #define MODKEY Mod4Mask
 static Key keys[] = {
 	/* applications */
-	{ MODKEY,           XK_n,       spawn,       { .v=termcmd } },
-	{ MODKEY,           XK_p,       spawn,       { .v=dmenucmd } },
+	{ MODKEY,             XK_n,      spawn,           { .v=termcmd } },
+	{ MODKEY,             XK_p,      spawn,           { .v=dmenucmd } },
 
 	/* windows */
-	{ MODKEY,           XK_j,       focusstep,   { .i=+1 } },
-	{ MODKEY,           XK_k,       focusstep,   { .i=-1 } },
-	{ MODKEY,           XK_l,       setmfact,    { .f=+0.02 } },
-	{ MODKEY,           XK_h,       setmfact,    { .f=-0.02 } },
-	{ MODKEY,           XK_Return,  zoom,        { 0 } },
+	{ MODKEY,             XK_j,      focusstep,       { .i=+1 } },
+	{ MODKEY,             XK_k,      focusstep,       { .i=-1 } },
+	{ MODKEY,             XK_l,      setmfact,        { .f=+0.02 } },
+	{ MODKEY,             XK_h,      setmfact,        { .f=-0.02 } },
+	{ MODKEY|ShiftMask,   XK_i,      killclient,      { 0 } },
+
+	/* layout */
+	{ MODKEY,             XK_Return, zoom,            { 0 } },
+
+	/* workspaces */
+	{ MODKEY|ControlMask, XK_h,      wsstep,          { .i=WSSTEP_LEFT } },
+	{ MODKEY|ControlMask, XK_l,      wsstep,          { .i=WSSTEP_RIGHT } },
+	{ MODKEY|ControlMask, XK_j,      wsstep,          { .i=WSSTEP_DOWN } },
+	{ MODKEY|ControlMask, XK_k,      wsstep,          { .i=WSSTEP_UP } },
 
 	/* session */
-	{ MODKEY,           XK_q,       restart,     { 0 } },
-	{ MODKEY|ShiftMask, XK_q,       quit,        { 0 } },
+	{ MODKEY,             XK_q,      restart,         { 0 } },
+	{ MODKEY|ShiftMask,   XK_q,      quit,            { 0 } },
 };
 
