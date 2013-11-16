@@ -4,12 +4,14 @@
 #include <stdbool.h>
 #include <stdarg.h>
 #include <time.h>
+#include <string.h>
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
 #include <X11/Xproto.h>
+#include <X11/cursorfont.h>
 
 /* macros */
-//#define DEBUG  /* enable for debug output */
+#define DEBUG  /* enable for debug output */
 #ifdef DEBUG
 #define debug(...) stdlog(stdout, "\033[34mDBG\033[0m "__VA_ARGS__)
 #else
@@ -25,6 +27,12 @@
 #define WSSTEP_UP    (1<<2)
 #define WSSTEP_DOWN  (1<<3)
 
+/* enums */
+
+enum { CURSOR_NORMAL, CURSOR_RESIZE, CURSOR_MOVE, CURSOR_LAST };
+
+/* structs */
+
 typedef union {
 	int i;
 	float f;
@@ -32,12 +40,20 @@ typedef union {
 } Arg;
 
 typedef struct {
-	int x,y;
-	unsigned int w,h;
+	int x, y;
+	unsigned int w, h;
 	char name[256];
 	Window win;
 	bool floating;
 } Client;
+
+typedef struct {
+	GC gc;
+	struct {
+		int ascent, descent, height;
+		XFontStruct *xfontstruct;
+	} font;
+} DC;
 
 typedef struct {
 	unsigned int mod;
@@ -49,10 +65,11 @@ typedef struct {
 typedef struct {
 	Client **clients, **stack;
 	Client *selcli;
-	unsigned int nc,ns;
+	unsigned int nc, ns;
 	unsigned int nmaster;
 	float mfact;
-	int x,y;
+	char tag[256];
+	int x, y;
 } Workspace;
 
 /* functions */
@@ -70,7 +87,12 @@ static void enternotify(XEvent *);
 static void expose(XEvent *);
 static void focusin(XEvent *);
 static void focusstep(Arg const *);
+static void grabbuttons(void);
+static void grabkeys(void);
 static void hide(Client *);
+static void init(void);
+static void initbar(void);
+static void initdrawcontext(void);
 static void keypress(XEvent *);
 static void keyrelease(XEvent *);
 static void killclient(Arg const *);
@@ -87,12 +109,12 @@ static void run(void);
 static void scan(void);
 static void setmfact(Arg const *);
 static void setnmaster(Arg const *);
-static void setup(void);
 static void shift(Arg const *);
 static void spawn(Arg const *);
 static void stdlog(FILE *, char const *, ...);
 static void tile(void);
 static void unmapnotify(XEvent *);
+static void updatebar(void);
 static void updatefocus(void);
 static bool wintoclient(Workspace **, Client **, unsigned int *, Window);
 static void ws_attach(Workspace *);
@@ -128,15 +150,20 @@ static void (*handle[LASTEvent])(XEvent *) = {
 };
 
 /* variables */
-static char *appname;            /* application name */
-static bool running, restarting; /* application state */
-static Display *dpy;             /* X display */
-static int screen;               /* screen */
-static unsigned int sw, sh;      /* screen dimensions */
-static Window root;              /* root window */
-static unsigned int nws;         /* number of workspaces */
-static Workspace **workspaces;   /* list of workspaces */
-static Workspace *selws;         /* selected workspace */
+static char *appname;               /* application name */
+static bool running, restarting;    /* application state */
+static Display *dpy;                /* X display */
+static int screen;                  /* screen */
+static unsigned int sw, sh;         /* screen dimensions */
+static Window barwin;               /* status bar window */
+static unsigned int bx, by, bw, bh; /* status bar dimensions */
+static Window root;                 /* root window */
+static unsigned int nws;            /* number of workspaces */
+static Workspace **workspaces;      /* list of workspaces */
+static Workspace *selws;            /* selected workspace */
+static unsigned int wx, wy, ww, wh; /* workspace dimensions */
+static DC dc;                       /* drawing context */
+static Cursor cursor[CURSOR_LAST];  /* cursors */
 
 /* configuration */
 #include "config.h"
@@ -222,6 +249,7 @@ cleanup(void)
 	for (i = 0; i < selws->nc; i++) {
 		free(selws->clients[i]);
 	}
+	XFreeGC(dpy, dc.gc);
 }
 
 void
@@ -304,7 +332,10 @@ void
 expose(XEvent *e)
 {
 	debug("expose(%d)", e->xexpose.window);
-	/* TODO */
+
+	if (e->xexpose.window == barwin) {
+		updatebar();
+	}
 }
 
 void
@@ -328,6 +359,12 @@ focusstep(Arg const *arg)
 }
 
 void
+grabbuttons(void)
+{
+	/* TODO */
+}
+
+void
 grabkeys(void)
 {
 	int i;
@@ -343,6 +380,84 @@ void
 hide(Client *c)
 {
 	XMoveWindow(dpy, c->win, -c->w, c->y);
+}
+
+void
+init(void)
+{
+	XSetWindowAttributes wa;
+
+	screen = DefaultScreen(dpy);
+	root = RootWindow(dpy, screen);
+	sw = DisplayWidth(dpy, screen);
+	sh = DisplayHeight(dpy, screen);
+	xerrorxlib = XSetErrorHandler(xerror);
+
+	/* cursor/input */
+	cursor[CURSOR_NORMAL] = XCreateFontCursor(dpy, XC_left_ptr);
+	cursor[CURSOR_RESIZE] = XCreateFontCursor(dpy, XC_sizing);
+	cursor[CURSOR_MOVE] = XCreateFontCursor(dpy, XC_fleur);
+	wa.cursor = cursor[CURSOR_NORMAL];
+	wa.event_mask = SubstructureNotifyMask|KeyPressMask;
+	XChangeWindowAttributes(dpy, root, CWEventMask|CWCursor, &wa);
+
+	/* input */
+	grabbuttons();
+	grabkeys();
+
+	/* workspace (TODO duplication) */
+	selws = malloc(sizeof(Workspace));
+	if (!selws) {
+		die("could not allocate %d bytes for workspace", sizeof(Workspace));
+	}
+	selws->clients = selws->stack = NULL;
+	selws->nc = selws->ns = 0;
+	selws->x = selws->y = 0;
+	selws->nmaster = nmaster;
+	selws->mfact = mfact;
+	selws->tag[0] = 0;
+
+	/* status bar */
+	initdrawcontext();
+	initbar();
+}
+
+void
+initbar(void)
+{
+	XSetWindowAttributes wa;
+
+	bx = 0;
+	by = 0; /* TODO allow bar to be at bottom */
+	bh = dc.font.height + 2;
+	bw = sw;
+	wx = 0;
+	wy = bh;
+	ww = sw;
+	wh = sh-bh;
+
+	wa.override_redirect = true;
+	wa.background_pixmap = ParentRelative;
+	wa.event_mask = ExposureMask;
+	barwin = XCreateWindow(dpy, root, bx, by, bw, bh, 0,
+			DefaultDepth(dpy, screen), CopyFromParent,
+			DefaultVisual(dpy, screen),
+			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
+	XMapRaised(dpy, barwin); /* TODO find out what this exactly does */
+	updatebar();
+}
+
+void
+initdrawcontext(void)
+{
+	dc.gc = XCreateGC(dpy, root, 0, NULL);
+	dc.font.xfontstruct = XLoadQueryFont(dpy, font);
+	if (!dc.font.xfontstruct) {
+		die("cannot load font '%s'", font);
+	}
+	dc.font.ascent = dc.font.xfontstruct->ascent;
+	dc.font.descent = dc.font.xfontstruct->descent;
+	dc.font.height = dc.font.ascent + dc.font.descent;
 }
 
 void
@@ -512,27 +627,6 @@ setnmaster(Arg const *arg)
 }
 
 void
-setup(void)
-{
-	screen = DefaultScreen(dpy);
-	root = RootWindow(dpy, screen);
-	sw = DisplayWidth(dpy, screen);
-	sh = DisplayHeight(dpy, screen);
-	XSelectInput(dpy, root, SubstructureNotifyMask|KeyPressMask);
-	xerrorxlib = XSetErrorHandler(xerror);
-	grabkeys();
-	selws = malloc(sizeof(Workspace));
-	if (!selws) {
-		die("could not allocate %d bytes for workspace", sizeof(Workspace));
-	}
-	selws->clients = selws->stack = NULL;
-	selws->nc = selws->ns = 0;
-	selws->x = selws->y = 0;
-	selws->nmaster = nmaster;
-	selws->mfact = mfact;
-}
-
-void
 shift(Arg const *arg)
 {
 	unsigned int pos;
@@ -596,12 +690,12 @@ tile(void)
 	/* draw master area */
 	ncm = MIN(selws->nmaster, selws->nc);
 	if (ncm) {
-		x = 0;
-		w = selws->nmaster >= selws->nc ? sw : selws->mfact*sw;
-		h = sh/ncm;
+		x = wx;
+		w = selws->nmaster >= selws->nc ? ww : selws->mfact*ww;
+		h = wh/ncm;
 		for (i = 0; i < ncm; i++) {
 			selws->clients[i]->x = x;
-			selws->clients[i]->y = i*h;
+			selws->clients[i]->y = wy+i*h;
 			selws->clients[i]->w = w;
 			selws->clients[i]->h = h;
 			XMoveResizeWindow(dpy, selws->clients[i]->win,
@@ -615,12 +709,12 @@ tile(void)
 	}
 
 	/* draw stack area */
-	x = ncm ? selws->mfact*sw : 0;
-	w = ncm ? sw-x : sw;
-	h = sh/(selws->nc-ncm);
+	x = ncm ? selws->mfact*ww : 0;
+	w = ncm ? ww-x : ww;
+	h = wh/(selws->nc-ncm);
 	for (i = ncm; i < selws->nc; i++) {
 		selws->clients[i]->x = x;
-		selws->clients[i]->y = (i-ncm)*h;
+		selws->clients[i]->y = wy+(i-ncm)*h;
 		selws->clients[i]->w = w;
 		selws->clients[i]->h = h;
 		XMoveResizeWindow(dpy, selws->clients[i]->win,
@@ -663,6 +757,22 @@ unmapnotify(XEvent *e)
 	if (!ws->nc) {
 		ws_detach(ws);
 	}
+}
+
+void
+updatebar(void)
+{
+	if (!strlen(selws->tag)) {
+		snprintf(selws->tag, 255, "[%d|%d]", selws->x, selws->y);
+		selws->tag[255] = 0;
+	}
+
+	XSetForeground(dpy, dc.gc, cbordernorm);
+	XFillRectangle(dpy, barwin, dc.gc, 0, 0, bw, bh);
+	XSetForeground(dpy, dc.gc, cbordersel);
+	XDrawString(dpy, barwin, dc.gc, 0, dc.font.ascent+1,
+			selws->tag, strlen(selws->tag));
+	XSync(dpy, false);
 }
 
 void
@@ -798,31 +908,34 @@ ws_step(Arg const *arg)
 		case WSSTEP_DOWN:  y = selws->y+1; break;
 	}
 
-	/* either the current, the next, or a neighbour workspace must exist */
-	next = ws_find(x, y, NULL);
-	if (next || selws->nc || ws_hasneighbour(x, y)) {
-		if (!next) {
-			next = malloc(sizeof(Workspace));
-			if (!next) {
-				die("could not allocate %d bytes for workspace",
-						sizeof(Workspace));
+	if ((next = ws_find(x, y, NULL)) || selws->nc || ws_hasneighbour(x, y)) {
+		if (next) {
+			if (!selws->nc) {
+				free(selws);
+			} else {
+				ws_hide(selws);
 			}
-			next->x = x;
-			next->y = y;
-			next->clients = next->stack = NULL;
-			next->nc = next->ns = 0;
-			next->mfact = mfact;
-			next->nmaster = nmaster;
-		}
-		/* if leaving an empty workspace, destroy it */
-		if (!selws->nc) {
-			free(selws);
+			selws = next;
 		} else {
-			ws_hide(selws);
+			if (selws->nc) {
+				ws_hide(selws);
+				selws = malloc(sizeof(Workspace));
+				if (!selws) {
+					die("could not allocate %d bytes for workspace",
+							sizeof(Workspace));
+				}
+			}
+			selws->clients = selws->stack = NULL;
+			selws->nc = selws->ns = 0;
+			selws->x = x;
+			selws->y = y;
+			selws->mfact = mfact;
+			selws->nmaster = nmaster;
+			selws->tag[0] = 0;
 		}
-		selws = next;
 		arrange();
 		updatefocus();
+		updatebar();
 	}
 }
 
@@ -886,7 +999,7 @@ main(int argc, char **argv)
 		die("could not open X");
 	}
 	stdlog(stdout, "starting ...");
-	setup();
+	init();
 	scan();
 	run();
 	cleanup();

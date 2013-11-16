@@ -80,35 +80,33 @@ workspaces
 ----------
 
 Workspaces in stwm are arranged in a two-dimensional grid, and they are created
-and destroyed dynamically. A workspace may either be considered *persistent* (if
-there is at least one client placed in it) or *temporary* (if the workspace is
-empty).
+and destroyed dynamically. A workspace may be considered either *persistent*
+(it remains if left) or *temporary* (leaving it destroys it), depending on
+whether there is a client on the workspace.
 
-If a temporary workspace is left, it is destroyed, whereas a persistent
-workspace remains (as the name suggests).
+The change from persistent to temporary (or vice versa) happens automatically
+upon removing the last client (or placing the first client); manual control of
+workspace creation/destruction might get added in the future.
 
-Once a client is placed inside a temporary workspace, it is automatically turned
-into a persistent workspace; the same way a persistent workspace is
-automatically turned into a temporary one once its last client is removed.
-
-It is possible to move to a temporary workspace as long as there is at least one
-adjacent persistent workspace, for example:
+It is possible to switch to a temporary workspace as long as there is at least
+one adjacent persistent workspace, for example:
 
 	             +---+                           +   +
 	X = focus    |   | = persistent workspace          = temporary workspace
 	             +---+                           +   +
 	
 	+---+                         +---+   +
-	| X |      ====moveright===>  |   | X      OK, move to temporary workspace
+	| X |      ===switchright==>  |   | X      OK, move view to temporary workspace
 	+---+                         +---+   +
 	
 	+---+   +                     +---+   +
-	|   | X    ====moveright===>  |   | X      not OK, stay at current workspace
+	|   | X    ===switchright==>  |   | X      not OK, keep view at current workspace
 	+---+   +                     +---+   +
 	
 	+---+   +                     +---+---+
 	|   | X    ==createclient==>  |   | X |    OK, make workspace persistent
 	+---+   +                     +---+---+
 
-Remember that this works in two dimensions.
+Remember that this works in two dimensions. The status bar displays the current
+position on the "workspace-map".
 
