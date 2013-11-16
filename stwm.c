@@ -10,7 +10,7 @@
 #include <X11/cursorfont.h>
 
 /* macros */
-#define DEBUG  /* enable for debug output */
+//#define DEBUG  /* enable for debug output */
 #ifdef DEBUG
 #define debug(...) stdlog(stdout, "\033[34mDBG\033[0m "__VA_ARGS__)
 #else
@@ -50,7 +50,6 @@ typedef struct {
 	GC gc;
 	struct {
 		int ascent, descent, height;
-		XFontSet xfontset;
 		XFontStruct *xfontstruct;
 	} font;
 } Graphical;
@@ -89,6 +88,9 @@ static void focusstep(Arg const *);
 static void grabbuttons(void);
 static void grabkeys(void);
 static void hide(Client *);
+static void init(void);
+static void initbar(void);
+static void initfont(void);
 static void keypress(XEvent *);
 static void keyrelease(XEvent *);
 static void killclient(Arg const *);
@@ -105,7 +107,6 @@ static void run(void);
 static void scan(void);
 static void setmfact(Arg const *);
 static void setnmaster(Arg const *);
-static void setup(void);
 static void shift(Arg const *);
 static void spawn(Arg const *);
 static void stdlog(FILE *, char const *, ...);
@@ -147,19 +148,21 @@ static void (*handle[LASTEvent])(XEvent *) = {
 };
 
 /* variables */
-static char *appname;              /* application name */
-static bool running, restarting;   /* application state */
-static Display *dpy;               /* X display */
-static int screen;                 /* screen */
-static unsigned int sw, sh;        /* screen dimensions */
-static Window root;                /* root window */
-static unsigned int nws;           /* number of workspaces */
-static Workspace **workspaces;     /* list of workspaces */
-static Workspace *selws;           /* selected workspace */
-static Cursor cursor[CURSOR_LAST]; /* cursors */
+static char *appname;               /* application name */
+static bool running, restarting;    /* application state */
+static Display *dpy;                /* X display */
+static int screen;                  /* screen */
+static unsigned int sw, sh;         /* screen dimensions */
+static Window barwin;               /* status bar window */
+static unsigned int bx, by, bw, bh; /* status bar dimensions */
+static Window root;                 /* root window */
+static unsigned int nws;            /* number of workspaces */
+static Workspace **workspaces;      /* list of workspaces */
+static Workspace *selws;            /* selected workspace */
+static unsigned int wx, wy, ww, wh; /* workspace dimensions */
+static Graphical graphical;         /* holds all graphic informations */
 
-static Window barwin;              /* status bar window */
-static Graphical graphical;        /* holds all graphic informations */
+static Cursor cursor[CURSOR_LAST]; /* cursors */
 
 /* configuration */
 #include "config.h"
@@ -329,7 +332,6 @@ expose(XEvent *e)
 	debug("expose(%d)", e->xexpose.window);
 
 	if (e->xexpose.window == barwin) {
-		debug("status bar window exposed, updating");
 		updatebar();
 	}
 }
@@ -376,6 +378,81 @@ void
 hide(Client *c)
 {
 	XMoveWindow(dpy, c->win, -c->w, c->y);
+}
+
+void
+init(void)
+{
+	XSetWindowAttributes wa;
+
+	screen = DefaultScreen(dpy);
+	root = RootWindow(dpy, screen);
+	sw = DisplayWidth(dpy, screen);
+	sh = DisplayHeight(dpy, screen);
+	xerrorxlib = XSetErrorHandler(xerror);
+
+	/* cursor/input */
+	cursor[CURSOR_NORMAL] = XCreateFontCursor(dpy, XC_left_ptr);
+	cursor[CURSOR_RESIZE] = XCreateFontCursor(dpy, XC_sizing);
+	cursor[CURSOR_MOVE] = XCreateFontCursor(dpy, XC_fleur);
+	wa.cursor = cursor[CURSOR_NORMAL];
+	wa.event_mask = SubstructureNotifyMask|KeyPressMask;
+	XChangeWindowAttributes(dpy, root, CWEventMask|CWCursor, &wa);
+
+	/* input */
+	grabbuttons();
+	grabkeys();
+
+	/* workspace */
+	selws = malloc(sizeof(Workspace));
+	if (!selws) {
+		die("could not allocate %d bytes for workspace", sizeof(Workspace));
+	}
+	selws->clients = selws->stack = NULL;
+	selws->nc = selws->ns = 0;
+	selws->x = selws->y = 0;
+	selws->nmaster = nmaster;
+	selws->mfact = mfact;
+
+	/* status bar */
+	initfont();
+	initbar();
+}
+
+void
+initbar(void)
+{
+	XSetWindowAttributes wa;
+
+	bx = 0;
+	by = 0; /* TODO allow bar to be at bottom */
+	bh = graphical.font.height + 2;
+	bw = sw;
+	wx = 0;
+	wy = bh;
+	ww = sw;
+	wh = sh-bh;
+
+	wa.override_redirect = true;
+	wa.background_pixmap = ParentRelative;
+	wa.event_mask = ExposureMask;
+	barwin = XCreateWindow(dpy, root, bx, by, bw, bh, 0,
+			DefaultDepth(dpy, screen), CopyFromParent,
+			DefaultVisual(dpy, screen),
+			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
+	XMapRaised(dpy, barwin); /* TODO find out what this exactly does */
+}
+
+void
+initfont(void)
+{
+	graphical.font.xfontstruct = XLoadQueryFont(dpy, font);
+	if (!graphical.font.xfontstruct) {
+		die("cannot load font '%s'", font);
+	}
+	graphical.font.ascent = graphical.font.xfontstruct->ascent;
+	graphical.font.descent = graphical.font.xfontstruct->descent;
+	graphical.font.height = graphical.font.ascent + graphical.font.descent;
 }
 
 void
@@ -545,67 +622,6 @@ setnmaster(Arg const *arg)
 }
 
 void
-setup(void)
-{
-	XSetWindowAttributes wa;
-	char **missing;
-	int nmissing;
-
-	screen = DefaultScreen(dpy);
-	root = RootWindow(dpy, screen);
-	sw = DisplayWidth(dpy, screen);
-	sh = DisplayHeight(dpy, screen);
-	xerrorxlib = XSetErrorHandler(xerror);
-
-	/* input */
-	cursor[CURSOR_NORMAL] = XCreateFontCursor(dpy, XC_left_ptr);
-	cursor[CURSOR_RESIZE] = XCreateFontCursor(dpy, XC_sizing);
-	cursor[CURSOR_MOVE] = XCreateFontCursor(dpy, XC_fleur);
-	wa.cursor = cursor[CURSOR_NORMAL];
-	wa.event_mask = SubstructureNotifyMask|KeyPressMask;
-	XChangeWindowAttributes(dpy, root, CWEventMask|CWCursor, &wa);
-	grabbuttons();
-	grabkeys();
-
-	/* font */
-	XCreateFontSet(dpy, font, &missing, &nmissing, NULL);
-	if (missing) {
-		while (nmissing) {
-			warn("missing fontset: %s", missing[--nmissing]);
-		}
-		XFreeStringList(missing);
-	}
-	if(!(graphical.font.xfontstruct = XLoadQueryFont(dpy, font)) &&
-			!(graphical.font.xfontstruct = XLoadQueryFont(dpy, "fixed"))) {
-		die("error, cannot load font: '%s'", font);
-	}
-	graphical.font.ascent = graphical.font.xfontstruct->ascent;
-	graphical.font.descent = graphical.font.xfontstruct->descent;
-	graphical.font.height = graphical.font.ascent + graphical.font.descent;
-
-	/* workspace */
-	selws = malloc(sizeof(Workspace));
-	if (!selws) {
-		die("could not allocate %d bytes for workspace", sizeof(Workspace));
-	}
-	selws->clients = selws->stack = NULL;
-	selws->nc = selws->ns = 0;
-	selws->x = selws->y = 0;
-	selws->nmaster = nmaster;
-	selws->mfact = mfact;
-
-	/* status bar */
-	wa.override_redirect = true;
-	wa.background_pixmap = ParentRelative;
-	wa.event_mask = ExposureMask;
-	barwin = XCreateWindow(dpy, root, 0, 0, sw, 15, 0,
-			DefaultDepth(dpy, screen), CopyFromParent,
-			DefaultVisual(dpy, screen),
-			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
-	XMapRaised(dpy, barwin);
-}
-
-void
 shift(Arg const *arg)
 {
 	unsigned int pos;
@@ -669,12 +685,12 @@ tile(void)
 	/* draw master area */
 	ncm = MIN(selws->nmaster, selws->nc);
 	if (ncm) {
-		x = 0;
-		w = selws->nmaster >= selws->nc ? sw : selws->mfact*sw;
-		h = sh/ncm;
+		x = wx;
+		w = selws->nmaster >= selws->nc ? ww : selws->mfact*ww;
+		h = wh/ncm;
 		for (i = 0; i < ncm; i++) {
 			selws->clients[i]->x = x;
-			selws->clients[i]->y = i*h;
+			selws->clients[i]->y = wy+i*h;
 			selws->clients[i]->w = w;
 			selws->clients[i]->h = h;
 			XMoveResizeWindow(dpy, selws->clients[i]->win,
@@ -688,12 +704,12 @@ tile(void)
 	}
 
 	/* draw stack area */
-	x = ncm ? selws->mfact*sw : 0;
-	w = ncm ? sw-x : sw;
-	h = sh/(selws->nc-ncm);
+	x = ncm ? selws->mfact*ww : 0;
+	w = ncm ? ww-x : ww;
+	h = wh/(selws->nc-ncm);
 	for (i = ncm; i < selws->nc; i++) {
 		selws->clients[i]->x = x;
-		selws->clients[i]->y = (i-ncm)*h;
+		selws->clients[i]->y = wy+(i-ncm)*h;
 		selws->clients[i]->w = w;
 		selws->clients[i]->h = h;
 		XMoveResizeWindow(dpy, selws->clients[i]->win,
@@ -746,12 +762,12 @@ updatebar(void)
 
 	/* draw to temporary pixmap, then copy to status bar window */
 	gc = XCreateGC(dpy, root, 0, NULL);
-	drawable = XCreatePixmap(dpy, root, sw, 15, DefaultDepth(dpy, screen));
+	drawable = XCreatePixmap(dpy, root, bw, bh, DefaultDepth(dpy, screen));
 	XSetForeground(dpy, gc, cbordernorm);
-	XFillRectangle(dpy, drawable, gc, 0, 0, sw, 15);
+	XFillRectangle(dpy, drawable, gc, 0, 0, bw, bh);
 	XSetForeground(dpy, gc, cbordersel);
-	XDrawString(dpy, drawable, gc, 0, 13, "stwm", 4);
-	XCopyArea(dpy, drawable, barwin, gc, 0, 0, sw, 15, 0, 0);
+	XDrawString(dpy, drawable, gc, 0, graphical.font.ascent+1, " stwm", 5);
+	XCopyArea(dpy, drawable, barwin, gc, 0, 0, bw, bh, bx, by);
 	XFreePixmap(dpy, drawable);
 	XFreeGC(dpy, gc);
 	XSync(dpy, false);
@@ -978,7 +994,7 @@ main(int argc, char **argv)
 		die("could not open X");
 	}
 	stdlog(stdout, "starting ...");
-	setup();
+	init();
 	scan();
 	run();
 	cleanup();
