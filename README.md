@@ -33,8 +33,8 @@ configure
 
 <code>config.def.h</code> holds the default configuration of stwm. When running
 <code>make</code>, this file will be used to generate a <code>config.h</code> if
-it doesn't exist yet. This protects your configuration from being overwritten by
-the default upon checking out the git repository.
+that one doesn't exist yet. This protects your configuration from being
+overwritten by the default upon checking out the git repository.
 
 The default configuration specifies the following keys:
 
@@ -73,7 +73,7 @@ The default configuration specifies the following keys:
 * <code>Mod</code>+<code>Shift</code>+<code>q</code>
   quit stwm
 
-The <code>Mod</code> key is set to Mod1 (Alt).
+The <code>Mod</code> key is set to Mod1 (<code>Alt</code>).
 
 
 workspaces
@@ -84,7 +84,7 @@ and destroyed dynamically. A workspace may either be considered *persistent* (if
 there is at least one client placed in it) or *temporary* (if the workspace is
 empty).
 
-If a persistent workspace is left, it gets destroyed, whereas a persistent
+If a temporary workspace is left, it is destroyed, whereas a persistent
 workspace remains (as the name suggests).
 
 Once a client is placed inside a temporary workspace, it is automatically turned
@@ -109,4 +109,6 @@ adjacent persistent workspace, for example:
 	+---+   +                     +---+---+
 	|   | X    ==createclient==>  |   | X |    OK, make workspace persistent
 	+---+   +                     +---+---+
+
+Remember that this works in two dimensions.
 
