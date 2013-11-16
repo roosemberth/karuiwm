@@ -28,6 +28,8 @@ static Key keys[] = {
 	/* layout */
 	{ MODKEY|ShiftMask,   XK_j,      shift,           { .i=+1 } },
 	{ MODKEY|ShiftMask,   XK_k,      shift,           { .i=-1 } },
+	{ MODKEY,             XK_comma,  setnmaster,      { .i=+1 } },
+	{ MODKEY,             XK_period, setnmaster,      { .i=-1 } },
 	{ MODKEY,             XK_Return, zoom,            { 0 } },
 
 	/* workspaces */

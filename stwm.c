@@ -9,8 +9,12 @@
 #include <X11/Xproto.h>
 
 /* macros */
-#define DEBUG 0 /* enable for debug output */
-#define debug(...) if (DEBUG) stdlog(stdout, "\033[34mDBG\033[0m "__VA_ARGS__)
+//#define DEBUG  /* enable for debug output */
+#ifdef DEBUG
+#define debug(...) stdlog(stdout, "\033[34mDBG\033[0m "__VA_ARGS__)
+#else
+#define debug(...)
+#endif
 #define warn(...) stdlog(stderr, "\033[33mWRN\033[0m "__VA_ARGS__)
 #define die(...) warn("\033[31mERR\033[0m "__VA_ARGS__); exit(EXIT_FAILURE)
 #define LENGTH(ARR) (sizeof(ARR)/sizeof(ARR[0]))
@@ -31,7 +35,8 @@ typedef union {
 } Arg;
 
 struct Client {
-	int x,y,w,h;
+	int x,y;
+	unsigned int w,h;
 	char name[256];
 	Window win;
 	bool floating;
@@ -84,6 +89,7 @@ static void restart(Arg const *);
 static void run(void);
 static void scan(void);
 static void setmfact(Arg const *);
+static void setnmaster(Arg const *);
 static void setup(void);
 static void shift(Arg const *);
 static void spawn(Arg const *);
@@ -125,15 +131,15 @@ static void (*handle[LASTEvent])(XEvent *) = {
 };
 
 /* variables */
-static char *appname;
-static Display *dpy;
-static bool running, restarting;
-static Window root;
-static int screen;
-static unsigned int sw, sh; /* screen dimensions */
-static Workspace *selws;
-static Workspace **workspaces;
-static unsigned int nws;
+static char *appname;            /* application name */
+static bool running, restarting; /* application state */
+static Display *dpy;             /* X display */
+static int screen;               /* screen */
+static unsigned int sw, sh;      /* screen dimensions */
+static Window root;              /* root window */
+static unsigned int nws;         /* number of workspaces */
+static Workspace **workspaces;   /* list of workspaces */
+static Workspace *selws;         /* selected workspace */
 
 /* configuration */
 #include "config.h"
@@ -186,7 +192,7 @@ clientmessage(XEvent *e)
 void
 configurenotify(XEvent *e)
 {
-	//debug("configurenotify(%d)", e->xconfigure.window);
+	debug("configurenotify(%d)", e->xconfigure.window);
 
 	unsigned int pos;
 	Workspace *ws;
@@ -222,14 +228,14 @@ configurerequest(XEvent *e)
 void
 createnotify(XEvent *e)
 {
-	debug("\033[32mcreatenotify(%d)\033[0m", e->xcreatewindow.window);
+	debug("createnotify(%d)", e->xcreatewindow.window);
 	/* TODO */
 }
 
 void
 destroynotify(XEvent *e)
 {
-	debug("\033[31mdestroynotify(%d)\033[0m", e->xdestroywindow.window);
+	debug("destroynotify(%d)", e->xdestroywindow.window);
 	/* TODO */
 }
 
@@ -294,13 +300,13 @@ grabkeys(void)
 void
 hide(Client *c)
 {
-	XMoveWindow(dpy, c->win, -2*c->w, c->y);
+	XMoveWindow(dpy, c->win, -c->w, c->y);
 }
 
 void
 keypress(XEvent *e)
 {
-	//debug("keypress()");
+	debug("keypress()");
 
 	unsigned int i;
 	KeySym keysym = XLookupKeysym(&e->xkey, 0);
@@ -316,7 +322,7 @@ keypress(XEvent *e)
 void
 keyrelease(XEvent *e)
 {
-	//debug("keyrelease(%d)", e->xkey.window);
+	debug("keyrelease(%d)", e->xkey.window);
 	/* TODO */
 }
 
@@ -375,7 +381,7 @@ manage(Window w)
 void
 mapnotify(XEvent *e)
 {
-	debug("\033[1;32mmapnotify(%d)\033[0m", e->xmap.window);
+	debug("mapnotify(%d)", e->xmap.window);
 
 	manage(e->xmap.window);
 }
@@ -469,7 +475,7 @@ run(void)
 	XEvent e;
 	running = true;
 	while (running && !XNextEvent(dpy, &e)) {
-		//debug("\033[1;30mrun(): e.type=%d\033[0m", e.type);
+		//debug("run(): e.type=%d", e.type);
 		if (handle[e.type]) {
 			handle[e.type](&e);
 		}
@@ -495,6 +501,16 @@ void
 setmfact(Arg const *arg)
 {
 	selws->mfact = MAX(0.1, MIN(0.9, selws->mfact+arg->f));
+	arrange();
+}
+
+void
+setnmaster(Arg const *arg)
+{
+	if (!selws->nmaster && arg->i < 0) {
+		return;
+	}
+	selws->nmaster = selws->nmaster+arg->i;
 	arrange();
 }
 
@@ -573,9 +589,8 @@ stdlog(FILE *f, char const *format, ...)
 void
 tile(void)
 {
-	debug("\033[34mtile()\033[0m");
-
-	int ncm, i, x, w, h;
+	unsigned int ncm, i, w, h;
+	int x;
 
 	if (!selws->nc) {
 		return;
@@ -583,28 +598,30 @@ tile(void)
 
 	/* draw master area */
 	ncm = MIN(selws->nmaster, selws->nc);
-	x = 0;
-	w = selws->nmaster >= selws->nc ? sw : selws->mfact*sw;
-	h = sh/ncm;
-	for (i = 0; i < ncm; i++) {
-		selws->clients[i]->x = x;
-		selws->clients[i]->y = i*h;
-		selws->clients[i]->w = w;
-		selws->clients[i]->h = h;
-		XMoveResizeWindow(dpy, selws->clients[i]->win,
-				selws->clients[i]->x, selws->clients[i]->y,
-				selws->clients[i]->w-2*borderwidth,
-				selws->clients[i]->h-2*borderwidth);
+	if (ncm) {
+		x = 0;
+		w = selws->nmaster >= selws->nc ? sw : selws->mfact*sw;
+		h = sh/ncm;
+		for (i = 0; i < ncm; i++) {
+			selws->clients[i]->x = x;
+			selws->clients[i]->y = i*h;
+			selws->clients[i]->w = w;
+			selws->clients[i]->h = h;
+			XMoveResizeWindow(dpy, selws->clients[i]->win,
+					selws->clients[i]->x, selws->clients[i]->y,
+					selws->clients[i]->w-2*borderwidth,
+					selws->clients[i]->h-2*borderwidth);
+		}
 	}
 	if (ncm == selws->nc) {
 		return;
 	}
 
 	/* draw stack area */
-	x = selws->mfact*sw;
-	w = sw-x;
+	x = ncm ? selws->mfact*sw : 0;
+	w = ncm ? sw-x : sw;
 	h = sh/(selws->nc-ncm);
-	for (; i < selws->nc; i++) {
+	for (i = ncm; i < selws->nc; i++) {
 		selws->clients[i]->x = x;
 		selws->clients[i]->y = (i-ncm)*h;
 		selws->clients[i]->w = w;
@@ -619,7 +636,7 @@ tile(void)
 void
 unmapnotify(XEvent *e)
 {
-	debug("\033[1;31munmapnotify(%d)\033[0m", e->xunmap.window);
+	debug("unmapnotify(%d)", e->xunmap.window);
 
 	unsigned int i;
 	Client *c;
@@ -641,15 +658,12 @@ unmapnotify(XEvent *e)
 
 	/* update layout if the client was removed from the current workspace */
 	if (ws == selws) {
-		debug("window removed from current workspace, rearranging");
 		arrange();
 		updatefocus();
 	}
 
 	/* remove the layout if the last client was removed */
 	if (!ws->nc) {
-		debug("removed last window from workspace [%d,%d], detaching",
-				ws->x, ws->y);
 		wsdetach(ws);
 	}
 }
@@ -753,8 +767,6 @@ wsfind(int x, int y, unsigned int *pos)
 bool
 wshasneighbour(int x, int y)
 {
-	debug("wshasneighbour(%d, %d)", x, y);
-
 	unsigned int i;
 	for (i = 0; i < nws; i++) {
 		if ((workspaces[i]->x == x-1 && workspaces[i]->y == y) ||
@@ -783,18 +795,16 @@ wsstep(Arg const *arg)
 	int x=selws->x, y=selws->y;
 
 	switch (arg->i) {
-		case WSSTEP_LEFT:  x = selws->x-1; debug("wsleft");  break;
-		case WSSTEP_RIGHT: x = selws->x+1; debug("wsright"); break;
-		case WSSTEP_UP:    y = selws->y-1; debug("wsup");    break;
-		case WSSTEP_DOWN:  y = selws->y+1; debug("wsdown");  break;
+		case WSSTEP_LEFT:  x = selws->x-1; break;
+		case WSSTEP_RIGHT: x = selws->x+1; break;
+		case WSSTEP_UP:    y = selws->y-1; break;
+		case WSSTEP_DOWN:  y = selws->y+1; break;
 	}
 
 	/* either the current, the next, or a neighbour workspace must exist */
 	next = wsfind(x, y, NULL);
 	if (next || selws->nc || wshasneighbour(x, y)) {
-		debug("%d, %d (dst) valid", x, y);
 		if (!next) {
-			debug("%d, %d (dst) empty, creating", x, y);
 			next = malloc(sizeof(Workspace));
 			if (!next) {
 				die("could not allocate %d bytes for workspace",
@@ -809,7 +819,6 @@ wsstep(Arg const *arg)
 		}
 		/* if leaving an empty workspace, destroy it */
 		if (!selws->nc) {
-			debug("%d, %d (src) empty, destroying", selws->x, selws->y);
 			free(selws);
 		} else {
 			wshide(selws);
@@ -826,12 +835,7 @@ xerror(Display *dpy, XErrorEvent *ee)
 	char es[256];
 
 	/* only display error on this error instead of crashing */
-	if (
-		(ee->error_code == BadWindow) ||
-		(ee->request_code == X_ChangeWindowAttributes && ee->error_code == BadMatch) ||
-		(ee->request_code == X_ConfigureWindow && ee->error_code == BadMatch) ||
-		(ee->request_code == X_SetInputFocus && ee->error_code == BadMatch)
-	) {
+	if (ee->error_code == BadWindow) {
 		XGetErrorText(dpy, ee->error_code, es, 256);
 		warn("%d: %s (after request %d)",
 				ee->error_code, es, ee->error_code);
