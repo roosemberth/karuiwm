@@ -1,17 +1,9 @@
 #!/bin/sh
+# Xinit script for starting stwm.
 
-[ -f ~/.Xresources ] && xrdb ~/.Xresources
+# check for custom startup actions:
+[ -f ./xinitrc.custom ] && . ./xinitrc.custom
 
-# AYEKAT FLAVOUR ---------------------------------------------------------------
-# Simplifies life for the developer.
-
-if [ $USER = 'ayekat' ]; then
-	setxkbmap -layout ch &
-	nitrogen --restore &
-	lcdadjust start &
-fi
-
-# ------------------------------------------------------------------------------
-
+# launch stwm:
 exec ./stwm
 

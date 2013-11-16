@@ -5,14 +5,6 @@ An attempt to build a minimalist tiling window manager with Xlib; inspired by
 and based on [dwm](http://dwm.suckless.org/).
 
 
-configure
----------
-
-<code>config.h</code> holds the configuration of stwm and gets included by
-<code>stwm.c</code> upon compilation. It defines look and behaviour related
-things and special keys.
-
-
 build
 -----
 
@@ -29,25 +21,38 @@ change) with stwm as the window manager:
 
 	make run
 
-Modify <code>xinitrc</code> to customise startup actions.
+Create a <code>xinitrc.custom</code> file to customise startup actions, like
+launching a systray or setting the keyboard layout.
 
 
-usage
------
+configure
+---------
 
-Applications:
+<code>config.h</code> holds the configuration of stwm and gets included by
+<code>stwm.c</code> upon compilation.
 
-* <code>Mod</code>+<code>n</code> launch xterm
-* <code>Mod</code>+<code>p</code> launch dmenu
+<code>config.def.h</code> holds the default configuration of stwm. When running
+<code>make</code>, this file will be used to generate a <code>config.h</code> if
+it doesn't exist yet. This protects your configuration from being overwritten by
+the default upon checking out the git repository.
 
-Windows:
+The default configuration specifies the following keys:
+
+**Applications**
+
+* <code>Mod</code>+<code>n</code>
+  launch xterm
+* <code>Mod</code>+<code>p</code>
+  launch dmenu
+
+**Windows**
 
 * <code>Mod</code>+<code>l</code>/<code>h</code>
   increase/decrease master area size
 * <code>Mod</code>+<code>j</code>/<code>k</code>
   set focus to next/previous client
 
-Layout:
+**Layout**
 
 * <code>Mod</code>+<code>j</code>/<code>k</code>
   swap client with next/previous client in the layout
@@ -56,20 +61,19 @@ Layout:
 * <code>Mod</code>+<code>Return</code>
   move selected client to master area
 
-Workspaces:
+**Workspaces**
 
 * <code>Mod</code>+<code>h</code>/<code>j</code>/<code>k</code>/<code>l</code>
   switch to left/below/above/right workspace
 
-Session:
+**Session**
 
 * <code>Mod</code>+<code>q</code>
   restart stwm
 * <code>Mod</code>+<code>Shift</code>+<code>q</code>
   quit stwm
 
-The <code>Mod</code> key is set to Mod1 (Alt). Note that these are just the
-default settings; key combinations can be modified in <code>config.h</code>.
+The <code>Mod</code> key is set to Mod1 (Alt).
 
 
 workspaces
@@ -93,7 +97,6 @@ adjacent persistent workspace, for example:
 	             +---+                           +   +
 	X = focus    |   | = persistent workspace          = temporary workspace
 	             +---+                           +   +
-	
 	
 	+---+                         +---+   +
 	| X |      ====moveright===>  |   | X      OK, move to temporary workspace
