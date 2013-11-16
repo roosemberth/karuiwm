@@ -25,22 +25,19 @@
 #define WSSTEP_UP    (1<<2)
 #define WSSTEP_DOWN  (1<<3)
 
-typedef struct Client Client;
-typedef struct Workspace Workspace;
-
 typedef union {
 	int i;
 	float f;
 	const void *v;
 } Arg;
 
-struct Client {
+typedef struct {
 	int x,y;
 	unsigned int w,h;
 	char name[256];
 	Window win;
 	bool floating;
-};
+} Client;
 
 typedef struct {
 	unsigned int mod;
@@ -49,17 +46,18 @@ typedef struct {
 	Arg const arg;
 } Key;
 
-struct Workspace {
+typedef struct {
 	Client **clients, **stack;
 	Client *selcli;
 	unsigned int nc,ns;
 	unsigned int nmaster;
 	float mfact;
 	int x,y;
-};
+} Workspace;
 
 /* functions */
 static void arrange(void);
+static void attach(Window);
 static void buttonpress(XEvent *);
 static void buttonrelease(XEvent *);
 static void cleanup(void);
@@ -76,7 +74,6 @@ static void hide(Client *);
 static void keypress(XEvent *);
 static void keyrelease(XEvent *);
 static void killclient(Arg const *);
-static void manage(Window);
 static void mapnotify(XEvent *);
 static void mappingnotify(XEvent *);
 static void maprequest(XEvent *);
@@ -98,12 +95,12 @@ static void tile(void);
 static void unmapnotify(XEvent *);
 static void updatefocus(void);
 static bool wintoclient(Workspace **, Client **, unsigned int *, Window);
-static void wsattach(Workspace *);
-static void wsdetach(Workspace *);
-static Workspace *wsfind(int, int, unsigned int *);
-static bool wshasneighbour(int, int);
-static void wshide(Workspace *);
-static void wsstep(Arg const *);
+static void ws_attach(Workspace *);
+static void ws_detach(Workspace *);
+static Workspace *ws_find(int, int, unsigned int *);
+static bool ws_hasneighbour(int, int);
+static void ws_hide(Workspace *);
+static void ws_step(Arg const *);
 static int xerror(Display *, XErrorEvent *);
 static int (*xerrorxlib)(Display *, XErrorEvent *);
 static void zoom(Arg const *);
@@ -157,6 +154,51 @@ arrange(void)
 	for (i = 0; i < selws->nc; i++) {
 		XSelectInput(dpy, selws->clients[i]->win, EnterWindowMask);
 	}
+}
+
+void
+attach(Window w)
+{
+	Client *c;
+	XWindowAttributes wa;
+
+	/* don't manage junk windows */
+	if (!XGetWindowAttributes(dpy, w, &wa)) {
+		warn("XGetWindowAttributes() failed for window %d", w);
+		return;
+	}
+	if (wa.override_redirect || wa.map_state != IsViewable) {
+		return;
+	}
+
+	/* create client */
+	c = malloc(sizeof(Client));
+	if (!c) {
+		die("could not allocate new client (%d bytes)", sizeof(Client));
+	}
+
+	/* attach workspace if this is the first client */
+	if (!selws->nc) {
+		ws_attach(selws);
+	}
+
+	/* add to list */
+	selws->clients = realloc(selws->clients, ++selws->nc*sizeof(Client *));
+	if (!selws->clients) {
+		die("could not allocate %d bytes for client list",
+				selws->nc*sizeof(Client *));
+	}
+	selws->clients[selws->nc-1] = c;
+
+	/* configure */
+	c->win = w;
+	XSelectInput(dpy, c->win, EnterWindowMask);
+	XSetWindowBorderWidth(dpy, c->win, borderwidth);
+
+	/* update layout */
+	arrange();
+	push(selws, c);
+	updatefocus();
 }
 
 void
@@ -334,56 +376,11 @@ killclient(Arg const *arg)
 }
 
 void
-manage(Window w)
-{
-	Client *c;
-	XWindowAttributes wa;
-
-	/* don't manage junk windows */
-	if (!XGetWindowAttributes(dpy, w, &wa)) {
-		warn("XGetWindowAttributes() failed for window %d", w);
-		return;
-	}
-	if (wa.override_redirect || wa.map_state != IsViewable) {
-		return;
-	}
-
-	/* create client */
-	c = malloc(sizeof(Client));
-	if (!c) {
-		die("could not allocate new client (%d bytes)", sizeof(Client));
-	}
-
-	/* attach workspace if this is the first client */
-	if (!selws->nc) {
-		wsattach(selws);
-	}
-
-	/* add to list */
-	selws->clients = realloc(selws->clients, ++selws->nc*sizeof(Client *));
-	if (!selws->clients) {
-		die("could not allocate %d bytes for client list",
-				selws->nc*sizeof(Client *));
-	}
-	selws->clients[selws->nc-1] = c;
-
-	/* configure */
-	c->win = w;
-	XSelectInput(dpy, c->win, EnterWindowMask);
-	XSetWindowBorderWidth(dpy, c->win, borderwidth);
-
-	/* update layout */
-	arrange();
-	push(selws, c);
-	updatefocus();
-}
-
-void
 mapnotify(XEvent *e)
 {
 	debug("mapnotify(%d)", e->xmap.window);
 
-	manage(e->xmap.window);
+	attach(e->xmap.window);
 }
 
 void
@@ -493,7 +490,7 @@ scan(void)
 		return;
 	}
 	for (i = 0; i < nwins; i++) {
-		manage(wins[i]); /* manage() will do the necessary checks */
+		attach(wins[i]); /* manage() will do the necessary checks */
 	}
 }
 
@@ -664,7 +661,7 @@ unmapnotify(XEvent *e)
 
 	/* remove the layout if the last client was removed */
 	if (!ws->nc) {
-		wsdetach(ws);
+		ws_detach(ws);
 	}
 }
 
@@ -717,7 +714,7 @@ wintoclient(Workspace **ws, Client **c, unsigned int *pos, Window w)
 }
 
 void
-wsattach(Workspace *ws)
+ws_attach(Workspace *ws)
 {
 	workspaces = realloc(workspaces, ++nws*sizeof(Workspace *));
 	if (!workspaces) {
@@ -728,11 +725,11 @@ wsattach(Workspace *ws)
 }
 
 void
-wsdetach(Workspace *ws)
+ws_detach(Workspace *ws)
 {
 	unsigned int i;
 
-	ws = wsfind(ws->x, ws->y, &i);
+	ws = ws_find(ws->x, ws->y, &i);
 	if (!ws) {
 		warn("attempt to detach non-existing workspace");
 		return;
@@ -750,7 +747,7 @@ wsdetach(Workspace *ws)
 }
 
 Workspace *
-wsfind(int x, int y, unsigned int *pos)
+ws_find(int x, int y, unsigned int *pos)
 {
 	unsigned int i;
 	for (i = 0; i < nws; i++) {
@@ -765,7 +762,7 @@ wsfind(int x, int y, unsigned int *pos)
 }
 
 bool
-wshasneighbour(int x, int y)
+ws_hasneighbour(int x, int y)
 {
 	unsigned int i;
 	for (i = 0; i < nws; i++) {
@@ -780,7 +777,7 @@ wshasneighbour(int x, int y)
 }
 
 void
-wshide(Workspace *ws)
+ws_hide(Workspace *ws)
 {
 	unsigned int i;
 	for (i = 0; i < ws->nc; i++) {
@@ -789,7 +786,7 @@ wshide(Workspace *ws)
 }
 
 void
-wsstep(Arg const *arg)
+ws_step(Arg const *arg)
 {
 	Workspace *next;
 	int x=selws->x, y=selws->y;
@@ -802,8 +799,8 @@ wsstep(Arg const *arg)
 	}
 
 	/* either the current, the next, or a neighbour workspace must exist */
-	next = wsfind(x, y, NULL);
-	if (next || selws->nc || wshasneighbour(x, y)) {
+	next = ws_find(x, y, NULL);
+	if (next || selws->nc || ws_hasneighbour(x, y)) {
 		if (!next) {
 			next = malloc(sizeof(Workspace));
 			if (!next) {
@@ -821,7 +818,7 @@ wsstep(Arg const *arg)
 		if (!selws->nc) {
 			free(selws);
 		} else {
-			wshide(selws);
+			ws_hide(selws);
 		}
 		selws = next;
 		arrange();
