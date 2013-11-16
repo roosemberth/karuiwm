@@ -1,5 +1,6 @@
 /* stwm configuration */
 
+static char const *font = "-misc-fixed-medium-r-semicondensed--13-100-100-100-c-60-iso8859-1";
 static unsigned int nmaster = 1; /* number of windows in the master area */
 static float mfact = 0.5;        /* size of master area */
 

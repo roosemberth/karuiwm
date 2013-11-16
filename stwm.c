@@ -7,9 +7,10 @@
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
 #include <X11/Xproto.h>
+#include <X11/cursorfont.h>
 
 /* macros */
-//#define DEBUG  /* enable for debug output */
+#define DEBUG  /* enable for debug output */
 #ifdef DEBUG
 #define debug(...) stdlog(stdout, "\033[34mDBG\033[0m "__VA_ARGS__)
 #else
@@ -25,6 +26,12 @@
 #define WSSTEP_UP    (1<<2)
 #define WSSTEP_DOWN  (1<<3)
 
+/* enums */
+
+enum { CURSOR_NORMAL, CURSOR_RESIZE, CURSOR_MOVE, CURSOR_LAST };
+
+/* structs */
+
 typedef union {
 	int i;
 	float f;
@@ -32,12 +39,21 @@ typedef union {
 } Arg;
 
 typedef struct {
-	int x,y;
-	unsigned int w,h;
+	int x, y;
+	unsigned int w, h;
 	char name[256];
 	Window win;
 	bool floating;
 } Client;
+
+typedef struct {
+	GC gc;
+	struct {
+		int ascent, descent, height;
+		XFontSet xfontset;
+		XFontStruct *xfontstruct;
+	} font;
+} Graphical;
 
 typedef struct {
 	unsigned int mod;
@@ -49,10 +65,10 @@ typedef struct {
 typedef struct {
 	Client **clients, **stack;
 	Client *selcli;
-	unsigned int nc,ns;
+	unsigned int nc, ns;
 	unsigned int nmaster;
 	float mfact;
-	int x,y;
+	int x, y;
 } Workspace;
 
 /* functions */
@@ -70,6 +86,8 @@ static void enternotify(XEvent *);
 static void expose(XEvent *);
 static void focusin(XEvent *);
 static void focusstep(Arg const *);
+static void grabbuttons(void);
+static void grabkeys(void);
 static void hide(Client *);
 static void keypress(XEvent *);
 static void keyrelease(XEvent *);
@@ -93,6 +111,7 @@ static void spawn(Arg const *);
 static void stdlog(FILE *, char const *, ...);
 static void tile(void);
 static void unmapnotify(XEvent *);
+static void updatebar(void);
 static void updatefocus(void);
 static bool wintoclient(Workspace **, Client **, unsigned int *, Window);
 static void ws_attach(Workspace *);
@@ -128,15 +147,19 @@ static void (*handle[LASTEvent])(XEvent *) = {
 };
 
 /* variables */
-static char *appname;            /* application name */
-static bool running, restarting; /* application state */
-static Display *dpy;             /* X display */
-static int screen;               /* screen */
-static unsigned int sw, sh;      /* screen dimensions */
-static Window root;              /* root window */
-static unsigned int nws;         /* number of workspaces */
-static Workspace **workspaces;   /* list of workspaces */
-static Workspace *selws;         /* selected workspace */
+static char *appname;              /* application name */
+static bool running, restarting;   /* application state */
+static Display *dpy;               /* X display */
+static int screen;                 /* screen */
+static unsigned int sw, sh;        /* screen dimensions */
+static Window root;                /* root window */
+static unsigned int nws;           /* number of workspaces */
+static Workspace **workspaces;     /* list of workspaces */
+static Workspace *selws;           /* selected workspace */
+static Cursor cursor[CURSOR_LAST]; /* cursors */
+
+static Window barwin;              /* status bar window */
+static Graphical graphical;        /* holds all graphic informations */
 
 /* configuration */
 #include "config.h"
@@ -304,7 +327,11 @@ void
 expose(XEvent *e)
 {
 	debug("expose(%d)", e->xexpose.window);
-	/* TODO */
+
+	if (e->xexpose.window == barwin) {
+		debug("status bar window exposed, updating");
+		updatebar();
+	}
 }
 
 void
@@ -325,6 +352,12 @@ focusstep(Arg const *arg)
 	wintoclient(NULL, NULL, &pos, selws->selcli->win);
 	push(selws, selws->clients[(pos+selws->nc+arg->i)%selws->nc]);
 	updatefocus();
+}
+
+void
+grabbuttons(void)
+{
+	/* TODO */
 }
 
 void
@@ -514,13 +547,43 @@ setnmaster(Arg const *arg)
 void
 setup(void)
 {
+	XSetWindowAttributes wa;
+	char **missing;
+	int nmissing;
+
 	screen = DefaultScreen(dpy);
 	root = RootWindow(dpy, screen);
 	sw = DisplayWidth(dpy, screen);
 	sh = DisplayHeight(dpy, screen);
-	XSelectInput(dpy, root, SubstructureNotifyMask|KeyPressMask);
 	xerrorxlib = XSetErrorHandler(xerror);
+
+	/* input */
+	cursor[CURSOR_NORMAL] = XCreateFontCursor(dpy, XC_left_ptr);
+	cursor[CURSOR_RESIZE] = XCreateFontCursor(dpy, XC_sizing);
+	cursor[CURSOR_MOVE] = XCreateFontCursor(dpy, XC_fleur);
+	wa.cursor = cursor[CURSOR_NORMAL];
+	wa.event_mask = SubstructureNotifyMask|KeyPressMask;
+	XChangeWindowAttributes(dpy, root, CWEventMask|CWCursor, &wa);
+	grabbuttons();
 	grabkeys();
+
+	/* font */
+	XCreateFontSet(dpy, font, &missing, &nmissing, NULL);
+	if (missing) {
+		while (nmissing) {
+			warn("missing fontset: %s", missing[--nmissing]);
+		}
+		XFreeStringList(missing);
+	}
+	if(!(graphical.font.xfontstruct = XLoadQueryFont(dpy, font)) &&
+			!(graphical.font.xfontstruct = XLoadQueryFont(dpy, "fixed"))) {
+		die("error, cannot load font: '%s'", font);
+	}
+	graphical.font.ascent = graphical.font.xfontstruct->ascent;
+	graphical.font.descent = graphical.font.xfontstruct->descent;
+	graphical.font.height = graphical.font.ascent + graphical.font.descent;
+
+	/* workspace */
 	selws = malloc(sizeof(Workspace));
 	if (!selws) {
 		die("could not allocate %d bytes for workspace", sizeof(Workspace));
@@ -530,6 +593,16 @@ setup(void)
 	selws->x = selws->y = 0;
 	selws->nmaster = nmaster;
 	selws->mfact = mfact;
+
+	/* status bar */
+	wa.override_redirect = true;
+	wa.background_pixmap = ParentRelative;
+	wa.event_mask = ExposureMask;
+	barwin = XCreateWindow(dpy, root, 0, 0, sw, 15, 0,
+			DefaultDepth(dpy, screen), CopyFromParent,
+			DefaultVisual(dpy, screen),
+			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
+	XMapRaised(dpy, barwin);
 }
 
 void
@@ -663,6 +736,25 @@ unmapnotify(XEvent *e)
 	if (!ws->nc) {
 		ws_detach(ws);
 	}
+}
+
+void
+updatebar(void)
+{
+	Drawable drawable;
+	GC gc;
+
+	/* draw to temporary pixmap, then copy to status bar window */
+	gc = XCreateGC(dpy, root, 0, NULL);
+	drawable = XCreatePixmap(dpy, root, sw, 15, DefaultDepth(dpy, screen));
+	XSetForeground(dpy, gc, cbordernorm);
+	XFillRectangle(dpy, drawable, gc, 0, 0, sw, 15);
+	XSetForeground(dpy, gc, cbordersel);
+	XDrawString(dpy, drawable, gc, 0, 13, "stwm", 4);
+	XCopyArea(dpy, drawable, barwin, gc, 0, 0, sw, 15, 0, 0);
+	XFreePixmap(dpy, drawable);
+	XFreeGC(dpy, gc);
+	XSync(dpy, false);
 }
 
 void
