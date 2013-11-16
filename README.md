@@ -31,35 +31,43 @@ change) with stwm as window manager and an open xterm window:
 
 If you want to open other applications at startup, modify <code>xinitrc</code>.
 
-In case you've got Xephyr installed and want to run stwm inside Xephyr:
-
-	make xephyr
-
 
 usage
 -----
 
 Applications:
+
 * <code>Mod</code>+<code>n</code> launch xterm
 * <code>Mod</code>+<code>p</code> launch dmenu
 
 Windows:
-* <code>Mod</code>+<code>l|h</code> increase/decrease master area size
-* <code>Mod</code>+<code>j|k</code> set focus to next/previous window
+
+* <code>Mod</code>+<code>l</code>/<code>h</code>
+  increase/decrease master area size
+* <code>Mod</code>+<code>j</code>/<code>k</code>
+  set focus to next/previous window
 
 Layout:
-* <code>Mod</code>+<code>Return</code> move selected window to master area
+
+* <code>Mod</code>+<code>j</code>/<code>k</code>
+  swap client with next/previous client in the layout
+* <code>Mod</code>+<code>,</code>/<code>.</code>
+  increase/decrease number of clients in the master area
+* <code>Mod</code>+<code>Return</code>
+  move selected client to master area
 
 Workspaces:
-* <code>Mod</code>+<code>h|j|k|l</code> move view to adjacent workspace
+* <code>Mod</code>+<code>h<code>/<code>j</code>/<code>k</code>/<code>l</code>
+  switch to left/below/above/right workspace
 
 Session:
-* <code>Mod</code>+<code>q</code> restart stwm
-* <code>Mod</code>+<code>Shift</code>+<code>q</code> quit stwm
+* <code>Mod</code>+<code>q</code>
+  restart stwm
+* <code>Mod</code>+<code>Shift</code>+<code>q</code>
+  quit stwm
 
-The <code>Mod</code> key is set to Mod4 (*Windows* key). Note that these are
-just the default settings; key combinations can be modified in
-<code>config.h</code>.
+The <code>Mod</code> key is set to Mod1 (Alt). Note that these are just the
+default settings; key combinations can be modified in <code>config.h</code>.
 
 
 workspaces
