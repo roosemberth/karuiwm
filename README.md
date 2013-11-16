@@ -25,11 +25,11 @@ run
 ---
 
 This will launch a new X session on display **:1** (modify the Makefile to
-change) with stwm as window manager and an open xterm window:
+change) with stwm as the window manager:
 
 	make run
 
-If you want to open other applications at startup, modify <code>xinitrc</code>.
+Modify <code>xinitrc</code> to customise startup actions.
 
 
 usage
@@ -45,7 +45,7 @@ Windows:
 * <code>Mod</code>+<code>l</code>/<code>h</code>
   increase/decrease master area size
 * <code>Mod</code>+<code>j</code>/<code>k</code>
-  set focus to next/previous window
+  set focus to next/previous client
 
 Layout:
 
@@ -57,10 +57,12 @@ Layout:
   move selected client to master area
 
 Workspaces:
-* <code>Mod</code>+<code>h<code>/<code>j</code>/<code>k</code>/<code>l</code>
+
+* <code>Mod</code>+<code>h</code>/<code>j</code>/<code>k</code>/<code>l</code>
   switch to left/below/above/right workspace
 
 Session:
+
 * <code>Mod</code>+<code>q</code>
   restart stwm
 * <code>Mod</code>+<code>Shift</code>+<code>q</code>
@@ -75,15 +77,15 @@ workspaces
 
 Workspaces in stwm are arranged in a two-dimensional grid, and they are created
 and destroyed dynamically. A workspace may either be considered *persistent* (if
-there is at least one window placed in it) or *temporary* (if the workspace is
+there is at least one client placed in it) or *temporary* (if the workspace is
 empty).
 
 If a persistent workspace is left, it gets destroyed, whereas a persistent
 workspace remains (as the name suggests).
 
-Once a window is placed inside a temporary workspace, it is automatically turned
+Once a client is placed inside a temporary workspace, it is automatically turned
 into a persistent workspace; the same way a persistent workspace is
-automatically turned into a temporary one once its last window is removed.
+automatically turned into a temporary one once its last client is removed.
 
 It is possible to move to a temporary workspace as long as there is at least one
 adjacent persistent workspace, for example:
@@ -102,6 +104,6 @@ adjacent persistent workspace, for example:
 	+---+   +                     +---+   +
 	
 	+---+   +                     +---+---+
-	|   | X    ==createwindow==>  |   | X |    OK, make workspace persistent
+	|   | X    ==createclient==>  |   | X |    OK, make workspace persistent
 	+---+   +                     +---+---+
 
