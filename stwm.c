@@ -4,13 +4,14 @@
 #include <stdbool.h>
 #include <stdarg.h>
 #include <time.h>
+#include <string.h>
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
 #include <X11/Xproto.h>
 #include <X11/cursorfont.h>
 
 /* macros */
-//#define DEBUG  /* enable for debug output */
+#define DEBUG  /* enable for debug output */
 #ifdef DEBUG
 #define debug(...) stdlog(stdout, "\033[34mDBG\033[0m "__VA_ARGS__)
 #else
@@ -52,7 +53,7 @@ typedef struct {
 		int ascent, descent, height;
 		XFontStruct *xfontstruct;
 	} font;
-} Graphical;
+} DC;
 
 typedef struct {
 	unsigned int mod;
@@ -67,6 +68,7 @@ typedef struct {
 	unsigned int nc, ns;
 	unsigned int nmaster;
 	float mfact;
+	char tag[256];
 	int x, y;
 } Workspace;
 
@@ -90,7 +92,7 @@ static void grabkeys(void);
 static void hide(Client *);
 static void init(void);
 static void initbar(void);
-static void initfont(void);
+static void initdrawcontext(void);
 static void keypress(XEvent *);
 static void keyrelease(XEvent *);
 static void killclient(Arg const *);
@@ -160,9 +162,8 @@ static unsigned int nws;            /* number of workspaces */
 static Workspace **workspaces;      /* list of workspaces */
 static Workspace *selws;            /* selected workspace */
 static unsigned int wx, wy, ww, wh; /* workspace dimensions */
-static Graphical graphical;         /* holds all graphic informations */
-
-static Cursor cursor[CURSOR_LAST]; /* cursors */
+static DC dc;                       /* drawing context */
+static Cursor cursor[CURSOR_LAST];  /* cursors */
 
 /* configuration */
 #include "config.h"
@@ -248,6 +249,7 @@ cleanup(void)
 	for (i = 0; i < selws->nc; i++) {
 		free(selws->clients[i]);
 	}
+	XFreeGC(dpy, dc.gc);
 }
 
 void
@@ -403,7 +405,7 @@ init(void)
 	grabbuttons();
 	grabkeys();
 
-	/* workspace */
+	/* workspace (TODO duplication) */
 	selws = malloc(sizeof(Workspace));
 	if (!selws) {
 		die("could not allocate %d bytes for workspace", sizeof(Workspace));
@@ -413,9 +415,10 @@ init(void)
 	selws->x = selws->y = 0;
 	selws->nmaster = nmaster;
 	selws->mfact = mfact;
+	selws->tag[0] = 0;
 
 	/* status bar */
-	initfont();
+	initdrawcontext();
 	initbar();
 }
 
@@ -426,7 +429,7 @@ initbar(void)
 
 	bx = 0;
 	by = 0; /* TODO allow bar to be at bottom */
-	bh = graphical.font.height + 2;
+	bh = dc.font.height + 2;
 	bw = sw;
 	wx = 0;
 	wy = bh;
@@ -441,18 +444,20 @@ initbar(void)
 			DefaultVisual(dpy, screen),
 			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
 	XMapRaised(dpy, barwin); /* TODO find out what this exactly does */
+	updatebar();
 }
 
 void
-initfont(void)
+initdrawcontext(void)
 {
-	graphical.font.xfontstruct = XLoadQueryFont(dpy, font);
-	if (!graphical.font.xfontstruct) {
+	dc.gc = XCreateGC(dpy, root, 0, NULL);
+	dc.font.xfontstruct = XLoadQueryFont(dpy, font);
+	if (!dc.font.xfontstruct) {
 		die("cannot load font '%s'", font);
 	}
-	graphical.font.ascent = graphical.font.xfontstruct->ascent;
-	graphical.font.descent = graphical.font.xfontstruct->descent;
-	graphical.font.height = graphical.font.ascent + graphical.font.descent;
+	dc.font.ascent = dc.font.xfontstruct->ascent;
+	dc.font.descent = dc.font.xfontstruct->descent;
+	dc.font.height = dc.font.ascent + dc.font.descent;
 }
 
 void
@@ -757,19 +762,16 @@ unmapnotify(XEvent *e)
 void
 updatebar(void)
 {
-	Drawable drawable;
-	GC gc;
+	if (!strlen(selws->tag)) {
+		snprintf(selws->tag, 255, "[%d|%d]", selws->x, selws->y);
+		selws->tag[255] = 0;
+	}
 
-	/* draw to temporary pixmap, then copy to status bar window */
-	gc = XCreateGC(dpy, root, 0, NULL);
-	drawable = XCreatePixmap(dpy, root, bw, bh, DefaultDepth(dpy, screen));
-	XSetForeground(dpy, gc, cbordernorm);
-	XFillRectangle(dpy, drawable, gc, 0, 0, bw, bh);
-	XSetForeground(dpy, gc, cbordersel);
-	XDrawString(dpy, drawable, gc, 0, graphical.font.ascent+1, " stwm", 5);
-	XCopyArea(dpy, drawable, barwin, gc, 0, 0, bw, bh, bx, by);
-	XFreePixmap(dpy, drawable);
-	XFreeGC(dpy, gc);
+	XSetForeground(dpy, dc.gc, cbordernorm);
+	XFillRectangle(dpy, barwin, dc.gc, 0, 0, bw, bh);
+	XSetForeground(dpy, dc.gc, cbordersel);
+	XDrawString(dpy, barwin, dc.gc, 0, dc.font.ascent+1,
+			selws->tag, strlen(selws->tag));
 	XSync(dpy, false);
 }
 
@@ -906,31 +908,34 @@ ws_step(Arg const *arg)
 		case WSSTEP_DOWN:  y = selws->y+1; break;
 	}
 
-	/* either the current, the next, or a neighbour workspace must exist */
-	next = ws_find(x, y, NULL);
-	if (next || selws->nc || ws_hasneighbour(x, y)) {
-		if (!next) {
-			next = malloc(sizeof(Workspace));
-			if (!next) {
-				die("could not allocate %d bytes for workspace",
-						sizeof(Workspace));
+	if ((next = ws_find(x, y, NULL)) || selws->nc || ws_hasneighbour(x, y)) {
+		if (next) {
+			if (!selws->nc) {
+				free(selws);
+			} else {
+				ws_hide(selws);
 			}
-			next->x = x;
-			next->y = y;
-			next->clients = next->stack = NULL;
-			next->nc = next->ns = 0;
-			next->mfact = mfact;
-			next->nmaster = nmaster;
-		}
-		/* if leaving an empty workspace, destroy it */
-		if (!selws->nc) {
-			free(selws);
+			selws = next;
 		} else {
-			ws_hide(selws);
+			if (selws->nc) {
+				ws_hide(selws);
+				selws = malloc(sizeof(Workspace));
+				if (!selws) {
+					die("could not allocate %d bytes for workspace",
+							sizeof(Workspace));
+				}
+			}
+			selws->clients = selws->stack = NULL;
+			selws->nc = selws->ns = 0;
+			selws->x = x;
+			selws->y = y;
+			selws->mfact = mfact;
+			selws->nmaster = nmaster;
+			selws->tag[0] = 0;
 		}
-		selws = next;
 		arrange();
 		updatefocus();
+		updatebar();
 	}
 }
 
