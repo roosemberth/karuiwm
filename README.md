@@ -63,6 +63,8 @@ The default configuration specifies the following keys:
 
 **Workspaces**
 
+* <code>Mod</code>+<code>Space</code>
+  toggle workspace dialog
 * <code>Mod</code>+<code>h</code>/<code>j</code>/<code>k</code>/<code>l</code>
   switch to left/below/above/right workspace
 
@@ -88,25 +90,7 @@ The change from persistent to temporary (or vice versa) happens automatically
 upon removing the last client (or placing the first client); manual control of
 workspace creation/destruction might get added in the future.
 
-It is possible to switch to a temporary workspace as long as there is at least
-one adjacent persistent workspace, for example:
-
-	             +---+                           +   +
-	X = focus    |   | = persistent workspace          = temporary workspace
-	             +---+                           +   +
-	
-	+---+                         +---+   +
-	| X |      ===switchright==>  |   | X      OK, move view to temporary workspace
-	+---+                         +---+   +
-	
-	+---+   +                     +---+   +
-	|   | X    ===switchright==>  |   | X      not OK, keep view at current workspace
-	+---+   +                     +---+   +
-	
-	+---+   +                     +---+---+
-	|   | X    ==createclient==>  |   | X |    OK, make workspace persistent
-	+---+   +                     +---+---+
-
-Remember that this works in two dimensions. The status bar displays the current
-position on the "workspace-map".
+The status bar displays the current position on the "workspace-map"; for a
+graphical representation there is the workspace dialog (see above for the
+keycode).
 
