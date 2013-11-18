@@ -1001,7 +1001,9 @@ main(int argc, char **argv)
 	stdlog(stdout, "starting ...");
 	init();
 	scan();
+	custom_startup();
 	run();
+	custom_shutdown();
 	cleanup();
 	XCloseDisplay(dpy);
 	stdlog(stdout, "shutting down ...");
