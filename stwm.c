@@ -11,7 +11,7 @@
 #include <X11/cursorfont.h>
 
 /* macros */
-#define DEBUG  /* enable for debug output */
+//#define DEBUG  /* enable for debug output */
 #ifdef DEBUG
 #define debug(...) stdlog(stdout, "\033[34mDBG\033[0m "__VA_ARGS__)
 #else
@@ -22,14 +22,11 @@
 #define LENGTH(ARR) (sizeof(ARR)/sizeof(ARR[0]))
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
 #define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
-#define WSSTEP_LEFT  (1<<0)
-#define WSSTEP_RIGHT (1<<1)
-#define WSSTEP_UP    (1<<2)
-#define WSSTEP_DOWN  (1<<3)
 
 /* enums */
 
 enum { CURSOR_NORMAL, CURSOR_RESIZE, CURSOR_MOVE, CURSOR_LAST };
+typedef enum { WSSTEP_LEFT, WSSTEP_RIGHT, WSSTEP_UP, WSSTEP_DOWN } WSStepDirection;
 
 /* structs */
 
@@ -68,9 +65,23 @@ typedef struct {
 	unsigned int nc, ns;
 	unsigned int nmaster;
 	float mfact;
-	char tag[256];
+	char name[256];
 	int x, y;
 } Workspace;
+
+typedef struct WorkspaceDialogBox WorkspaceDialogBox;
+typedef struct {
+	WorkspaceDialogBox *boxes;
+	int nb;
+	int w, h;
+	int rows, cols, rad;
+	bool shown;
+} WorkspaceDialog;
+
+struct WorkspaceDialogBox {
+	Window win;
+	bool shown;
+};
 
 /* functions */
 static void arrange(void);
@@ -118,11 +129,13 @@ static void updatebar(void);
 static void updatefocus(void);
 static bool wintoclient(Workspace **, Client **, unsigned int *, Window);
 static void ws_attach(Workspace *);
+static void ws_baptise(Workspace *);
 static void ws_detach(Workspace *);
-static Workspace *ws_find(int, int, unsigned int *);
-static bool ws_hasneighbour(int, int);
+static void ws_find(Workspace **, unsigned int *, int, int);
 static void ws_hide(Workspace *);
 static void ws_step(Arg const *);
+static void wsd_toggle(Arg const *);
+static void wsd_update(void);
 static int xerror(Display *, XErrorEvent *);
 static int (*xerrorxlib)(Display *, XErrorEvent *);
 static void zoom(Arg const *);
@@ -164,6 +177,7 @@ static Workspace *selws;            /* selected workspace */
 static unsigned int wx, wy, ww, wh; /* workspace dimensions */
 static DC dc;                       /* drawing context */
 static Cursor cursor[CURSOR_LAST];  /* cursors */
+static WorkspaceDialog wsd;         /* workspace dialog */
 
 /* configuration */
 #include "config.h"
@@ -222,10 +236,13 @@ attach(Window w)
 	XSelectInput(dpy, c->win, EnterWindowMask);
 	XSetWindowBorderWidth(dpy, c->win, borderwidth);
 
-	/* update layout */
+	/* update layout and focus */
 	arrange();
 	push(selws, c);
 	updatefocus();
+
+	/* update workspace dialog if present */
+	wsd_update();
 }
 
 void
@@ -249,6 +266,7 @@ cleanup(void)
 	for (i = 0; i < selws->nc; i++) {
 		free(selws->clients[i]);
 	}
+	free(selws);
 	XFreeGC(dpy, dc.gc);
 }
 
@@ -415,11 +433,21 @@ init(void)
 	selws->x = selws->y = 0;
 	selws->nmaster = nmaster;
 	selws->mfact = mfact;
-	selws->tag[0] = 0;
+	selws->name[0] = 0;
 
 	/* status bar */
 	initdrawcontext();
 	initbar();
+
+	/* workspace dialog */
+	wsd.rad = wsdradius;
+	wsd.rows = 2*wsd.rad+1;
+	wsd.cols = 2*wsd.rad+1;
+	wsd.w = ww/wsd.cols;
+	wsd.h = wh/wsd.rows;
+	wsd.nb = wsd.rows*wsd.cols;
+	wsd.boxes = calloc(wsd.nb, sizeof(WorkspaceDialogBox));
+	wsd.shown = false;
 }
 
 void
@@ -469,7 +497,7 @@ keypress(XEvent *e)
 	KeySym keysym = XLookupKeysym(&e->xkey, 0);
 
 	for (i = 0; i < LENGTH(keys); i++) {
-		if (keys[i].mod == e->xkey.state && keys[i].key == keysym &&
+		if (e->xkey.state == keys[i].mod && keysym == keys[i].key &&
 				keys[i].func) {
 			keys[i].func(&keys[i].arg);
 		}
@@ -479,8 +507,7 @@ keypress(XEvent *e)
 void
 keyrelease(XEvent *e)
 {
-	debug("keyrelease(%d)", e->xkey.window);
-	/* TODO */
+	debug("keyrelease()");
 }
 
 void
@@ -757,21 +784,26 @@ unmapnotify(XEvent *e)
 	if (!ws->nc) {
 		ws_detach(ws);
 	}
+
+	/* update workspace dialog if present */
+	wsd_update();
 }
 
 void
 updatebar(void)
 {
-	if (!strlen(selws->tag)) {
-		snprintf(selws->tag, 255, "[%d|%d]", selws->x, selws->y);
-		selws->tag[255] = 0;
+	char name[256];
+	if (strlen(selws->name)) {
+		strncpy(name, selws->name, 256);
+	} else {
+		snprintf(name, 256, "[%d|%d]", selws->x, selws->y);
 	}
+	name[255] = 0;
 
 	XSetForeground(dpy, dc.gc, cbordernorm);
 	XFillRectangle(dpy, barwin, dc.gc, 0, 0, bw, bh);
 	XSetForeground(dpy, dc.gc, cbordersel);
-	XDrawString(dpy, barwin, dc.gc, 0, dc.font.ascent+1,
-			selws->tag, strlen(selws->tag));
+	XDrawString(dpy, barwin, dc.gc, 0, dc.font.ascent+1, name, strlen(name));
 	XSync(dpy, false);
 }
 
@@ -832,6 +864,28 @@ ws_attach(Workspace *ws)
 				nws*sizeof(Workspace *));
 	}
 	workspaces[nws-1] = ws;
+	ws_baptise(ws);
+}
+
+void
+ws_baptise(Workspace *ws)
+{
+	unsigned int n, w;
+	bool found;
+	for (n = 0; n < LENGTH(wsnames); n++) {
+		found = false;
+		for (w = 0; w < nws; w++) {
+			if (!strcmp(wsnames[n], workspaces[w]->name)) {
+				found = true;
+				break;
+			}
+		}
+		if (!found) {
+			strcpy(ws->name, wsnames[n]);
+			return;
+		}
+	}
+	strcpy(ws->name, "");
 }
 
 void
@@ -839,7 +893,7 @@ ws_detach(Workspace *ws)
 {
 	unsigned int i;
 
-	ws = ws_find(ws->x, ws->y, &i);
+	ws_find(&ws, &i, ws->x, ws->y);
 	if (!ws) {
 		warn("attempt to detach non-existing workspace");
 		return;
@@ -856,34 +910,18 @@ ws_detach(Workspace *ws)
 	}
 }
 
-Workspace *
-ws_find(int x, int y, unsigned int *pos)
+void
+ws_find(Workspace **ws, unsigned int *pos, int x, int y)
 {
 	unsigned int i;
 	for (i = 0; i < nws; i++) {
 		if (workspaces[i]->x == x && workspaces[i]->y == y) {
-			if (pos) {
-				*pos = i;
-			}
-			return workspaces[i];
+			if (ws) *ws = workspaces[i];
+			if (pos) *pos = i;
+			return;
 		}
 	}
-	return NULL;
-}
-
-bool
-ws_hasneighbour(int x, int y)
-{
-	unsigned int i;
-	for (i = 0; i < nws; i++) {
-		if ((workspaces[i]->x == x-1 && workspaces[i]->y == y) ||
-			(workspaces[i]->x == x+1 && workspaces[i]->y == y) ||
-			(workspaces[i]->x == x && workspaces[i]->y-1 == y) ||
-			(workspaces[i]->x == x && workspaces[i]->y+1 == y)) {
-			return true;
-		}
-	}
-	return false;
+	if (ws) *ws = NULL;
 }
 
 void
@@ -908,35 +946,119 @@ ws_step(Arg const *arg)
 		case WSSTEP_DOWN:  y = selws->y+1; break;
 	}
 
-	if ((next = ws_find(x, y, NULL)) || selws->nc || ws_hasneighbour(x, y)) {
-		if (next) {
-			if (!selws->nc) {
-				free(selws);
-			} else {
-				ws_hide(selws);
-			}
-			selws = next;
+	ws_find(&next, NULL, x, y);
+	if (next) {
+		if (!selws->nc) {
+			free(selws);
 		} else {
-			if (selws->nc) {
-				ws_hide(selws);
-				selws = malloc(sizeof(Workspace));
-				if (!selws) {
-					die("could not allocate %d bytes for workspace",
-							sizeof(Workspace));
-				}
-			}
-			selws->clients = selws->stack = NULL;
-			selws->nc = selws->ns = 0;
-			selws->x = x;
-			selws->y = y;
-			selws->mfact = mfact;
-			selws->nmaster = nmaster;
-			selws->tag[0] = 0;
+			ws_hide(selws);
 		}
-		arrange();
-		updatefocus();
-		updatebar();
+		selws = next;
+	} else {
+		if (selws->nc) {
+			ws_hide(selws);
+			selws = malloc(sizeof(Workspace));
+			if (!selws) {
+				die("could not allocate %d bytes for workspace",
+						sizeof(Workspace));
+			}
+		}
+		selws->clients = selws->stack = NULL;
+		selws->nc = selws->ns = 0;
+		selws->x = x;
+		selws->y = y;
+		selws->mfact = mfact;
+		selws->nmaster = nmaster;
+		selws->name[0] = 0;
 	}
+	arrange();
+	updatefocus();
+	updatebar();
+	wsd_update();
+}
+
+void
+wsd_box(Workspace *ws)
+{
+	int r, c, pos, x, y;
+	char name[256];
+	XSetWindowAttributes wa;
+
+	/* normalise for grid */
+	c = ws->x + wsd.rad - selws->x;
+	r = ws->y + wsd.rad - selws->y;
+	pos = r*wsd.cols + c%wsd.cols;
+	if (wsd.boxes[pos].shown) {
+		return;
+	}
+	x = ww/2 - wsd.w*wsd.rad - wsd.w/2 + c*wsd.w;
+	y = wh/2 - wsd.h*wsd.rad - wsd.h/2 + r*wsd.h;
+
+	/* create window */
+	wa.override_redirect = true;
+	wa.background_pixmap = ParentRelative;
+	wa.event_mask = ExposureMask;
+	wsd.boxes[pos].win = XCreateWindow(dpy, root, x, y, wsd.w, wsd.h, 0,
+			DefaultDepth(dpy, screen),
+			CopyFromParent, DefaultVisual(dpy, screen),
+			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
+	XMapRaised(dpy, wsd.boxes[pos].win);
+
+	/* fill with data */
+	if (strlen(ws->name)) {
+		strncpy(name, ws->name, 256);
+	} else {
+		snprintf(name, 256, "[%d|%d]", ws->x, ws->y);
+	}
+	XSetForeground(dpy, dc.gc, ws == selws ? cbordersel : cbordernorm);
+	XFillRectangle(dpy, wsd.boxes[pos].win, dc.gc, 0, 0, wsd.w, wsd.h);
+	XSetForeground(dpy, dc.gc, ws == selws ? cbordernorm : cbordersel);
+	XDrawString(dpy, wsd.boxes[pos].win, dc.gc, 2, dc.font.ascent+1,
+			name, strlen(name));
+	XSync(dpy, false);
+
+	/* end */
+	wsd.boxes[pos].shown = true;
+}
+
+void
+wsd_toggle(Arg const *arg)
+{
+	int i;
+	Workspace *ws;
+
+	/* if map is shown, just remove it */
+	if (wsd.shown) {
+		for (i = 0; i < wsd.nb; i++) {
+			if (wsd.boxes[i].shown) {
+				XDestroyWindow(dpy, wsd.boxes[i].win);
+				wsd.boxes[i].shown = false;
+			}
+		}
+		wsd.shown = false;
+	} else {
+		for (i = 0; i < nws; i++) {
+			ws = workspaces[i];
+			if (ws->x + wsd.rad < selws->x || ws->x - wsd.rad > selws->x ||
+					ws->y + wsd.rad < selws->y || ws->y - wsd.rad > selws->y) {
+				continue;
+			}
+			wsd_box(ws);
+		}
+		wsd_box(selws);
+		wsd.shown = true;
+	}
+}
+
+void
+wsd_update(void)
+{
+	if (!wsd.shown) {
+		return;
+	}
+
+	wsd_toggle(NULL);
+	wsd_toggle(NULL);
 }
 
 int

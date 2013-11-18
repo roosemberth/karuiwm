@@ -3,6 +3,11 @@
 static char const *font = "-misc-fixed-medium-r-semicondensed--13-100-100-100-c-60-iso8859-1";
 static unsigned int nmaster = 1; /* number of windows in the master area */
 static float mfact = 0.5;        /* size of master area */
+static char const *wsnames[] = { "alpha", "beta", "gamma", "delta", "epsilon",
+                                 "zeta", "eta", "theta", "iota", "kappa",
+                                 "lambda", "mu", "nu", "xi", "omicron", "pi",
+                                 "rho", "sigma", "tau", "upsilon", "phi", "chi",
+                                 "psi", "omega" };
 
 /* colours */
 static unsigned int borderwidth  = 1;
@@ -34,6 +39,7 @@ static Key keys[] = {
 	{ MODKEY,             XK_Return, zoom,       { 0 } },
 
 	/* workspaces */
+	{ MODKEY,             XK_space,  wsd_toggle, { 0 } },
 	{ MODKEY|ControlMask, XK_h,      ws_step,    { .i=WSSTEP_LEFT } },
 	{ MODKEY|ControlMask, XK_l,      ws_step,    { .i=WSSTEP_RIGHT } },
 	{ MODKEY|ControlMask, XK_j,      ws_step,    { .i=WSSTEP_DOWN } },
@@ -43,4 +49,7 @@ static Key keys[] = {
 	{ MODKEY,             XK_q,      restart,    { 0 } },
 	{ MODKEY|ShiftMask,   XK_q,      quit,       { 0 } },
 };
+
+/* workspace dialog */
+static int wsdradius = 5;     /* workspaces around the centre */
 
