@@ -203,6 +203,7 @@ void
 attach(Window w)
 {
 	Client *c;
+	unsigned int i, pos;
 	XWindowAttributes wa;
 
 	/* don't manage junk windows */
@@ -230,8 +231,20 @@ attach(Window w)
 	if (!selws->clients) {
 		die("could not allocate %d bytes for client list",
 				selws->nc*sizeof(Client *));
+	} else if (selws->nc == 1) {
+		pos = 0;
+	} else {
+		for (i = 0; i < selws->nc-1; i++) {
+			if (selws->clients[i] == selws->selcli) {
+				pos = i+1;
+				for (i = selws->nc-1; i > pos; i--) {
+					selws->clients[i] = selws->clients[i-1];
+				}
+				break;
+			}
+		}
 	}
-	selws->clients[selws->nc-1] = c;
+	selws->clients[pos] = c;
 
 	/* configure */
 	c->win = w;
