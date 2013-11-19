@@ -70,8 +70,8 @@ The default configuration specifies the following keys:
 **Workspaces**
 
 * <code>Mod</code>+<code>Space</code>
-  toggle workspace dialog
-* <code>Mod</code>+<code>h</code>/<code>j</code>/<code>k</code>/<code>l</code>
+  open workspace dialog
+* <code>Mod</code>+<code>Shift</code>+<code>h</code>/<code>j</code>/<code>k</code>/<code>l</code>
   switch to left/below/above/right workspace
 
 **Session**
@@ -97,6 +97,10 @@ upon removing the last client (or placing the first client); manual control of
 workspace creation/destruction might get added in the future.
 
 The status bar displays the current position on the "workspace-map"; for a
-graphical representation there is the workspace dialog (see above for the
-keycode).
+graphical representation there is the workspace dialog; the keys are as follows:
+
+* <code>Mod</code>+<code>h</code>/<code>j</code>/<code>k</code>/<code>l</code>
+  switch to left/below/above/right workspace
+* <code>Mod</code>+<code>Space</code> or <code>Esc</code>
+  close workspace dialog
 
