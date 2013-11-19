@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stdarg.h>
 #include <time.h>
+#include <signal.h>
+#include <sys/wait.h>
 #include <string.h>
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
@@ -11,7 +13,6 @@
 #include <X11/cursorfont.h>
 
 /* macros */
-//#define DEBUG  /* enable for debug output */
 #ifdef DEBUG
 #define debug(...) stdlog(stdout, "\033[34mDBG\033[0m "__VA_ARGS__)
 #else
@@ -121,6 +122,7 @@ static void scan(void);
 static void setmfact(Arg const *);
 static void setnmaster(Arg const *);
 static void shift(Arg const *);
+static void sigchld(int);
 static void spawn(Arg const *);
 static void stdlog(FILE *, char const *, ...);
 static void tile(void);
@@ -405,6 +407,7 @@ init(void)
 {
 	XSetWindowAttributes wa;
 
+	sigchld(0);
 	screen = DefaultScreen(dpy);
 	root = RootWindow(dpy, screen);
 	sw = DisplayWidth(dpy, screen);
@@ -668,6 +671,17 @@ shift(Arg const *arg)
 	selws->clients[(pos+selws->nc+arg->i)%selws->nc] = selws->selcli;
 
 	arrange();
+}
+
+void
+sigchld(int unused)
+{
+	if (signal(SIGCHLD, sigchld) == SIG_ERR) {
+		die("could not install SIGCHLD handler");
+	}
+	/* pid -1 makes it equivalent to wait() (wait for all children);
+	 * here we just add WNOHANG */
+	while (0 < waitpid(-1, NULL, WNOHANG));
 }
 
 void
@@ -1123,7 +1137,9 @@ main(int argc, char **argv)
 	stdlog(stdout, "starting ...");
 	init();
 	scan();
+	custom_startup();
 	run();
+	custom_shutdown();
 	cleanup();
 	XCloseDisplay(dpy);
 	stdlog(stdout, "shutting down ...");

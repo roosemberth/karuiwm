@@ -18,6 +18,19 @@ static unsigned long cbordersel  = 0xAFD700;
 static char const *termcmd[] = { "xterm", NULL };
 static char const *dmenucmd[] = { "dmenu_run", NULL };
 
+/* custom behaviour */
+static void
+custom_startup()
+{
+	/* place code here */
+}
+
+static void
+custom_shutdown()
+{
+	/* place code here */
+}
+
 #define MODKEY Mod1Mask
 static Key keys[] = {
 	/* applications */

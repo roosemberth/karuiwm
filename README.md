@@ -12,6 +12,12 @@ This will create the binary <code>stwm</code>:
 
 	make
 
+Alternatively, if you want to add debug output (all the <code>debug()</code>
+calls in stwm, additional debug symbols through GCCs <code>-g</code> option),
+you may run:
+
+	make dev
+
 
 run
 ---
