@@ -40,8 +40,8 @@ static Key keys[] = {
 	{ MODKEY,             XK_p,      spawn,      { .v=dmenucmd } },
 
 	/* windows */
-	{ MODKEY,             XK_j,      focusstep,  { .i=+1 } },
-	{ MODKEY,             XK_k,      focusstep,  { .i=-1 } },
+	{ MODKEY,             XK_j,      stepfocus,  { .i=+1 } },
+	{ MODKEY,             XK_k,      stepfocus,  { .i=-1 } },
 	{ MODKEY,             XK_l,      setmfact,   { .f=+0.02 } },
 	{ MODKEY,             XK_h,      setmfact,   { .f=-0.02 } },
 	{ MODKEY|ShiftMask,   XK_i,      killclient, { 0 } },
@@ -54,11 +54,11 @@ static Key keys[] = {
 	{ MODKEY,             XK_Return, zoom,       { 0 } },
 
 	/* workspaces */
-	{ MODKEY,             XK_space,  wsd_toggle, { 0 } },
-	{ MODKEY|ControlMask, XK_h,      ws_step,    { .i=WSSTEP_LEFT } },
-	{ MODKEY|ControlMask, XK_l,      ws_step,    { .i=WSSTEP_RIGHT } },
-	{ MODKEY|ControlMask, XK_j,      ws_step,    { .i=WSSTEP_DOWN } },
-	{ MODKEY|ControlMask, XK_k,      ws_step,    { .i=WSSTEP_UP } },
+	{ MODKEY,             XK_space,  togglewsd,  { 0 } },
+	{ MODKEY|ControlMask, XK_h,      stepws,     { .i=LEFT } },
+	{ MODKEY|ControlMask, XK_l,      stepws,     { .i=RIGHT } },
+	{ MODKEY|ControlMask, XK_j,      stepws,     { .i=DOWN } },
+	{ MODKEY|ControlMask, XK_k,      stepws,     { .i=UP } },
 
 	/* session */
 	{ MODKEY,             XK_q,      restart,    { 0 } },
@@ -67,14 +67,14 @@ static Key keys[] = {
 
 /* workspace dialog keys */
 static Key wsdkeys[] = {
-	{ 0,                  XK_Escape, wsd_toggle, { 0 } },
-	{ MODKEY,             XK_space,  wsd_toggle, { 0 } },
+	{ 0,                  XK_Escape, togglewsd,  { 0 } },
+	{ MODKEY,             XK_space,  togglewsd,  { 0 } },
 
 	/* moving view */
-	{ MODKEY,             XK_h,      ws_step,    { .i=WSSTEP_LEFT } },
-	{ MODKEY,             XK_l,      ws_step,    { .i=WSSTEP_RIGHT } },
-	{ MODKEY,             XK_j,      ws_step,    { .i=WSSTEP_DOWN } },
-	{ MODKEY,             XK_k,      ws_step,    { .i=WSSTEP_UP } },
+	{ MODKEY,             XK_h,      selectws,   { .i=LEFT } },
+	{ MODKEY,             XK_l,      selectws,   { .i=RIGHT } },
+	{ MODKEY,             XK_j,      selectws,   { .i=DOWN } },
+	{ MODKEY,             XK_k,      selectws,   { .i=UP } },
 };
 
 /* workspace dialog */

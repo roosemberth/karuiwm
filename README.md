@@ -53,13 +53,13 @@ The default configuration specifies the following keys:
 
 **Windows**
 
-* <code>Mod</code>+<code>l</code>/<code>h</code>
-  increase/decrease master area size
 * <code>Mod</code>+<code>j</code>/<code>k</code>
   set focus to next/previous client
 
 **Layout**
 
+* <code>Mod</code>+<code>l</code>/<code>h</code>
+  increase/decrease master area size
 * <code>Mod</code>+<code>j</code>/<code>k</code>
   swap client with next/previous client in the layout
 * <code>Mod</code>+<code>,</code>/<code>.</code>

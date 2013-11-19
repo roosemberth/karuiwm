@@ -13,21 +13,25 @@
 #include <X11/cursorfont.h>
 
 /* macros */
+#define APPNAME "stwm"
+#define LENGTH(ARR) (sizeof(ARR)/sizeof(ARR[0]))
+#define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
+#define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
+
+/* log macros */
+#define warn(...) stdlog(stderr, "\033[33mWRN\033[0m "__VA_ARGS__)
+#define die(...) warn("\033[31mERR\033[0m "__VA_ARGS__); exit(EXIT_FAILURE)
+#define note(...) stdlog(stdout, "    "__VA_ARGS__)
 #ifdef DEBUG
 #define debug(...) stdlog(stdout, "\033[34mDBG\033[0m "__VA_ARGS__)
 #else
 #define debug(...)
 #endif
-#define warn(...) stdlog(stderr, "\033[33mWRN\033[0m "__VA_ARGS__)
-#define die(...) warn("\033[31mERR\033[0m "__VA_ARGS__); exit(EXIT_FAILURE)
-#define LENGTH(ARR) (sizeof(ARR)/sizeof(ARR[0]))
-#define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
-#define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
 
 /* enums */
 
 enum { CURSOR_NORMAL, CURSOR_RESIZE, CURSOR_MOVE, CURSOR_LAST };
-typedef enum { WSSTEP_LEFT, WSSTEP_RIGHT, WSSTEP_UP, WSSTEP_DOWN } WSStepDirection;
+enum { LEFT, RIGHT, UP, DOWN };
 
 /* structs */
 
@@ -70,23 +74,19 @@ typedef struct {
 	int x, y;
 } Workspace;
 
-typedef struct WorkspaceDialogBox WorkspaceDialogBox;
 typedef struct {
-	WorkspaceDialogBox *boxes;
-	int nb;
+	Window *boxes;
+	Window targetbox;
 	int w, h;
 	int rows, cols, rad;
+	int tx, ty;
 	bool shown;
 } WorkspaceDialog;
 
-struct WorkspaceDialogBox {
-	Window win;
-	bool shown;
-};
-
 /* functions */
 static void arrange(void);
-static void attach(Window);
+static void attach(Workspace *, Window);
+static void attachws(Workspace *);
 static void buttonpress(XEvent *);
 static void buttonrelease(XEvent *);
 static void cleanup(void);
@@ -95,19 +95,23 @@ static void configurerequest(XEvent *);
 static void configurenotify(XEvent *);
 static void createnotify(XEvent *);
 static void destroynotify(XEvent *);
+static void detach(Window);
+static void detachws(Workspace *);
 static void enternotify(XEvent *);
 static void expose(XEvent *);
 static void focusin(XEvent *);
-static void focusstep(Arg const *);
 static void grabbuttons(void);
 static void grabkeys(void);
 static void hide(Client *);
+static void hidews(Workspace *);
 static void init(void);
 static void initbar(void);
 static void initdrawcontext(void);
 static void keypress(XEvent *);
 static void keyrelease(XEvent *);
 static void killclient(Arg const *);
+static bool locate(Workspace **, Client **, unsigned int *, Window);
+static bool locatews(Workspace **, unsigned int *, int, int);
 static void mapnotify(XEvent *);
 static void mappingnotify(XEvent *);
 static void maprequest(XEvent *);
@@ -116,28 +120,27 @@ static void pop(Workspace *, Client *);
 static void propertynotify(XEvent *);
 static void push(Workspace *, Client *);
 static void quit(Arg const *);
+static void renamews(Workspace *, char const *);
+static void resetws(Workspace *, int, int);
 static void restart(Arg const *);
 static void run(void);
 static void scan(void);
+static void selectws(Arg const *arg);
 static void setmfact(Arg const *);
 static void setnmaster(Arg const *);
 static void shift(Arg const *);
 static void sigchld(int);
 static void spawn(Arg const *);
 static void stdlog(FILE *, char const *, ...);
+static void stepfocus(Arg const *);
+static void stepws(Arg const *);
 static void tile(void);
+static void togglewsd(Arg const *);
 static void unmapnotify(XEvent *);
 static void updatebar(void);
 static void updatefocus(void);
-static bool wintoclient(Workspace **, Client **, unsigned int *, Window);
-static void ws_attach(Workspace *);
-static void ws_baptise(Workspace *);
-static void ws_detach(Workspace *);
-static void ws_find(Workspace **, unsigned int *, int, int);
-static void ws_hide(Workspace *);
-static void ws_step(Arg const *);
-static void wsd_toggle(Arg const *);
-static void wsd_update(void);
+static void updatewsd(void);
+static void updatewsdbox(Workspace *, int);
 static int xerror(Display *, XErrorEvent *);
 static int (*xerrorxlib)(Display *, XErrorEvent *);
 static void zoom(Arg const *);
@@ -165,7 +168,6 @@ static void (*handle[LASTEvent])(XEvent *) = {
 };
 
 /* variables */
-static char *appname;               /* application name */
 static bool running, restarting;    /* application state */
 static Display *dpy;                /* X display */
 static int screen;                  /* screen */
@@ -200,7 +202,7 @@ arrange(void)
 }
 
 void
-attach(Window w)
+attach(Workspace *ws, Window w)
 {
 	Client *c;
 	unsigned int i, pos;
@@ -222,42 +224,56 @@ attach(Window w)
 	}
 
 	/* attach workspace if this is the first client */
-	if (!selws->nc) {
-		ws_attach(selws);
+	if (!ws->nc) {
+		attachws(ws);
 	}
 
 	/* add to list */
-	selws->clients = realloc(selws->clients, ++selws->nc*sizeof(Client *));
-	if (!selws->clients) {
+	ws->clients = realloc(ws->clients, ++ws->nc*sizeof(Client *));
+	if (!ws->clients) {
 		die("could not allocate %d bytes for client list",
-				selws->nc*sizeof(Client *));
-	} else if (selws->nc == 1) {
+				ws->nc*sizeof(Client *));
+	} else if (ws->nc == 1) {
 		pos = 0;
 	} else {
-		for (i = 0; i < selws->nc-1; i++) {
-			if (selws->clients[i] == selws->selcli) {
+		for (i = 0; i < ws->nc-1; i++) {
+			if (ws->clients[i] == ws->selcli) {
 				pos = i+1;
-				for (i = selws->nc-1; i > pos; i--) {
-					selws->clients[i] = selws->clients[i-1];
+				for (i = ws->nc-1; i > pos; i--) {
+					ws->clients[i] = ws->clients[i-1];
 				}
 				break;
 			}
 		}
 	}
-	selws->clients[pos] = c;
+	ws->clients[pos] = c;
 
 	/* configure */
 	c->win = w;
 	XSelectInput(dpy, c->win, EnterWindowMask);
 	XSetWindowBorderWidth(dpy, c->win, borderwidth);
 
-	/* update layout and focus */
-	arrange();
-	push(selws, c);
-	updatefocus();
+	/* update layout and focus if mapped to current workspace */
+	if (ws == selws) {
+		arrange();
+		push(selws, c);
+		updatefocus();
+	}
 
 	/* update workspace dialog if present */
-	wsd_update();
+	updatewsd();
+}
+
+void
+attachws(Workspace *ws)
+{
+	workspaces = realloc(workspaces, ++nws*sizeof(Workspace *));
+	if (!workspaces) {
+		die("could not allocate %d bytes for workspace list",
+				nws*sizeof(Workspace *));
+	}
+	workspaces[nws-1] = ws;
+	renamews(ws, NULL);
 }
 
 void
@@ -302,7 +318,7 @@ configurenotify(XEvent *e)
 	Client *c;
 	XWindowAttributes wa;
 
-	if (!wintoclient(&ws, &c, &pos, e->xconfigure.window)) {
+	if (!locate(&ws, &c, &pos, e->xconfigure.window)) {
 		return;
 	}
 
@@ -343,6 +359,64 @@ destroynotify(XEvent *e)
 }
 
 void
+detach(Window win)
+{
+	unsigned int i;
+	Client *c;
+	Workspace *ws;
+
+	if (!locate(&ws, &c, &i, win)) {
+		return;
+	}
+
+	/* remove from stack */
+	pop(ws, c);
+
+	/* remove client */
+	free(c);
+	ws->nc--;
+	for (; i < ws->nc; i++) {
+		ws->clients[i] = ws->clients[i+1];
+	}
+
+	/* update layout if the client was removed from the current workspace */
+	if (ws == selws) {
+		debug("detaching from current workspace, refocus");
+		arrange();
+		updatefocus();
+	}
+
+	/* remove the layout if the last client was removed */
+	if (!ws->nc) {
+		detachws(ws);
+	}
+
+	/* update workspace dialog if present */
+	updatewsd();
+}
+
+void
+detachws(Workspace *ws)
+{
+	unsigned int i;
+
+	if (!locatews(&ws, &i, ws->x, ws->y)) {
+		warn("attempt to detach non-existing workspace");
+		return;
+	}
+
+	nws--;
+	for (; i < nws; i++) {
+		workspaces[i] = workspaces[i+1];
+	}
+	workspaces = realloc(workspaces, nws*sizeof(Workspace *));
+	if (!workspaces && nws) {
+		die("could not allocate %d bytes for workspaces",
+				nws*sizeof(Workspace *));
+	}
+}
+
+void
 enternotify(XEvent *e)
 {
 	debug("enternotify(%d)", e->xcrossing.window);
@@ -351,7 +425,7 @@ enternotify(XEvent *e)
 	Workspace *ws;
 	Client *c;
 
-	if (!wintoclient(&ws, &c, &pos, e->xcrossing.window) || ws != selws) {
+	if (!locate(&ws, &c, &pos, e->xcrossing.window) || ws != selws) {
 		warn("attempt to enter unhandled/invisible window %d",
 				e->xcrossing.window);
 		return;
@@ -366,8 +440,18 @@ expose(XEvent *e)
 {
 	debug("expose(%d)", e->xexpose.window);
 
+	//unsigned int i;
+
 	if (e->xexpose.window == barwin) {
 		updatebar();
+	/*
+	} else {
+		for (i = 0; i <= nws; i++) {
+			if (e->xexpose.window == wsd.boxes[i]) {
+				updatewsdbox(workspaces[i], i);
+			}
+		}
+		*/
 	}
 }
 
@@ -376,19 +460,6 @@ focusin(XEvent *e)
 {
 	debug("focusin(%d)", e->xfocus.window);
 	/* TODO */
-}
-
-void
-focusstep(Arg const *arg)
-{
-	unsigned int pos;
-
-	if (!selws->nc) {
-		return;
-	}
-	wintoclient(NULL, NULL, &pos, selws->selcli->win);
-	push(selws, selws->clients[(pos+selws->nc+arg->i)%selws->nc]);
-	updatefocus();
 }
 
 void
@@ -413,6 +484,15 @@ void
 hide(Client *c)
 {
 	XMoveWindow(dpy, c->win, -c->w, c->y);
+}
+
+void
+hidews(Workspace *ws)
+{
+	unsigned int i;
+	for (i = 0; i < ws->nc; i++) {
+		hide(ws->clients[i]);
+	}
 }
 
 void
@@ -444,12 +524,7 @@ init(void)
 	if (!selws) {
 		die("could not allocate %d bytes for workspace", sizeof(Workspace));
 	}
-	selws->clients = selws->stack = NULL;
-	selws->nc = selws->ns = 0;
-	selws->x = selws->y = 0;
-	selws->nmaster = nmaster;
-	selws->mfact = mfact;
-	selws->name[0] = 0;
+	resetws(selws, 0, 0);
 
 	/* status bar */
 	initdrawcontext();
@@ -461,8 +536,6 @@ init(void)
 	wsd.cols = 2*wsd.rad+1;
 	wsd.w = ww/wsd.cols;
 	wsd.h = wh/wsd.rows;
-	wsd.nb = wsd.rows*wsd.cols;
-	wsd.boxes = calloc(wsd.nb, sizeof(WorkspaceDialogBox));
 	wsd.shown = false;
 }
 
@@ -487,7 +560,7 @@ initbar(void)
 			DefaultDepth(dpy, screen), CopyFromParent,
 			DefaultVisual(dpy, screen),
 			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
-	XMapRaised(dpy, barwin); /* TODO find out what this exactly does */
+	XMapRaised(dpy, barwin);
 	updatebar();
 }
 
@@ -542,12 +615,54 @@ killclient(Arg const *arg)
 	XSync(dpy, false);
 }
 
+bool
+locate(Workspace **ws, Client **c, unsigned int *pos, Window w)
+{
+	unsigned int i, j;
+
+	/* search current workspace */
+	for (i = 0; i < selws->nc; i++) {
+		if (selws->clients[i]->win == w) {
+			if (ws) *ws = selws;
+			if (c) *c = selws->clients[i];
+			if (pos) *pos = i;
+			return true;
+		}
+	}
+	/* search all the other workspaces */
+	for (j = 0; j < nws; j++) {
+		for (i = 0; i < workspaces[j]->nc; i++) {
+			if (workspaces[j]->clients[i]->win == w) {
+				if (ws) *ws = workspaces[j];
+				if (c) *c = workspaces[j]->clients[i];
+				if (pos) *pos = i;
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+bool
+locatews(Workspace **ws, unsigned int *pos, int x, int y)
+{
+	unsigned int i;
+	for (i = 0; i < nws; i++) {
+		if (workspaces[i]->x == x && workspaces[i]->y == y) {
+			if (ws) *ws = workspaces[i];
+			if (pos) *pos = i;
+			return true;
+		}
+	}
+	return false;
+}
+
 void
 mapnotify(XEvent *e)
 {
 	debug("mapnotify(%d)", e->xmap.window);
 
-	attach(e->xmap.window);
+	attach(selws, e->xmap.window);
 }
 
 void
@@ -627,6 +742,50 @@ quit(Arg const *arg)
 }
 
 void
+renamews(Workspace *ws, char const *name)
+{
+	unsigned int n, w;
+	bool found;
+
+	/* name specified */
+	if (name) {
+		strncpy(ws->name, name, 255);
+		ws->name[255] = 0;
+		return;
+	}
+
+	/* name not specified, search random name */
+	for (n = 0; n < LENGTH(wsnames); n++) {
+		found = false;
+		for (w = 0; w < nws; w++) {
+			if (!strcmp(wsnames[n], workspaces[w]->name)) {
+				found = true;
+				break;
+			}
+		}
+		if (!found) {
+			strcpy(ws->name, wsnames[n]);
+			return;
+		}
+	}
+
+	/* no random name available */
+	strcpy(ws->name, "");
+}
+
+void
+resetws(Workspace *ws, int x, int y)
+{
+	ws->clients = selws->stack = NULL;
+	ws->nc = selws->ns = 0;
+	ws->x = x;
+	ws->y = y;
+	ws->mfact = mfact;
+	ws->nmaster = nmaster;
+	ws->name[0] = 0;
+}
+
+void
 restart(Arg const *arg)
 {
 	restarting = true;
@@ -657,8 +816,20 @@ scan(void)
 		return;
 	}
 	for (i = 0; i < nwins; i++) {
-		attach(wins[i]); /* manage() will do the necessary checks */
+		attach(selws, wins[i]);
 	}
+}
+
+void
+selectws(Arg const *arg)
+{
+	switch (arg->i) {
+		case LEFT:  wsd.tx--; break;
+		case RIGHT: wsd.tx++; break;
+		case UP:    wsd.ty--; break;
+		case DOWN:  wsd.ty++; break;
+	}
+	updatewsd();
 }
 
 void
@@ -686,7 +857,7 @@ shift(Arg const *arg)
 	if (selws->ns < 2) {
 		return;
 	}
-	if (!wintoclient(NULL, NULL, &pos, selws->selcli->win)) {
+	if (!locate(NULL, NULL, &pos, selws->selcli->win)) {
 		warn("attempt to shift non-existent window %d", selws->selcli->win);
 	}
 	selws->clients[pos] = selws->clients[(pos+selws->nc+arg->i)%selws->nc];
@@ -730,7 +901,7 @@ stdlog(FILE *f, char const *format, ...)
 	time(&rawtime);
 	date = localtime(&rawtime);
 	fprintf(f, "[%02d:%02d:%02d][%s] ",
-			date->tm_hour, date->tm_min, date->tm_sec, appname);
+			date->tm_hour, date->tm_min, date->tm_sec, APPNAME);
 
 	/* message */
 	va_start(args, format);
@@ -738,6 +909,57 @@ stdlog(FILE *f, char const *format, ...)
 	va_end(args);
 
 	fprintf(f, "\n");
+}
+
+void
+stepfocus(Arg const *arg)
+{
+	unsigned int pos;
+
+	if (!selws->nc) {
+		return;
+	}
+	locate(NULL, NULL, &pos, selws->selcli->win);
+	push(selws, selws->clients[(pos+selws->nc+arg->i)%selws->nc]);
+	updatefocus();
+}
+
+void
+stepws(Arg const *arg)
+{
+	Workspace *next;
+	int x=selws->x, y=selws->y;
+
+	switch (arg->i) {
+		case LEFT:  x = selws->x-1; break;
+		case RIGHT: x = selws->x+1; break;
+		case UP:    y = selws->y-1; break;
+		case DOWN:  y = selws->y+1; break;
+	}
+
+	if (locatews(&next, NULL, x, y)) {
+		debug("target workspace exits");
+		if (!selws->nc) {
+			free(selws);
+		} else {
+			hidews(selws);
+		}
+		selws = next;
+	} else {
+		debug("target workspace does not exist");
+		if (selws->nc) {
+			hidews(selws);
+			selws = malloc(sizeof(Workspace));
+			if (!selws) {
+				die("could not allocate %d bytes for workspace",
+						sizeof(Workspace));
+			}
+		}
+		resetws(selws, x, y);
+	}
+	arrange();
+	updatefocus();
+	updatebar();
 }
 
 void
@@ -788,41 +1010,55 @@ tile(void)
 }
 
 void
+togglewsd(Arg const *arg)
+{
+	unsigned int i;
+	XSetWindowAttributes wa = {
+		.override_redirect = true,
+		.background_pixmap = ParentRelative,
+		.event_mask = ExposureMask,
+	};
+
+	/* if WSD is already shown, remove it and return */
+	if (wsd.shown) {
+		for (i = 0; i <= nws; i++) {
+			XDestroyWindow(dpy, wsd.boxes[i]);
+		}
+		wsd.shown = false;
+		grabkeys();
+		updatefocus();
+		return;
+	}
+
+	/* create box for each+current workspace and hide outside screen area */
+	wsd.boxes = malloc((nws+1)*sizeof(Window));
+	if (!wsd.boxes) {
+		die("could not allocate %d bytes for WSD box windows",
+				nws*sizeof(Window));
+	}
+	for (i = 0; i <= nws; i++) {
+		wsd.boxes[i] = XCreateWindow(dpy, root, -1, -1, 1, 1, 0,
+				DefaultDepth(dpy, screen),
+				CopyFromParent, DefaultVisual(dpy, screen),
+				CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
+		XMapWindow(dpy, wsd.boxes[i]);
+	}
+
+	/* initially selected workspace is the current workspace */
+	wsd.tx = selws->x;
+	wsd.ty = selws->y;
+	wsd.shown = true;
+
+	/* initial update */
+	updatewsd();
+}
+
+void
 unmapnotify(XEvent *e)
 {
 	debug("unmapnotify(%d)", e->xunmap.window);
 
-	unsigned int i;
-	Client *c;
-	Workspace *ws;
-
-	if (!wintoclient(&ws, &c, &i, e->xunmap.window)) {
-		return;
-	}
-
-	/* remove from stack */
-	pop(ws, c);
-
-	/* remove client */
-	free(c);
-	ws->nc--;
-	for (; i < ws->nc; i++) {
-		ws->clients[i] = ws->clients[i+1];
-	}
-
-	/* update layout if the client was removed from the current workspace */
-	if (ws == selws) {
-		arrange();
-		updatefocus();
-	}
-
-	/* remove the layout if the last client was removed */
-	if (!ws->nc) {
-		ws_detach(ws);
-	}
-
-	/* update workspace dialog if present */
-	wsd_update();
+	detach(e->xunmap.window);
 }
 
 void
@@ -846,6 +1082,7 @@ updatebar(void)
 void
 updatefocus(void)
 {
+	debug("update focus to %d/%d", selws->ns, selws->nc);
 	unsigned int i;
 
 	if (!selws->ns) {
@@ -863,241 +1100,72 @@ updatefocus(void)
 	XSetInputFocus(dpy, selws->selcli->win, RevertToPointerRoot, CurrentTime);
 }
 
-bool
-wintoclient(Workspace **ws, Client **c, unsigned int *pos, Window w)
-{
-	unsigned int i, j;
-
-	/* search current workspace */
-	for (i = 0; i < selws->nc; i++) {
-		if (selws->clients[i]->win == w) {
-			if (ws) *ws = selws;
-			if (c) *c = selws->clients[i];
-			if (pos) *pos = i;
-			return true;
-		}
-	}
-	/* search all the other workspaces */
-	for (j = 0; j < nws; j++) {
-		for (i = 0; i < workspaces[j]->nc; i++) {
-			if (workspaces[j]->clients[i]->win == w) {
-				if (ws) *ws = workspaces[j];
-				if (c) *c = workspaces[j]->clients[i];
-				if (pos) *pos = i;
-				return true;
-			}
-		}
-	}
-	return false;
-}
-
 void
-ws_attach(Workspace *ws)
+updatewsd(void)
 {
-	workspaces = realloc(workspaces, ++nws*sizeof(Workspace *));
-	if (!workspaces) {
-		die("could not allocate %d bytes for workspace list",
-				nws*sizeof(Workspace *));
-	}
-	workspaces[nws-1] = ws;
-	ws_baptise(ws);
-}
+	Workspace *ws;
+	int i, c, r, x, y;
 
-void
-ws_baptise(Workspace *ws)
-{
-	unsigned int n, w;
-	bool found;
-	for (n = 0; n < LENGTH(wsnames); n++) {
-		found = false;
-		for (w = 0; w < nws; w++) {
-			if (!strcmp(wsnames[n], workspaces[w]->name)) {
-				found = true;
-				break;
-			}
-		}
-		if (!found) {
-			strcpy(ws->name, wsnames[n]);
-			return;
-		}
-	}
-	strcpy(ws->name, "");
-}
-
-void
-ws_detach(Workspace *ws)
-{
-	unsigned int i;
-
-	ws_find(&ws, &i, ws->x, ws->y);
-	if (!ws) {
-		warn("attempt to detach non-existing workspace");
+	if (!wsd.shown) {
 		return;
 	}
 
-	nws--;
-	for (; i < nws; i++) {
-		workspaces[i] = workspaces[i+1];
-	}
-	workspaces = realloc(workspaces, nws*sizeof(Workspace *));
-	if (!workspaces && nws) {
-		die("could not allocate %d bytes for workspaces",
-				nws*sizeof(Workspace *));
-	}
-}
-
-void
-ws_find(Workspace **ws, unsigned int *pos, int x, int y)
-{
-	unsigned int i;
-	for (i = 0; i < nws; i++) {
-		if (workspaces[i]->x == x && workspaces[i]->y == y) {
-			if (ws) *ws = workspaces[i];
-			if (pos) *pos = i;
-			return;
-		}
-	}
-	if (ws) *ws = NULL;
-}
-
-void
-ws_hide(Workspace *ws)
-{
-	unsigned int i;
-	for (i = 0; i < ws->nc; i++) {
-		hide(ws->clients[i]);
-	}
-}
-
-void
-ws_step(Arg const *arg)
-{
-	Workspace *next;
-	int x=selws->x, y=selws->y;
-
-	switch (arg->i) {
-		case WSSTEP_LEFT:  x = selws->x-1; break;
-		case WSSTEP_RIGHT: x = selws->x+1; break;
-		case WSSTEP_UP:    y = selws->y-1; break;
-		case WSSTEP_DOWN:  y = selws->y+1; break;
-	}
-
-	ws_find(&next, NULL, x, y);
-	if (next) {
-		if (!selws->nc) {
-			free(selws);
-		} else {
-			ws_hide(selws);
-		}
-		selws = next;
-	} else {
-		if (selws->nc) {
-			ws_hide(selws);
-			selws = malloc(sizeof(Workspace));
-			if (!selws) {
+	for (i = 0; i <= nws; i++) {
+		/* get workspace (create temporarily if target and does not exist) */
+		if (i < nws) {
+			ws = workspaces[i];
+		} else if (!locatews(&ws, NULL, wsd.tx, wsd.ty)) {
+			ws = malloc(sizeof(Workspace));
+			if (!ws) {
 				die("could not allocate %d bytes for workspace",
 						sizeof(Workspace));
 			}
+			resetws(ws, wsd.tx, wsd.ty);
 		}
-		selws->clients = selws->stack = NULL;
-		selws->nc = selws->ns = 0;
-		selws->x = x;
-		selws->y = y;
-		selws->mfact = mfact;
-		selws->nmaster = nmaster;
-		selws->name[0] = 0;
+
+		/* hide boxes for workspaces out of range */
+		if (ws->x < wsd.tx-wsd.rad || ws->x > wsd.tx+wsd.rad ||
+				ws->y < wsd.ty-wsd.rad || ws->y > wsd.ty+wsd.rad) {
+			XMoveResizeWindow(dpy, wsd.boxes[i], -1, -1, 1, 1);
+		}
+
+		/* get box dimensions */
+		c = ws->x + wsd.rad - wsd.tx;
+		r = ws->y + wsd.rad - wsd.ty;
+		x = ww/2 - wsd.w*wsd.rad - wsd.w/2 + c*wsd.w + wx;
+		y = wh/2 - wsd.h*wsd.rad - wsd.h/2 + r*wsd.h + wy;
+
+		/* draw box */
+		XMoveResizeWindow(dpy, wsd.boxes[i], x, y, wsd.w, wsd.h);
+		XRaiseWindow(dpy, wsd.boxes[i]);
+		updatewsdbox(ws, i);
+
+		/* if this is a temporary workspace, destroy it */
+		if (!ws->nc && ws != selws) {
+			free(ws);
+		}
 	}
-	arrange();
-	updatefocus();
-	updatebar();
-	wsd_update();
+	XGrabKeyboard(dpy, wsd.boxes[nws], false, GrabModeAsync, GrabModeAsync,
+			CurrentTime);
 }
 
 void
-wsd_box(Workspace *ws)
+updatewsdbox(Workspace *ws, int i)
 {
-	int r, c, pos, x, y;
 	char name[256];
-	XSetWindowAttributes wa;
 
-	/* normalise for grid */
-	c = ws->x + wsd.rad - selws->x;
-	r = ws->y + wsd.rad - selws->y;
-	pos = r*wsd.cols + c%wsd.cols;
-	if (wsd.boxes[pos].shown) {
-		return;
-	}
-	x = ww/2 - wsd.w*wsd.rad - wsd.w/2 + c*wsd.w;
-	y = wh/2 - wsd.h*wsd.rad - wsd.h/2 + r*wsd.h;
-
-	/* create window */
-	wa.override_redirect = true;
-	wa.background_pixmap = ParentRelative;
-	wa.event_mask = ExposureMask;
-	wsd.boxes[pos].win = XCreateWindow(dpy, root, x, y, wsd.w, wsd.h, 0,
-			DefaultDepth(dpy, screen),
-			CopyFromParent, DefaultVisual(dpy, screen),
-			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
-	XMapRaised(dpy, wsd.boxes[pos].win);
-
-	/* fill with data */
 	if (strlen(ws->name)) {
 		strncpy(name, ws->name, 256);
 	} else {
 		snprintf(name, 256, "[%d|%d]", ws->x, ws->y);
 	}
+
 	XSetForeground(dpy, dc.gc, ws == selws ? cbordersel : cbordernorm);
-	XFillRectangle(dpy, wsd.boxes[pos].win, dc.gc, 0, 0, wsd.w, wsd.h);
+	XFillRectangle(dpy, wsd.boxes[i], dc.gc, 0, 0, wsd.w, wsd.h);
 	XSetForeground(dpy, dc.gc, ws == selws ? cbordernorm : cbordersel);
-	XDrawString(dpy, wsd.boxes[pos].win, dc.gc, 2, dc.font.ascent+1,
+	XDrawString(dpy, wsd.boxes[i], dc.gc, 2, dc.font.ascent+1,
 			name, strlen(name));
 	XSync(dpy, false);
-
-	/* end */
-	wsd.boxes[pos].shown = true;
-}
-
-void
-wsd_toggle(Arg const *arg)
-{
-	int i;
-	Workspace *ws;
-
-	/* if map is shown, just remove it */
-	if (wsd.shown) {
-		for (i = 0; i < wsd.nb; i++) {
-			if (wsd.boxes[i].shown) {
-				XDestroyWindow(dpy, wsd.boxes[i].win);
-				wsd.boxes[i].shown = false;
-			}
-		}
-		wsd.shown = false;
-		grabkeys();
-	} else {
-		for (i = 0; i < nws; i++) {
-			ws = workspaces[i];
-			if (ws->x + wsd.rad < selws->x || ws->x - wsd.rad > selws->x ||
-					ws->y + wsd.rad < selws->y || ws->y - wsd.rad > selws->y) {
-				continue;
-			}
-			wsd_box(ws);
-		}
-		wsd_box(selws);
-		wsd.shown = true;
-		XGrabKeyboard(dpy, wsd.boxes[wsd.rad*(wsd.rad*2+1)+wsd.rad].win, false,
-				GrabModeAsync, GrabModeAsync, CurrentTime);
-	}
-}
-
-void
-wsd_update(void)
-{
-	if (!wsd.shown) {
-		return;
-	}
-
-	wsd_toggle(NULL);
-	wsd_toggle(NULL);
 }
 
 int
@@ -1127,7 +1195,7 @@ zoom(Arg const *arg)
 		return;
 	}
 
-	if (!wintoclient(NULL, &c, &pos, selws->selcli->win)) {
+	if (!locate(NULL, &c, &pos, selws->selcli->win)) {
 		warn("attempt to zoom non-existing window %d", selws->selcli->win);
 		return;
 	}
@@ -1155,11 +1223,10 @@ zoom(Arg const *arg)
 int
 main(int argc, char **argv)
 {
-	appname = argv[0];
 	if (!(dpy = XOpenDisplay(NULL))) {
 		die("could not open X");
 	}
-	stdlog(stdout, "starting ...");
+	note("starting ...");
 	init();
 	scan();
 	custom_startup();
@@ -1167,9 +1234,9 @@ main(int argc, char **argv)
 	custom_shutdown();
 	cleanup();
 	XCloseDisplay(dpy);
-	stdlog(stdout, "shutting down ...");
+	note("shutting down ...");
 	if (restarting) {
-		execl("stwm", appname, NULL); /* TODO change to execlp */
+		execl(APPNAME, APPNAME, NULL); /* TODO change to execlp */
 	}
 	return EXIT_SUCCESS;
 }
