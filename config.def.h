@@ -32,6 +32,8 @@ custom_shutdown()
 }
 
 #define MODKEY Mod1Mask
+
+/* normal keys */
 static Key keys[] = {
 	/* applications */
 	{ MODKEY,             XK_n,      spawn,      { .v=termcmd } },
@@ -61,6 +63,18 @@ static Key keys[] = {
 	/* session */
 	{ MODKEY,             XK_q,      restart,    { 0 } },
 	{ MODKEY|ShiftMask,   XK_q,      quit,       { 0 } },
+};
+
+/* workspace dialog keys */
+static Key wsdkeys[] = {
+	{ 0,                  XK_Escape, wsd_toggle, { 0 } },
+	{ MODKEY,             XK_space,  wsd_toggle, { 0 } },
+
+	/* moving view */
+	{ MODKEY,             XK_h,      ws_step,    { .i=WSSTEP_LEFT } },
+	{ MODKEY,             XK_l,      ws_step,    { .i=WSSTEP_RIGHT } },
+	{ MODKEY,             XK_j,      ws_step,    { .i=WSSTEP_DOWN } },
+	{ MODKEY,             XK_k,      ws_step,    { .i=WSSTEP_UP } },
 };
 
 /* workspace dialog */

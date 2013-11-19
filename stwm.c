@@ -512,10 +512,19 @@ keypress(XEvent *e)
 	unsigned int i;
 	KeySym keysym = XLookupKeysym(&e->xkey, 0);
 
-	for (i = 0; i < LENGTH(keys); i++) {
-		if (e->xkey.state == keys[i].mod && keysym == keys[i].key &&
-				keys[i].func) {
-			keys[i].func(&keys[i].arg);
+	if (!wsd.shown) {
+		for (i = 0; i < LENGTH(keys); i++) {
+			if (e->xkey.state == keys[i].mod && keysym == keys[i].key &&
+					keys[i].func) {
+				keys[i].func(&keys[i].arg);
+			}
+		}
+	} else {
+		for (i = 0; i < LENGTH(wsdkeys); i++) {
+			if (e->xkey.state == wsdkeys[i].mod && keysym == wsdkeys[i].key &&
+					wsdkeys[i].func) {
+				wsdkeys[i].func(&wsdkeys[i].arg);
+			}
 		}
 	}
 }
@@ -1063,6 +1072,7 @@ wsd_toggle(Arg const *arg)
 			}
 		}
 		wsd.shown = false;
+		grabkeys();
 	} else {
 		for (i = 0; i < nws; i++) {
 			ws = workspaces[i];
@@ -1074,6 +1084,8 @@ wsd_toggle(Arg const *arg)
 		}
 		wsd_box(selws);
 		wsd.shown = true;
+		XGrabKeyboard(dpy, wsd.boxes[wsd.rad*(wsd.rad*2+1)+wsd.rad].win, false,
+				GrabModeAsync, GrabModeAsync, CurrentTime);
 	}
 }
 
