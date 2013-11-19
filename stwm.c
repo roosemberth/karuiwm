@@ -13,7 +13,6 @@
 #include <X11/cursorfont.h>
 
 /* macros */
-//#define DEBUG  /* enable for debug output */
 #ifdef DEBUG
 #define debug(...) stdlog(stdout, "\033[34mDBG\033[0m "__VA_ARGS__)
 #else
