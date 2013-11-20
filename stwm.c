@@ -108,6 +108,7 @@ static void init(void);
 static void initbar(void);
 static void initdrawcontext(void);
 static void initwsd(void);
+static Window initwsdbox(void);
 static void keypress(XEvent *);
 static void keyrelease(XEvent *);
 static void killclient(Arg const *);
@@ -122,6 +123,8 @@ static void propertynotify(XEvent *);
 static void push(Workspace *, Client *);
 static void quit(Arg const *);
 static void renamews(Workspace *, char const *);
+static void renderbar(void);
+static void renderwsdbox(Workspace *);
 static void resetws(Workspace *, int, int);
 static void restart(Arg const *);
 static void run(void);
@@ -138,7 +141,6 @@ static void stepws(Arg const *);
 static void tile(void);
 static void togglewsd(Arg const *);
 static void unmapnotify(XEvent *);
-static void updatebar(void);
 static void updatefocus(void);
 static void updatewsd(void);
 static void updatewsdbox(Workspace *);
@@ -234,9 +236,10 @@ attach(Workspace *ws, Window w)
 	if (!ws->clients) {
 		die("could not allocate %d bytes for client list",
 				ws->nc*sizeof(Client *));
-	} else if (ws->nc == 1) {
-		pos = 0;
-	} else {
+	}
+
+	pos = 0;
+	if (ws->nc > 1) {
 		for (i = 0; i < ws->nc-1; i++) {
 			if (ws->clients[i] == ws->selcli) {
 				pos = i+1;
@@ -440,18 +443,21 @@ expose(XEvent *e)
 {
 	debug("expose(%d)", e->xexpose.window);
 
-	//unsigned int i;
+	unsigned int i;
 
 	if (e->xexpose.window == barwin) {
-		updatebar();
-	/*
-	} else {
-		for (i = 0; i <= nws; i++) {
-			if (e->xexpose.window == wsd.boxes[i]) {
-				updatewsdbox(workspaces[i], i);
-			}
+		renderbar();
+	}
+	for (i = 0; i < nws; i++) {
+		if (e->xexpose.window == workspaces[i]->wsdbox) {
+			renderwsdbox(workspaces[i]);
 		}
-		*/
+	}
+	if (e->xexpose.window == selws->wsdbox) {
+		renderwsdbox(selws);
+	}
+	if (e->xexpose.window == wsd.target->wsdbox) {
+		renderwsdbox(wsd.target);
 	}
 }
 
@@ -555,7 +561,7 @@ initbar(void)
 			DefaultVisual(dpy, screen),
 			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
 	XMapRaised(dpy, barwin);
-	updatebar();
+	renderbar();
 }
 
 void
@@ -590,13 +596,18 @@ initwsd(void)
 		die("could not allocate %d bytes for workspace", sizeof(Workspace));
 	}
 	resetws(wsd.target, 0, 0);
-	wsd.target->wsdbox = XCreateWindow(dpy, root, -wsd.w, -wsd.h, wsd.w, wsd.h,
-			0, DefaultDepth(dpy, screen),
-			CopyFromParent, DefaultVisual(dpy, screen),
-			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wsd.wa);
+	wsd.target->wsdbox = initwsdbox();
 	XMapRaised(dpy, wsd.target->wsdbox);
 }
 
+Window
+initwsdbox(void)
+{
+	return XCreateWindow(dpy, root, -wsd.w, -wsd.h,
+			wsd.w-2*wsdborder, wsd.h-2*wsdborder, 0, DefaultDepth(dpy, screen),
+			CopyFromParent, DefaultVisual(dpy, screen),
+			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wsd.wa);
+}
 void
 keypress(XEvent *e)
 {
@@ -794,6 +805,56 @@ renamews(Workspace *ws, char const *name)
 }
 
 void
+renderbar(void)
+{
+	char name[256];
+	if (strlen(selws->name)) {
+		strncpy(name, selws->name, 256);
+	} else {
+		snprintf(name, 256, "[%d|%d]", selws->x, selws->y);
+	}
+	name[255] = 0;
+
+	XSetForeground(dpy, dc.gc, cbordernorm);
+	XFillRectangle(dpy, barwin, dc.gc, 0, 0, bw, bh);
+	XSetForeground(dpy, dc.gc, cbordersel);
+	XDrawString(dpy, barwin, dc.gc, 0, dc.font.ascent+1, name, strlen(name));
+	XSync(dpy, false);
+}
+
+void
+renderwsdbox(Workspace *ws)
+{
+	char name[256];
+
+	/* data */
+	if (strlen(ws->name)) {
+		strncpy(name, ws->name, 256);
+	} else {
+		snprintf(name, 256, "[%d|%d]", ws->x, ws->y);
+	}
+
+	/* border */
+	XSetWindowBorderWidth(dpy, ws->wsdbox, wsdborder);
+	XSetWindowBorder(dpy, ws->wsdbox, ws == selws ? wsdcbordersel :
+			ws->x == wsd.target->x && ws->y == wsd.target->y ? wsdcbordertarget
+			: wsdcbordernorm);
+
+	/* background */
+	XSetForeground(dpy, dc.gc, ws == selws ? wsdcbgsel :
+			ws->x == wsd.target->x && ws->y == wsd.target->y ? wsdcbgtarget
+			: wsdcbgnorm);
+	XFillRectangle(dpy, ws->wsdbox, dc.gc, 0, 0, wsd.w, wsd.h);
+
+	/* text */
+	XSetForeground(dpy, dc.gc, ws == selws ? wsdcsel :
+			ws->x == wsd.target->x && ws->y == wsd.target->y ? wsdctarget
+			: wsdcnorm);
+	XDrawString(dpy, ws->wsdbox, dc.gc, 2, dc.font.ascent+1, name,
+			strlen(name));
+}
+
+void
 resetws(Workspace *ws, int x, int y)
 {
 	ws->clients = selws->stack = NULL;
@@ -803,6 +864,7 @@ resetws(Workspace *ws, int x, int y)
 	ws->mfact = mfact;
 	ws->nmaster = nmaster;
 	ws->name[0] = 0;
+	ws->wsdbox = 0;
 }
 
 void
@@ -900,7 +962,7 @@ sigchld(int unused)
 void
 spawn(Arg const *arg)
 {
-	pid_t pid = vfork();
+	pid_t pid = fork();
 	if (pid == 0) {
 		execvp(((char const **)arg->v)[0], (char **)arg->v);
 		warn("execvp(%s) failed", ((char const **)arg->v)[0]);
@@ -977,7 +1039,7 @@ stepws(Arg const *arg)
 	}
 	arrange();
 	updatefocus();
-	updatebar();
+	renderbar();
 }
 
 void
@@ -1055,17 +1117,11 @@ togglewsd(Arg const *arg)
 
 	/* create a box for all mapped + current workspace(s) and hide it */
 	for (i = 0; i < nws; i++) {
-		workspaces[i]->wsdbox = XCreateWindow(dpy, root, -wsd.w, -wsd.h,
-				wsd.w, wsd.h, 0, DefaultDepth(dpy, screen),
-				CopyFromParent, DefaultVisual(dpy, screen),
-				CWOverrideRedirect|CWBackPixmap|CWEventMask, &wsd.wa);
+		workspaces[i]->wsdbox = initwsdbox();
 		XMapRaised(dpy, workspaces[i]->wsdbox);
 	}
 	if (!selws->wsdbox) {
-		selws->wsdbox = XCreateWindow(dpy, root, -wsd.w, -wsd.h, wsd.w, wsd.h,
-				0, DefaultDepth(dpy, screen),
-				CopyFromParent, DefaultVisual(dpy, screen),
-				CWOverrideRedirect|CWBackPixmap|CWEventMask, &wsd.wa);
+		selws->wsdbox = initwsdbox();
 		XMapRaised(dpy, selws->wsdbox);
 	}
 	XRaiseWindow(dpy, wsd.target->wsdbox);
@@ -1089,24 +1145,6 @@ unmapnotify(XEvent *e)
 	debug("unmapnotify(%d)", e->xunmap.window);
 
 	detach(e->xunmap.window);
-}
-
-void
-updatebar(void)
-{
-	char name[256];
-	if (strlen(selws->name)) {
-		strncpy(name, selws->name, 256);
-	} else {
-		snprintf(name, 256, "[%d|%d]", selws->x, selws->y);
-	}
-	name[255] = 0;
-
-	XSetForeground(dpy, dc.gc, cbordernorm);
-	XFillRectangle(dpy, barwin, dc.gc, 0, 0, bw, bh);
-	XSetForeground(dpy, dc.gc, cbordersel);
-	XDrawString(dpy, barwin, dc.gc, 0, dc.font.ascent+1, name, strlen(name));
-	XSync(dpy, false);
 }
 
 void
@@ -1149,10 +1187,9 @@ updatewsd(void)
 void
 updatewsdbox(Workspace *ws)
 {
-	char name[256];
 	int c, r, x, y;
 
-	/* hide box if not in reange */
+	/* hide box if not in range */
 	if (ws->x < wsd.target->x-wsd.rad || ws->x > wsd.target->x+wsd.rad ||
 			ws->y < wsd.target->y-wsd.rad || ws->y > wsd.target->y+wsd.rad) {
 		XMoveWindow(dpy, ws->wsdbox, -wsd.w, -wsd.h);
@@ -1165,18 +1202,9 @@ updatewsdbox(Workspace *ws)
 	x = ww/2 - wsd.w*wsd.rad - wsd.w/2 + c*wsd.w + wx;
 	y = wh/2 - wsd.h*wsd.rad - wsd.h/2 + r*wsd.h + wy;
 	XMoveWindow(dpy, ws->wsdbox, x, y);
+	XRaiseWindow(dpy, ws->wsdbox);
 
-	if (strlen(ws->name)) {
-		strncpy(name, ws->name, 256);
-	} else {
-		snprintf(name, 256, "[%d|%d]", ws->x, ws->y);
-	}
-
-	XSetForeground(dpy, dc.gc, ws == selws ? cbordersel : cbordernorm);
-	XFillRectangle(dpy, ws->wsdbox, dc.gc, 0, 0, wsd.w, wsd.h);
-	XSetForeground(dpy, dc.gc, ws == selws ? cbordernorm : cbordersel);
-	XDrawString(dpy, ws->wsdbox, dc.gc, 2, dc.font.ascent+1,
-			name, strlen(name));
+	renderwsdbox(ws);
 }
 
 int
