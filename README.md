@@ -53,13 +53,13 @@ The default configuration specifies the following keys:
 
 **Windows**
 
-* <code>Mod</code>+<code>l</code>/<code>h</code>
-  increase/decrease master area size
 * <code>Mod</code>+<code>j</code>/<code>k</code>
   set focus to next/previous client
 
 **Layout**
 
+* <code>Mod</code>+<code>l</code>/<code>h</code>
+  increase/decrease master area size
 * <code>Mod</code>+<code>j</code>/<code>k</code>
   swap client with next/previous client in the layout
 * <code>Mod</code>+<code>,</code>/<code>.</code>
@@ -93,14 +93,14 @@ and destroyed dynamically. A workspace may be considered either *persistent*
 whether there is a client on the workspace.
 
 The change from persistent to temporary (or vice versa) happens automatically
-upon removing the last client (or placing the first client); manual control of
-workspace creation/destruction might get added in the future.
+upon removing the last client (or placing the first client).
 
 The status bar displays the current position on the "workspace-map"; for a
-graphical representation there is the workspace dialog; the keys are as follows:
+graphical representation there is the *workspace dialog*; the keys are as
+follows:
 
 * <code>Mod</code>+<code>h</code>/<code>j</code>/<code>k</code>/<code>l</code>
-  switch to left/below/above/right workspace
+  move target to left/below/above/right workspace (currently unable to switch)
 * <code>Mod</code>+<code>Space</code> or <code>Esc</code>
   close workspace dialog
 
