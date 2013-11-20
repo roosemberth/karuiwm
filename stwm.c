@@ -67,6 +67,7 @@ typedef struct {
 typedef struct {
 	Client **clients, **stack;
 	Client *selcli;
+	Window wsdbox;
 	unsigned int nc, ns;
 	unsigned int nmaster;
 	float mfact;
@@ -75,11 +76,10 @@ typedef struct {
 } Workspace;
 
 typedef struct {
-	Window *boxes;
-	Window targetbox;
+	Workspace *target;
+	XSetWindowAttributes wa;
 	int w, h;
 	int rows, cols, rad;
-	int tx, ty;
 	bool shown;
 } WorkspaceDialog;
 
@@ -107,6 +107,7 @@ static void hidews(Workspace *);
 static void init(void);
 static void initbar(void);
 static void initdrawcontext(void);
+static void initwsd(void);
 static void keypress(XEvent *);
 static void keyrelease(XEvent *);
 static void killclient(Arg const *);
@@ -140,7 +141,7 @@ static void unmapnotify(XEvent *);
 static void updatebar(void);
 static void updatefocus(void);
 static void updatewsd(void);
-static void updatewsdbox(Workspace *, int);
+static void updatewsdbox(Workspace *);
 static int xerror(Display *, XErrorEvent *);
 static int (*xerrorxlib)(Display *, XErrorEvent *);
 static void zoom(Arg const *);
@@ -381,7 +382,6 @@ detach(Window win)
 
 	/* update layout if the client was removed from the current workspace */
 	if (ws == selws) {
-		debug("detaching from current workspace, refocus");
 		arrange();
 		updatefocus();
 	}
@@ -529,14 +529,8 @@ init(void)
 	/* status bar */
 	initdrawcontext();
 	initbar();
+	initwsd();
 
-	/* workspace dialog */
-	wsd.rad = wsdradius;
-	wsd.rows = 2*wsd.rad+1;
-	wsd.cols = 2*wsd.rad+1;
-	wsd.w = ww/wsd.cols;
-	wsd.h = wh/wsd.rows;
-	wsd.shown = false;
 }
 
 void
@@ -575,6 +569,32 @@ initdrawcontext(void)
 	dc.font.ascent = dc.font.xfontstruct->ascent;
 	dc.font.descent = dc.font.xfontstruct->descent;
 	dc.font.height = dc.font.ascent + dc.font.descent;
+}
+
+void
+initwsd(void)
+{
+	wsd.rad = wsdradius;
+	wsd.rows = 2*wsd.rad+1;
+	wsd.cols = 2*wsd.rad+1;
+	wsd.w = ww/wsd.cols;
+	wsd.h = wh/wsd.rows;
+	wsd.shown = false;
+
+	wsd.wa.override_redirect = true;
+	wsd.wa.background_pixmap = ParentRelative;
+	wsd.wa.event_mask = ExposureMask;
+
+	wsd.target = malloc(sizeof(Workspace));
+	if (!wsd.target) {
+		die("could not allocate %d bytes for workspace", sizeof(Workspace));
+	}
+	resetws(wsd.target, 0, 0);
+	wsd.target->wsdbox = XCreateWindow(dpy, root, -wsd.w, -wsd.h, wsd.w, wsd.h,
+			0, DefaultDepth(dpy, screen),
+			CopyFromParent, DefaultVisual(dpy, screen),
+			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wsd.wa);
+	XMapRaised(dpy, wsd.target->wsdbox);
 }
 
 void
@@ -824,10 +844,10 @@ void
 selectws(Arg const *arg)
 {
 	switch (arg->i) {
-		case LEFT:  wsd.tx--; break;
-		case RIGHT: wsd.tx++; break;
-		case UP:    wsd.ty--; break;
-		case DOWN:  wsd.ty++; break;
+		case LEFT:  wsd.target->x--; break;
+		case RIGHT: wsd.target->x++; break;
+		case UP:    wsd.target->y--; break;
+		case DOWN:  wsd.target->y++; break;
 	}
 	updatewsd();
 }
@@ -938,7 +958,6 @@ stepws(Arg const *arg)
 	}
 
 	if (locatews(&next, NULL, x, y)) {
-		debug("target workspace exits");
 		if (!selws->nc) {
 			free(selws);
 		} else {
@@ -946,7 +965,6 @@ stepws(Arg const *arg)
 		}
 		selws = next;
 	} else {
-		debug("target workspace does not exist");
 		if (selws->nc) {
 			hidews(selws);
 			selws = malloc(sizeof(Workspace));
@@ -1013,41 +1031,53 @@ void
 togglewsd(Arg const *arg)
 {
 	unsigned int i;
-	XSetWindowAttributes wa = {
-		.override_redirect = true,
-		.background_pixmap = ParentRelative,
-		.event_mask = ExposureMask,
-	};
 
 	/* if WSD is already shown, remove it and return */
 	if (wsd.shown) {
-		for (i = 0; i <= nws; i++) {
-			XDestroyWindow(dpy, wsd.boxes[i]);
+		for (i = 0; i < nws; i++) {
+			if (workspaces[i]->wsdbox) {
+				XDestroyWindow(dpy, workspaces[i]->wsdbox);
+				workspaces[i]->wsdbox = 0;
+			}
 		}
+		if (selws->wsdbox) {
+			XDestroyWindow(dpy, selws->wsdbox);
+			selws->wsdbox = 0;
+		}
+		/* hide target's box */
+		XMoveWindow(dpy, wsd.target->wsdbox, -wsd.w, -wsd.h);
 		wsd.shown = false;
+		XUngrabKeyboard(dpy, selws->wsdbox);
 		grabkeys();
 		updatefocus();
 		return;
 	}
 
-	/* create box for each+current workspace and hide outside screen area */
-	wsd.boxes = malloc((nws+1)*sizeof(Window));
-	if (!wsd.boxes) {
-		die("could not allocate %d bytes for WSD box windows",
-				nws*sizeof(Window));
-	}
-	for (i = 0; i <= nws; i++) {
-		wsd.boxes[i] = XCreateWindow(dpy, root, -1, -1, 1, 1, 0,
-				DefaultDepth(dpy, screen),
+	/* create a box for all mapped + current workspace(s) and hide it */
+	for (i = 0; i < nws; i++) {
+		workspaces[i]->wsdbox = XCreateWindow(dpy, root, -wsd.w, -wsd.h,
+				wsd.w, wsd.h, 0, DefaultDepth(dpy, screen),
 				CopyFromParent, DefaultVisual(dpy, screen),
-				CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
-		XMapWindow(dpy, wsd.boxes[i]);
+				CWOverrideRedirect|CWBackPixmap|CWEventMask, &wsd.wa);
+		XMapRaised(dpy, workspaces[i]->wsdbox);
 	}
+	if (!selws->wsdbox) {
+		selws->wsdbox = XCreateWindow(dpy, root, -wsd.w, -wsd.h, wsd.w, wsd.h,
+				0, DefaultDepth(dpy, screen),
+				CopyFromParent, DefaultVisual(dpy, screen),
+				CWOverrideRedirect|CWBackPixmap|CWEventMask, &wsd.wa);
+		XMapRaised(dpy, selws->wsdbox);
+	}
+	XRaiseWindow(dpy, wsd.target->wsdbox);
 
 	/* initially selected workspace is the current workspace */
-	wsd.tx = selws->x;
-	wsd.ty = selws->y;
+	wsd.target->x = selws->x;
+	wsd.target->y = selws->y;
 	wsd.shown = true;
+
+	/* grab keyboard, now we're in WSD mode */
+	XGrabKeyboard(dpy, selws->wsdbox, false, GrabModeAsync, GrabModeAsync,
+			CurrentTime);
 
 	/* initial update */
 	updatewsd();
@@ -1082,7 +1112,6 @@ updatebar(void)
 void
 updatefocus(void)
 {
-	debug("update focus to %d/%d", selws->ns, selws->nc);
 	unsigned int i;
 
 	if (!selws->ns) {
@@ -1103,56 +1132,39 @@ updatefocus(void)
 void
 updatewsd(void)
 {
-	Workspace *ws;
-	int i, c, r, x, y;
+	unsigned int i;
 
 	if (!wsd.shown) {
 		return;
 	}
 
-	for (i = 0; i <= nws; i++) {
-		/* get workspace (create temporarily if target and does not exist) */
-		if (i < nws) {
-			ws = workspaces[i];
-		} else if (!locatews(&ws, NULL, wsd.tx, wsd.ty)) {
-			ws = malloc(sizeof(Workspace));
-			if (!ws) {
-				die("could not allocate %d bytes for workspace",
-						sizeof(Workspace));
-			}
-			resetws(ws, wsd.tx, wsd.ty);
-		}
-
-		/* hide boxes for workspaces out of range */
-		if (ws->x < wsd.tx-wsd.rad || ws->x > wsd.tx+wsd.rad ||
-				ws->y < wsd.ty-wsd.rad || ws->y > wsd.ty+wsd.rad) {
-			XMoveResizeWindow(dpy, wsd.boxes[i], -1, -1, 1, 1);
-		}
-
-		/* get box dimensions */
-		c = ws->x + wsd.rad - wsd.tx;
-		r = ws->y + wsd.rad - wsd.ty;
-		x = ww/2 - wsd.w*wsd.rad - wsd.w/2 + c*wsd.w + wx;
-		y = wh/2 - wsd.h*wsd.rad - wsd.h/2 + r*wsd.h + wy;
-
-		/* draw box */
-		XMoveResizeWindow(dpy, wsd.boxes[i], x, y, wsd.w, wsd.h);
-		XRaiseWindow(dpy, wsd.boxes[i]);
-		updatewsdbox(ws, i);
-
-		/* if this is a temporary workspace, destroy it */
-		if (!ws->nc && ws != selws) {
-			free(ws);
-		}
+	for (i = 0; i < nws; i++) {
+		updatewsdbox(workspaces[i]);
 	}
-	XGrabKeyboard(dpy, wsd.boxes[nws], false, GrabModeAsync, GrabModeAsync,
-			CurrentTime);
+	updatewsdbox(selws);
+	updatewsdbox(wsd.target);
+	XSync(dpy, false);
 }
 
 void
-updatewsdbox(Workspace *ws, int i)
+updatewsdbox(Workspace *ws)
 {
 	char name[256];
+	int c, r, x, y;
+
+	/* hide box if not in reange */
+	if (ws->x < wsd.target->x-wsd.rad || ws->x > wsd.target->x+wsd.rad ||
+			ws->y < wsd.target->y-wsd.rad || ws->y > wsd.target->y+wsd.rad) {
+		XMoveWindow(dpy, ws->wsdbox, -wsd.w, -wsd.h);
+		return;
+	}
+
+	/* show box */
+	c = ws->x + wsd.rad - wsd.target->x;
+	r = ws->y + wsd.rad - wsd.target->y;
+	x = ww/2 - wsd.w*wsd.rad - wsd.w/2 + c*wsd.w + wx;
+	y = wh/2 - wsd.h*wsd.rad - wsd.h/2 + r*wsd.h + wy;
+	XMoveWindow(dpy, ws->wsdbox, x, y);
 
 	if (strlen(ws->name)) {
 		strncpy(name, ws->name, 256);
@@ -1161,11 +1173,10 @@ updatewsdbox(Workspace *ws, int i)
 	}
 
 	XSetForeground(dpy, dc.gc, ws == selws ? cbordersel : cbordernorm);
-	XFillRectangle(dpy, wsd.boxes[i], dc.gc, 0, 0, wsd.w, wsd.h);
+	XFillRectangle(dpy, ws->wsdbox, dc.gc, 0, 0, wsd.w, wsd.h);
 	XSetForeground(dpy, dc.gc, ws == selws ? cbordernorm : cbordersel);
-	XDrawString(dpy, wsd.boxes[i], dc.gc, 2, dc.font.ascent+1,
+	XDrawString(dpy, ws->wsdbox, dc.gc, 2, dc.font.ascent+1,
 			name, strlen(name));
-	XSync(dpy, false);
 }
 
 int
