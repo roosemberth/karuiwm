@@ -825,31 +825,32 @@ renderbar(void)
 void
 renderwsdbox(Workspace *ws)
 {
+	Workspace *ws2;
 	char name[256];
 
 	/* data */
-	if (strlen(ws->name)) {
-		strncpy(name, ws->name, 256);
+	if (ws == wsd.target && locatews(&ws2, NULL, ws->x, ws->y)) {
+		strncpy(name, ws2->name, 255);
+	} else if (strlen(ws->name)) {
+		strncpy(name, ws->name, 255);
 	} else {
-		snprintf(name, 256, "[%d|%d]", ws->x, ws->y);
+		snprintf(name, 255, "[%d|%d]", ws->x, ws->y);
 	}
+	name[255] = 0;
 
 	/* border */
 	XSetWindowBorderWidth(dpy, ws->wsdbox, wsdborder);
-	XSetWindowBorder(dpy, ws->wsdbox, ws == selws ? wsdcbordersel :
-			ws->x == wsd.target->x && ws->y == wsd.target->y ? wsdcbordertarget
-			: wsdcbordernorm);
+	XSetWindowBorder(dpy, ws->wsdbox, ws == selws ? wsdcbordersel
+			: ws == wsd.target ? wsdcbordertarget : wsdcbordernorm);
 
 	/* background */
-	XSetForeground(dpy, dc.gc, ws == selws ? wsdcbgsel :
-			ws->x == wsd.target->x && ws->y == wsd.target->y ? wsdcbgtarget
-			: wsdcbgnorm);
+	XSetForeground(dpy, dc.gc, ws == selws ? wsdcbgsel
+			: ws == wsd.target ? wsdcbgtarget : wsdcbgnorm);
 	XFillRectangle(dpy, ws->wsdbox, dc.gc, 0, 0, wsd.w, wsd.h);
 
 	/* text */
-	XSetForeground(dpy, dc.gc, ws == selws ? wsdcsel :
-			ws->x == wsd.target->x && ws->y == wsd.target->y ? wsdctarget
-			: wsdcnorm);
+	XSetForeground(dpy, dc.gc, ws == selws ? wsdcsel
+			: ws == wsd.target ? wsdctarget : wsdcnorm);
 	XDrawString(dpy, ws->wsdbox, dc.gc, 2, dc.font.ascent+1, name,
 			strlen(name));
 }
