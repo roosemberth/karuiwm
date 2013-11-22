@@ -62,7 +62,7 @@ The <code>Mod</code> key is set to Mod1 (<code>Alt</code>):
 
 * <code>Mod</code>+<code>j</code>|<code>k</code>
   set focus to next/previous client
-* <code>Mod</code>+<code>c</code>
+* <code>Mod</code>+<code>Shift</code>+<code>c</code>
   close selected client
 
 **Layout**
