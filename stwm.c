@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdarg.h>
 #include <time.h>
+#include <locale.h>
 #include <signal.h>
 #include <sys/wait.h>
 #include <string.h>
@@ -54,6 +55,7 @@ typedef struct {
 	struct {
 		int ascent, descent, height;
 		XFontStruct *xfontstruct;
+		XFontSet xfontset;
 	} font;
 } DC;
 
@@ -81,6 +83,11 @@ typedef struct {
 	int w, h;
 	int rows, cols, rad;
 	bool shown;
+	Window barwin;
+	char barbuf[256];
+	unsigned int barcur;
+	XIM im;
+	XIC ic;
 } WorkspaceDialog;
 
 /* functions */
@@ -106,14 +113,14 @@ static void hide(Client *);
 static void hidews(Workspace *);
 static void init(void);
 static void initbar(void);
-static void initdrawcontext(void);
+static void initfont(void);
 static void initwsd(void);
 static Window initwsdbox(void);
 static void keypress(XEvent *);
 static void keyrelease(XEvent *);
 static void killclient(Arg const *);
 static bool locate(Workspace **, Client **, unsigned int *, Window);
-static bool locatews(Workspace **, unsigned int *, int, int);
+static bool locatews(Workspace **, unsigned int *, int, int, char const *, unsigned int);
 static void mapnotify(XEvent *);
 static void mappingnotify(XEvent *);
 static void maprequest(XEvent *);
@@ -124,13 +131,14 @@ static void push(Workspace *, Client *);
 static void quit(Arg const *);
 static void renamews(Workspace *, char const *);
 static void renderbar(void);
+static void renderwsdbar(void);
 static void renderwsdbox(Workspace *);
 static void resetws(Workspace *, int, int);
 static void restart(Arg const *);
 static void run(void);
 static void scan(void);
-static void selectws(Arg const *arg);
 static void setmfact(Arg const *);
+static void setws(int, int);
 static void setnmaster(Arg const *);
 static void shift(Arg const *);
 static void sigchld(int);
@@ -138,11 +146,14 @@ static void spawn(Arg const *);
 static void stdlog(FILE *, char const *, ...);
 static void stepfocus(Arg const *);
 static void stepws(Arg const *);
+static void stepwsdbox(Arg const *arg);
+static unsigned int textwidth(char const *, unsigned int);
 static void tile(void);
 static void togglewsd(Arg const *);
 static void unmapnotify(XEvent *);
 static void updatefocus(void);
 static void updatewsd(void);
+static void updatewsdbar(XEvent *, char const *);
 static void updatewsdbox(Workspace *);
 static int xerror(Display *, XErrorEvent *);
 static int (*xerrorxlib)(Display *, XErrorEvent *);
@@ -403,7 +414,7 @@ detachws(Workspace *ws)
 {
 	unsigned int i;
 
-	if (!locatews(&ws, &i, ws->x, ws->y)) {
+	if (!locatews(&ws, &i, ws->x, ws->y, NULL, 0)) {
 		warn("attempt to detach non-existing workspace");
 		return;
 	}
@@ -506,12 +517,21 @@ init(void)
 {
 	XSetWindowAttributes wa;
 
+	/* kill zombies */
 	sigchld(0);
+
+	/* locale */
+	if (!setlocale(LC_ALL, "") || !XSupportsLocale()) {
+		die("could not set locale");
+	}
+
+	/* X */
 	screen = DefaultScreen(dpy);
 	root = RootWindow(dpy, screen);
 	sw = DisplayWidth(dpy, screen);
 	sh = DisplayHeight(dpy, screen);
 	xerrorxlib = XSetErrorHandler(xerror);
+	dc.gc = XCreateGC(dpy, root, 0, NULL);
 
 	/* cursor/input */
 	cursor[CURSOR_NORMAL] = XCreateFontCursor(dpy, XC_left_ptr);
@@ -533,10 +553,9 @@ init(void)
 	resetws(selws, 0, 0);
 
 	/* status bar */
-	initdrawcontext();
+	initfont();
 	initbar();
 	initwsd();
-
 }
 
 void
@@ -565,21 +584,45 @@ initbar(void)
 }
 
 void
-initdrawcontext(void)
+initfont(void)
 {
-	dc.gc = XCreateGC(dpy, root, 0, NULL);
-	dc.font.xfontstruct = XLoadQueryFont(dpy, font);
-	if (!dc.font.xfontstruct) {
-		die("cannot load font '%s'", font);
+	XFontStruct **xfonts;
+	char **xfontnames;
+	char *def, **missing;
+	int n;
+
+	dc.font.xfontset = XCreateFontSet(dpy, font, &missing, &n, &def);
+	if (missing) {
+		while (n--) {
+			warn("missing fontset: %s", missing[n]);
+		}
+		XFreeStringList(missing);
 	}
-	dc.font.ascent = dc.font.xfontstruct->ascent;
-	dc.font.descent = dc.font.xfontstruct->descent;
+
+	/* if fontset load is successful, get information; otherwise dummy font */
+	if (dc.font.xfontset) {
+		dc.font.ascent = dc.font.descent = 0;
+		XExtentsOfFontSet(dc.font.xfontset); /* TODO why? */
+		n = XFontsOfFontSet(dc.font.xfontset, &xfonts, &xfontnames);
+		while (n--) {
+			dc.font.ascent = MAX(dc.font.ascent, xfonts[n]->ascent);
+			dc.font.descent = MAX(dc.font.descent, xfonts[n]->descent);
+		}
+	} else {
+		dc.font.xfontstruct = XLoadQueryFont(dpy, font);
+		if (!dc.font.xfontstruct) {
+			die("cannot load font '%s'", font);
+		}
+		dc.font.ascent = dc.font.xfontstruct->ascent;
+		dc.font.descent = dc.font.xfontstruct->descent;
+	}
 	dc.font.height = dc.font.ascent + dc.font.descent;
 }
 
 void
 initwsd(void)
 {
+	/* WSD data */
 	wsd.rad = wsdradius;
 	wsd.rows = 2*wsd.rad+1;
 	wsd.cols = 2*wsd.rad+1;
@@ -587,10 +630,12 @@ initwsd(void)
 	wsd.h = wh/wsd.rows;
 	wsd.shown = false;
 
+	/* WSD window informations */
 	wsd.wa.override_redirect = true;
 	wsd.wa.background_pixmap = ParentRelative;
 	wsd.wa.event_mask = ExposureMask;
 
+	/* target box */
 	wsd.target = malloc(sizeof(Workspace));
 	if (!wsd.target) {
 		die("could not allocate %d bytes for workspace", sizeof(Workspace));
@@ -598,6 +643,25 @@ initwsd(void)
 	resetws(wsd.target, 0, 0);
 	wsd.target->wsdbox = initwsdbox();
 	XMapRaised(dpy, wsd.target->wsdbox);
+
+	/* bar */
+	wsd.barwin = XCreateWindow(dpy, root, -bw, -bh, bw, bh, 0,
+			DefaultDepth(dpy, screen), CopyFromParent,
+			DefaultVisual(dpy, screen),
+			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wsd.wa);
+	XMapWindow(dpy, wsd.barwin);
+
+	/* bar input */
+	wsd.im = XOpenIM(dpy, NULL, NULL, NULL);
+	if (!wsd.im) {
+		die("could not open input method");
+	}
+	wsd.ic = XCreateIC(wsd.im, XNInputStyle, XIMPreeditNothing|XIMStatusNothing,
+			XNClientWindow, wsd.barwin, NULL);
+	if (!wsd.ic) {
+		die("could not open input context");
+	}
+	XSetICFocus(wsd.ic);
 }
 
 Window
@@ -621,6 +685,7 @@ keypress(XEvent *e)
 			if (e->xkey.state == keys[i].mod && keysym == keys[i].key &&
 					keys[i].func) {
 				keys[i].func(&keys[i].arg);
+				return;
 			}
 		}
 	} else {
@@ -628,8 +693,10 @@ keypress(XEvent *e)
 			if (e->xkey.state == wsdkeys[i].mod && keysym == wsdkeys[i].key &&
 					wsdkeys[i].func) {
 				wsdkeys[i].func(&wsdkeys[i].arg);
+				return;
 			}
 		}
+		updatewsdbar(e, NULL);
 	}
 }
 
@@ -675,14 +742,23 @@ locate(Workspace **ws, Client **c, unsigned int *pos, Window w)
 }
 
 bool
-locatews(Workspace **ws, unsigned int *pos, int x, int y)
+locatews(Workspace **ws, unsigned int *pos, int x, int y, char const *name,
+		unsigned int namelen)
 {
 	unsigned int i;
 	for (i = 0; i < nws; i++) {
-		if (workspaces[i]->x == x && workspaces[i]->y == y) {
-			if (ws) *ws = workspaces[i];
-			if (pos) *pos = i;
-			return true;
+		if (name) {
+			if (!strncmp(name, workspaces[i]->name, namelen)) {
+				if (ws) *ws = workspaces[i];
+				if (pos) *pos = i;
+				return true;
+			}
+		} else {
+			if (workspaces[i]->x == x && workspaces[i]->y == y) {
+				if (ws) *ws = workspaces[i];
+				if (pos) *pos = i;
+				return true;
+			}
 		}
 	}
 	return false;
@@ -807,18 +883,32 @@ renamews(Workspace *ws, char const *name)
 void
 renderbar(void)
 {
-	char name[256];
-	if (strlen(selws->name)) {
-		strncpy(name, selws->name, 256);
-	} else {
-		snprintf(name, 256, "[%d|%d]", selws->x, selws->y);
-	}
-	name[255] = 0;
+	char *empty = "<empty>";
+	unsigned int len = strlen(selws->name);
 
 	XSetForeground(dpy, dc.gc, cbordernorm);
 	XFillRectangle(dpy, barwin, dc.gc, 0, 0, bw, bh);
+	XSetForeground(dpy, dc.gc, 0x888888);
+	XDrawString(dpy, barwin, dc.gc, 0, dc.font.ascent+1,
+			len ? selws->name : empty, strlen(len ? selws->name : empty));
+	XSync(dpy, false);
+}
+
+void
+renderwsdbar(void)
+{
+	int cursorx;
+
+	/* text */
+	XSetForeground(dpy, dc.gc, cbordernorm);
+	XFillRectangle(dpy, wsd.barwin, dc.gc, 0, 0, bw, bh);
 	XSetForeground(dpy, dc.gc, cbordersel);
-	XDrawString(dpy, barwin, dc.gc, 0, dc.font.ascent+1, name, strlen(name));
+	Xutf8DrawString(dpy, wsd.barwin, dc.font.xfontset, dc.gc, 1,
+			dc.font.ascent+1, wsd.barbuf, strlen(wsd.barbuf));
+
+	/* cursor */
+	cursorx = textwidth(wsd.barbuf, wsd.barcur);
+	XFillRectangle(dpy, wsd.barwin, dc.gc, cursorx, 1, 1, dc.font.height);
 	XSync(dpy, false);
 }
 
@@ -829,14 +919,13 @@ renderwsdbox(Workspace *ws)
 	char name[256];
 
 	/* data */
-	if (ws == wsd.target && locatews(&ws2, NULL, ws->x, ws->y)) {
-		strncpy(name, ws2->name, 255);
+	if (ws == wsd.target && locatews(&ws2, NULL, ws->x, ws->y, NULL, 0)) {
+		strcpy(name, ws2->name);
 	} else if (strlen(ws->name)) {
-		strncpy(name, ws->name, 255);
+		strcpy(name, ws->name);
 	} else {
-		snprintf(name, 255, "[%d|%d]", ws->x, ws->y);
+		strcpy(name, "");
 	}
-	name[255] = 0;
 
 	/* border */
 	XSetWindowBorderWidth(dpy, ws->wsdbox, wsdborder);
@@ -904,22 +993,38 @@ scan(void)
 }
 
 void
-selectws(Arg const *arg)
-{
-	switch (arg->i) {
-		case LEFT:  wsd.target->x--; break;
-		case RIGHT: wsd.target->x++; break;
-		case UP:    wsd.target->y--; break;
-		case DOWN:  wsd.target->y++; break;
-	}
-	updatewsd();
-}
-
-void
 setmfact(Arg const *arg)
 {
 	selws->mfact = MAX(0.1, MIN(0.9, selws->mfact+arg->f));
 	arrange();
+}
+
+void
+setws(int x, int y)
+{
+	Workspace *next;
+
+	if (locatews(&next, NULL, x, y, NULL, 0)) {
+		if (!selws->nc) {
+			free(selws);
+		} else {
+			hidews(selws);
+		}
+		selws = next;
+	} else {
+		if (selws->nc) {
+			hidews(selws);
+			selws = malloc(sizeof(Workspace));
+			if (!selws) {
+				die("could not allocate %d bytes for workspace",
+						sizeof(Workspace));
+			}
+		}
+		resetws(selws, x, y);
+	}
+	arrange();
+	updatefocus();
+	renderbar();
 }
 
 void
@@ -1008,9 +1113,30 @@ stepfocus(Arg const *arg)
 }
 
 void
+stepwsdbox(Arg const *arg)
+{
+	Workspace *ws;
+	char buf[256];
+
+	switch (arg->i) {
+		case LEFT:  wsd.target->x--; break;
+		case RIGHT: wsd.target->x++; break;
+		case UP:    wsd.target->y--; break;
+		case DOWN:  wsd.target->y++; break;
+	}
+	if (locatews(&ws, NULL, wsd.target->x, wsd.target->y, NULL, 0)) {
+		strncpy(buf, ws->name, 255);
+		buf[255] = 0;
+	} else {
+		buf[0] = 0;
+	}
+	updatewsd();
+	updatewsdbar(NULL, buf);
+}
+
+void
 stepws(Arg const *arg)
 {
-	Workspace *next;
 	int x=selws->x, y=selws->y;
 
 	switch (arg->i) {
@@ -1019,28 +1145,18 @@ stepws(Arg const *arg)
 		case UP:    y = selws->y-1; break;
 		case DOWN:  y = selws->y+1; break;
 	}
+	setws(x, y);
+}
 
-	if (locatews(&next, NULL, x, y)) {
-		if (!selws->nc) {
-			free(selws);
-		} else {
-			hidews(selws);
-		}
-		selws = next;
-	} else {
-		if (selws->nc) {
-			hidews(selws);
-			selws = malloc(sizeof(Workspace));
-			if (!selws) {
-				die("could not allocate %d bytes for workspace",
-						sizeof(Workspace));
-			}
-		}
-		resetws(selws, x, y);
+unsigned int
+textwidth(char const *str, unsigned int len)
+{
+	XRectangle r;
+	if (dc.font.xfontset) {
+		XmbTextExtents(dc.font.xfontset, str, len, NULL, &r);
+		return r.width;
 	}
-	arrange();
-	updatefocus();
-	renderbar();
+	return XTextWidth(dc.font.xfontstruct, str, len);
 }
 
 void
@@ -1107,8 +1223,9 @@ togglewsd(Arg const *arg)
 			XDestroyWindow(dpy, selws->wsdbox);
 			selws->wsdbox = 0;
 		}
-		/* hide target's box */
+		/* hide target box and input bar */
 		XMoveWindow(dpy, wsd.target->wsdbox, -wsd.w, -wsd.h);
+		XMoveWindow(dpy, wsd.barwin, -bh, -bw);
 		wsd.shown = false;
 		XUngrabKeyboard(dpy, selws->wsdbox);
 		grabkeys();
@@ -1126,6 +1243,12 @@ togglewsd(Arg const *arg)
 		XMapRaised(dpy, selws->wsdbox);
 	}
 	XRaiseWindow(dpy, wsd.target->wsdbox);
+
+	/* show input bar */
+	XMoveWindow(dpy, wsd.barwin, bx, by);
+	wsd.barbuf[0] = 0;
+	wsd.barcur = 0;
+	renderwsdbar();
 
 	/* initially selected workspace is the current workspace */
 	wsd.target->x = selws->x;
@@ -1208,6 +1331,100 @@ updatewsdbox(Workspace *ws)
 	renderwsdbox(ws);
 }
 
+void
+updatewsdbar(XEvent *e, char const *name)
+{
+	Status status;
+	char code[20];
+	unsigned int i, count;
+	KeySym keysym;
+	Workspace *ws;
+	bool special = false;
+
+	/* if name is set, replace current buffer by name */
+	if (name) {
+		strncpy(wsd.barbuf, name, 256);
+		wsd.barcur = strlen(wsd.barbuf);
+		renderwsdbar();
+		return;
+	}
+
+	/* if IM is filtering the current input (e.g. dead key), ignore it */
+	if (XFilterEvent(e, wsd.barwin)) {
+		return;
+	}
+
+	/* special keys */
+	keysym = XLookupKeysym(&e->xkey, 0);
+	if (keysym == XK_Return || (e->xkey.state&ControlMask && keysym == XK_j)) {
+		special = true;
+		togglewsd(NULL);
+		if (e->xkey.state&ControlMask && keysym != XK_j) {
+			if (strlen(wsd.barbuf) && locatews(&ws, NULL, wsd.target->x,
+					wsd.target->y, NULL, 0)) {
+				strncpy(ws->name, wsd.barbuf, 255);
+				ws->name[255] = 0;
+			}
+		} else {
+			if (strlen(wsd.barbuf) && locatews(&ws, NULL, 0, 0, wsd.barbuf,
+					strlen(wsd.barbuf))) {
+				setws(ws->x, ws->y);
+			} else {
+				setws(wsd.target->x, wsd.target->y);
+			}
+		}
+	} else if (keysym == XK_Left && wsd.barcur) {
+		special = true;
+		wsd.barcur--;
+	} else if (keysym == XK_Right && wsd.barcur < strlen(wsd.barbuf)) {
+		special = true;
+		wsd.barcur++;
+	} else if (keysym==XK_Home || (e->xkey.state&ControlMask && keysym==XK_a)) {
+		special = true;
+		wsd.barcur = 0;
+	} else if (keysym==XK_End || (e->xkey.state&ControlMask && keysym==XK_e)) {
+		special = true;
+		wsd.barcur = strlen(wsd.barbuf);
+	} else if (e->xkey.state&(ControlMask|Mod1Mask)) {
+		special = true;
+	}
+	if (special) {
+		renderwsdbar();
+		return;
+	}
+
+	/* get key value */
+	count = Xutf8LookupString(wsd.ic, (XKeyPressedEvent *) e, code, 20,
+			NULL, &status);
+	if (!count) {
+		return;
+	}
+
+	if (count == 1 && code[0] == 0x08) { /* backspace */
+		if (wsd.barcur) {
+			for (i = --wsd.barcur; i < strlen(wsd.barbuf); i++) {
+				wsd.barbuf[i] = wsd.barbuf[i+1];
+			}
+		}
+	} else if (count == 1 && code[0] == 0x7F) { /* delete */
+		if (wsd.barcur < strlen(wsd.barbuf)) {
+			for (i = wsd.barcur; i < strlen(wsd.barbuf); i++) {
+				wsd.barbuf[i] = wsd.barbuf[i+1];
+			}
+		}
+	} else if (strlen(wsd.barbuf)+count < 256) {
+		for (i = strlen(wsd.barbuf)+count; i >= wsd.barcur+count; i--) {
+			wsd.barbuf[i] = wsd.barbuf[i-count];
+		}
+		strncpy(wsd.barbuf+wsd.barcur, code, count);
+		wsd.barcur += count;
+	} else {
+		warn("buffer full");
+	}
+
+	renderwsdbar();
+}
+
 int
 xerror(Display *dpy, XErrorEvent *ee)
 {
@@ -1216,8 +1433,7 @@ xerror(Display *dpy, XErrorEvent *ee)
 	/* only display error on this error instead of crashing */
 	if (ee->error_code == BadWindow) {
 		XGetErrorText(dpy, ee->error_code, es, 256);
-		warn("%d: %s (after request %d)",
-				ee->error_code, es, ee->error_code);
+		warn("%s (ID %d) after request %d", es, ee->error_code, ee->error_code);
 		return 0;
 	}
 

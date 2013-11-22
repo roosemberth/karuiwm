@@ -17,6 +17,7 @@ static char const *wsnames[] = { "alpha", "beta", "gamma", "delta", "epsilon",
 /* commands */
 static char const *termcmd[] = { "xterm", NULL };
 static char const *dmenucmd[] = { "dmenu_run", NULL };
+static char const *scrotcmd[] = { "scrot", NULL };
 
 /* custom behaviour */
 static void
@@ -38,13 +39,14 @@ static Key const keys[] = {
 	/* applications */
 	{ MODKEY,             XK_n,      spawn,      { .v=termcmd } },
 	{ MODKEY,             XK_p,      spawn,      { .v=dmenucmd } },
+	{ 0,                  XK_Print,  spawn,      { .v=scrotcmd } },
 
 	/* windows */
 	{ MODKEY,             XK_j,      stepfocus,  { .i=+1 } },
 	{ MODKEY,             XK_k,      stepfocus,  { .i=-1 } },
 	{ MODKEY,             XK_l,      setmfact,   { .f=+0.02 } },
 	{ MODKEY,             XK_h,      setmfact,   { .f=-0.02 } },
-	{ MODKEY|ShiftMask,   XK_i,      killclient, { 0 } },
+	{ MODKEY|ShiftMask,   XK_c,      killclient, { 0 } },
 
 	/* layout */
 	{ MODKEY|ShiftMask,   XK_j,      shift,      { .i=+1 } },
@@ -67,14 +69,15 @@ static Key const keys[] = {
 
 /* workspace dialog keys */
 static Key const wsdkeys[] = {
+	{ 0,                  XK_Print,  spawn,      { .v=scrotcmd } },
 	{ 0,                  XK_Escape, togglewsd,  { 0 } },
 	{ MODKEY,             XK_space,  togglewsd,  { 0 } },
 
 	/* moving view */
-	{ MODKEY,             XK_h,      selectws,   { .i=LEFT } },
-	{ MODKEY,             XK_l,      selectws,   { .i=RIGHT } },
-	{ MODKEY,             XK_j,      selectws,   { .i=DOWN } },
-	{ MODKEY,             XK_k,      selectws,   { .i=UP } },
+	{ MODKEY|ControlMask, XK_h,      stepwsdbox, { .i=LEFT } },
+	{ MODKEY|ControlMask, XK_l,      stepwsdbox, { .i=RIGHT } },
+	{ MODKEY|ControlMask, XK_j,      stepwsdbox, { .i=DOWN } },
+	{ MODKEY|ControlMask, XK_k,      stepwsdbox, { .i=UP } },
 };
 
 /* workspace dialog */
