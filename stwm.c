@@ -47,7 +47,7 @@ typedef struct {
 	unsigned int w, h;
 	char name[256];
 	Window win;
-	bool floating;
+	bool floating, mapped;
 } Client;
 
 typedef struct {
@@ -98,6 +98,7 @@ static void buttonpress(XEvent *);
 static void buttonrelease(XEvent *);
 static void cleanup(void);
 static void clientmessage(XEvent *);
+static void configure(Client *);
 static void configurerequest(XEvent *);
 static void configurenotify(XEvent *);
 static void createnotify(XEvent *);
@@ -107,6 +108,7 @@ static void detachws(Workspace *);
 static void enternotify(XEvent *);
 static void expose(XEvent *);
 static void focusin(XEvent *);
+static void focusout(XEvent *);
 static void grabbuttons(void);
 static void grabkeys(void);
 static void hide(Client *);
@@ -174,6 +176,7 @@ static void (*handle[LASTEvent])(XEvent *) = {
 	[EnterNotify]      = enternotify,      /* 7*/
 	[Expose]           = expose,           /*12*/
 	[FocusIn]          = focusin,          /* 9*/
+	[FocusOut]         = focusout,         /*10*/
 	[KeyPress]         = keypress,         /* 2*/
 	[KeyRelease]       = keyrelease,       /* 3*/
 	[MapNotify]        = mapnotify,        /*19*/
@@ -223,10 +226,6 @@ attach(Workspace *ws, Client *c)
 {
 	unsigned int i, pos;
 
-	if (!c) {
-		return;
-	}
-
 	/* attach workspace if this is the first client */
 	if (!ws->nc) {
 		attachws(ws);
@@ -238,7 +237,6 @@ attach(Workspace *ws, Client *c)
 		die("could not allocate %d bytes for client list",
 				ws->nc*sizeof(Client *));
 	}
-
 	pos = 0;
 	if (ws->nc > 1) {
 		for (i = 0; i < ws->nc-1; i++) {
@@ -253,15 +251,9 @@ attach(Workspace *ws, Client *c)
 	}
 	ws->clients[pos] = c;
 
-	/* configure */
-	XSelectInput(dpy, c->win, EnterWindowMask);
-	XSetWindowBorderWidth(dpy, c->win, borderwidth);
-
 	/* update layout and focus if mapped to current workspace */
 	if (ws == selws) {
 		arrange();
-		push(selws, c);
-		updatefocus();
 	}
 
 	/* update workspace dialog if present */
@@ -313,6 +305,25 @@ clientmessage(XEvent *e)
 }
 
 void
+configure(Client *c)
+{
+	XConfigureEvent ev;
+	ev.type = ConfigureNotify;
+	ev.display = dpy;
+	ev.event = c->win;
+	ev.window = c->win;
+	ev.x = c->x;
+	ev.y = c->y;
+	ev.width = c->w;
+	ev.height = c->h;
+	ev.border_width = borderwidth;
+	ev.above = None;
+	ev.override_redirect = False;
+	XSendEvent(dpy, c->win, False, StructureNotifyMask, (XEvent *) &ev);
+
+}
+
+void
 configurenotify(XEvent *e)
 {
 	debug("\033[1;34mconfigurenotify(%d)\033[0m", e->xconfigure.window);
@@ -328,7 +339,7 @@ configurenotify(XEvent *e)
 
 	/* correct the size of the window if necessary (size hints) */
 	if (!XGetWindowAttributes(dpy, c->win, &wa)) {
-		warn("XGetWindowAttributes(%d) failed", c->win);
+		warn("configurenotify(): XGetWindowAttributes(%d) failed", c->win);
 		return;
 	}
 	if (wa.x != c->x || wa.y != c->y || wa.width != c->w || wa.height != c->h) {
@@ -414,7 +425,7 @@ detachws(Workspace *ws)
 	unsigned int i;
 
 	if (!locatews(&ws, &i, ws->x, ws->y, NULL, 0)) {
-		warn("attempt to detach non-existing workspace");
+		warn("detachws(): attempt to detach non-existing workspace");
 		return;
 	}
 
@@ -439,7 +450,7 @@ enternotify(XEvent *e)
 	Client *c;
 
 	if (!locate(&ws, &c, &pos, e->xcrossing.window) || ws != selws) {
-		warn("attempt to enter unhandled/invisible window %d",
+		warn("enternotify(): attempt to enter unhandled/invisible window %d",
 				e->xcrossing.window);
 		return;
 	}
@@ -475,6 +486,13 @@ void
 focusin(XEvent *e)
 {
 	debug("focusin(%d)", e->xfocus.window);
+	/* TODO */
+}
+
+void
+focusout(XEvent *e)
+{
+	debug("focusout(%d)", e->xfocus.window);
 	/* TODO */
 }
 
@@ -582,6 +600,35 @@ initbar(void)
 	renderbar();
 }
 
+Client *
+initclient(Window win)
+{
+	XWindowAttributes wa;
+	Client *c;
+
+	/* don't manage junk windows */
+	if (!XGetWindowAttributes(dpy, win, &wa)) {
+		warn("initclient(): XGetWindowAttributes() failed for window %d", win);
+		return NULL;
+	}
+	if (wa.override_redirect) {
+		return NULL;
+	}
+
+	/* create client */
+	c = malloc(sizeof(Client));
+	if (!c) {
+		die("could not allocate new client (%d bytes)", sizeof(Client));
+	}
+	c->win = win;
+	c->mapped = false;
+
+	/* configure */
+	XSelectInput(dpy, c->win, EnterWindowMask|FocusChangeMask);
+	XSetWindowBorderWidth(dpy, c->win, borderwidth);
+	return c;
+}
+
 void
 initfont(void)
 {
@@ -616,30 +663,6 @@ initfont(void)
 		dc.font.descent = dc.font.xfontstruct->descent;
 	}
 	dc.font.height = dc.font.ascent + dc.font.descent;
-}
-
-Client *
-initclient(Window win)
-{
-	XWindowAttributes wa;
-	Client *c;
-
-	/* don't manage junk windows */
-	if (!XGetWindowAttributes(dpy, win, &wa)) {
-		warn("XGetWindowAttributes() failed for window %d", win);
-		return NULL;
-	}
-	if (wa.override_redirect || wa.map_state != IsViewable) {
-		return NULL;
-	}
-
-	/* create client */
-	c = malloc(sizeof(Client));
-	if (!c) {
-		die("could not allocate new client (%d bytes)", sizeof(Client));
-	}
-	c->win = win;
-	return c;
 }
 
 void
@@ -793,7 +816,15 @@ mapnotify(XEvent *e)
 {
 	debug("\033[1;32mmapnotify(%d)\033[0m", e->xmap.window);
 
-	attach(selws, initclient(e->xmap.window));
+	Client *c;
+	Workspace *ws;
+
+	if (locate(&ws, &c, NULL, e->xmap.window)) {
+		push(ws, c);
+		if (ws == selws) {
+			updatefocus();
+		}
+	}
 }
 
 void
@@ -801,9 +832,11 @@ maprequest(XEvent *e)
 {
 	debug("\033[32mmaprequest(%d)\033[0m", e->xmaprequest.window);
 
-	/* TODO */
-
-	XMapWindow(dpy, e->xmaprequest.window);
+	Client *c = initclient(e->xmap.window);
+	if (c) {
+		attach(selws, c);
+		XMapWindow(dpy, c->win);
+	}
 }
 
 void
@@ -856,7 +889,7 @@ pop(Workspace *ws, Client *c)
 	unsigned int i;
 
 	if (!c) {
-		warn("attempt to pop NULL client");
+		warn("pop(): attempt to pop NULL client");
 		return;
 	}
 
@@ -887,7 +920,7 @@ void
 push(Workspace *ws, Client *c)
 {
 	if (!c) {
-		warn("attempt to push NULL client");
+		warn("push(): attempt to push NULL client");
 	}
 
 	pop(ws, c);
@@ -1039,13 +1072,19 @@ scan(void)
 {
 	unsigned int i, nwins;
 	Window p, r, *wins = NULL;
+	Client *c;
 
 	if (!XQueryTree(dpy, root, &r, &p, &wins, &nwins)) {
-		warn("XQueryTree() failed");
+		warn("scan(): XQueryTree() failed");
 		return;
 	}
+	XFree(wins);
+	debug("found %d windows from previous session", nwins);
 	for (i = 0; i < nwins; i++) {
-		attach(selws, initclient(wins[i]));
+		c = initclient(wins[i]);
+		if (c) {
+			attach(selws, c);
+		}
 	}
 }
 
@@ -1103,7 +1142,8 @@ shift(Arg const *arg)
 		return;
 	}
 	if (!locate(NULL, NULL, &pos, selws->selcli->win)) {
-		warn("attempt to shift non-existent window %d", selws->selcli->win);
+		warn("shift(): attempt to shift non-existent window %d",
+				selws->selcli->win);
 	}
 	selws->clients[pos] = selws->clients[(pos+selws->nc+arg->i)%selws->nc];
 	selws->clients[(pos+selws->nc+arg->i)%selws->nc] = selws->selcli;
@@ -1128,10 +1168,10 @@ spawn(Arg const *arg)
 	pid_t pid = fork();
 	if (pid == 0) {
 		execvp(((char const **)arg->v)[0], (char **)arg->v);
-		warn("execvp(%s) failed", ((char const **)arg->v)[0]);
+		warn("spawn(): execvp(%s) failed", ((char const **)arg->v)[0]);
 		_exit(EXIT_FAILURE);
 	} else if (pid < 0) {
-		warn("vfork() failed with code %d", pid);
+		warn("spawn(): vfork() failed with code %d", pid);
 	}
 }
 
@@ -1481,7 +1521,7 @@ updatewsdbar(XEvent *e, char const *name)
 		strncpy(wsd.barbuf+wsd.barcur, code, count);
 		wsd.barcur += count;
 	} else {
-		warn("buffer full");
+		warn("updatewsdbar(): buffer full");
 	}
 
 	renderwsdbar();
@@ -1514,7 +1554,8 @@ zoom(Arg const *arg)
 	}
 
 	if (!locate(NULL, &c, &pos, selws->selcli->win)) {
-		warn("attempt to zoom non-existing window %d", selws->selcli->win);
+		warn("zoom(): attempt to zoom non-existing window %d",
+				selws->selcli->win);
 		return;
 	}
 
