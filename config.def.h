@@ -74,10 +74,10 @@ static Key const wsdkeys[] = {
 	{ MODKEY,             XK_space,  togglewsd,  { 0 } },
 
 	/* moving view */
-	{ MODKEY|ControlMask, XK_h,      stepwsdbox, { .i=LEFT } },
-	{ MODKEY|ControlMask, XK_l,      stepwsdbox, { .i=RIGHT } },
-	{ MODKEY|ControlMask, XK_j,      stepwsdbox, { .i=DOWN } },
-	{ MODKEY|ControlMask, XK_k,      stepwsdbox, { .i=UP } },
+	{ MODKEY              XK_h,      stepwsdbox, { .i=LEFT } },
+	{ MODKEY              XK_l,      stepwsdbox, { .i=RIGHT } },
+	{ MODKEY              XK_j,      stepwsdbox, { .i=DOWN } },
+	{ MODKEY              XK_k,      stepwsdbox, { .i=UP } },
 };
 
 /* workspace dialog */

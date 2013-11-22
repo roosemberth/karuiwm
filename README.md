@@ -78,7 +78,7 @@ The <code>Mod</code> key is set to Mod1 (<code>Alt</code>):
 
 **Workspaces**
 
-* <code>Mod</code>+<code>Shift</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
+* <code>Mod</code>+<code>Ctrl</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
   switch to left/below/above/right workspace
 * <code>Mod</code>+<code>Space</code>
   open workspace dialog (see below)
@@ -111,7 +111,7 @@ selection on a "map":
 
 * <code>Mod</code>+<code>Space</code> or <code>Esc</code>
   close workspace dialog
-* <code>Mod</code>+<code>Shift</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
+* <code>Mod</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
   move target to left/below/above/right workspace
 * <code>Return</code>
   switch to workspace by name, or to target workspace if name is not matched

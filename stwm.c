@@ -902,12 +902,12 @@ renderwsdbar(void)
 	/* text */
 	XSetForeground(dpy, dc.gc, cbordernorm);
 	XFillRectangle(dpy, wsd.barwin, dc.gc, 0, 0, bw, bh);
-	XSetForeground(dpy, dc.gc, cbordersel);
-	Xutf8DrawString(dpy, wsd.barwin, dc.font.xfontset, dc.gc, 1,
+	XSetForeground(dpy, dc.gc, wsdcsel);
+	Xutf8DrawString(dpy, wsd.barwin, dc.font.xfontset, dc.gc, 6,
 			dc.font.ascent+1, wsd.barbuf, strlen(wsd.barbuf));
 
 	/* cursor */
-	cursorx = textwidth(wsd.barbuf, wsd.barcur);
+	cursorx = textwidth(wsd.barbuf, wsd.barcur)+5;
 	XFillRectangle(dpy, wsd.barwin, dc.gc, cursorx, 1, 1, dc.font.height);
 	XSync(dpy, false);
 }
@@ -940,8 +940,8 @@ renderwsdbox(Workspace *ws)
 	/* text */
 	XSetForeground(dpy, dc.gc, ws == selws ? wsdcsel
 			: ws == wsd.target ? wsdctarget : wsdcnorm);
-	XDrawString(dpy, ws->wsdbox, dc.gc, 2, dc.font.ascent+1, name,
-			strlen(name));
+	Xutf8DrawString(dpy, ws->wsdbox, dc.font.xfontset, dc.gc, 2,
+			dc.font.ascent+1, name, strlen(name));
 }
 
 void
@@ -1246,6 +1246,7 @@ togglewsd(Arg const *arg)
 
 	/* show input bar */
 	XMoveWindow(dpy, wsd.barwin, bx, by);
+	XRaiseWindow(dpy, wsd.barwin);
 	wsd.barbuf[0] = 0;
 	wsd.barcur = 0;
 	renderwsdbar();
