@@ -42,7 +42,11 @@ configure
 that one doesn't exist yet. This protects your configuration from being
 overwritten by the default upon checking out the git repository.
 
-The default configuration specifies the following keys:
+
+keys (default configuration)
+----------------------------
+
+The <code>Mod</code> key is set to Mod1 (<code>Alt</code>):
 
 **Applications**
 
@@ -53,26 +57,28 @@ The default configuration specifies the following keys:
 
 **Windows**
 
-* <code>Mod</code>+<code>j</code>/<code>k</code>
+* <code>Mod</code>+<code>j</code>|<code>k</code>
   set focus to next/previous client
+* <code>Mod</code>+<code>c</code>
+  close selected client
 
 **Layout**
 
-* <code>Mod</code>+<code>l</code>/<code>h</code>
+* <code>Mod</code>+<code>l</code>|<code>h</code>
   increase/decrease master area size
-* <code>Mod</code>+<code>j</code>/<code>k</code>
+* <code>Mod</code>+<code>j</code>|<code>k</code>
   swap client with next/previous client in the layout
-* <code>Mod</code>+<code>,</code>/<code>.</code>
+* <code>Mod</code>+<code>,</code>|<code>.</code>
   increase/decrease number of clients in the master area
 * <code>Mod</code>+<code>Return</code>
   move selected client to master area
 
 **Workspaces**
 
-* <code>Mod</code>+<code>Space</code>
-  open workspace dialog
-* <code>Mod</code>+<code>Shift</code>+<code>h</code>/<code>j</code>/<code>k</code>/<code>l</code>
+* <code>Mod</code>+<code>Shift</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
   switch to left/below/above/right workspace
+* <code>Mod</code>+<code>Space</code>
+  open workspace dialog (see below)
 
 **Session**
 
@@ -80,8 +86,6 @@ The default configuration specifies the following keys:
   restart stwm
 * <code>Mod</code>+<code>Shift</code>+<code>q</code>
   quit stwm
-
-The <code>Mod</code> key is set to Mod1 (<code>Alt</code>).
 
 
 workspaces
@@ -95,12 +99,23 @@ whether there is a client on the workspace.
 The change from persistent to temporary (or vice versa) happens automatically
 upon removing the last client (or placing the first client).
 
-The status bar displays the current position on the "workspace-map"; for a
-graphical representation there is the *workspace dialog*; the keys are as
-follows:
 
-* <code>Mod</code>+<code>h</code>/<code>j</code>/<code>k</code>/<code>l</code>
-  move target to left/below/above/right workspace (currently unable to switch)
+workspace dialog (default configuration)
+----------------------------------------
+
+The workspace dialog allows you to change the workspace either by name or by
+selection on a "map":
+
 * <code>Mod</code>+<code>Space</code> or <code>Esc</code>
   close workspace dialog
+* <code>Mod</code>+<code>Shift</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
+  move target to left/below/above/right workspace
+* <code>Return</code>
+  switch to workspace by name, or to target workspace if name is not matched
+* <code>Ctrl</code>+<code>Return</code>
+  rename current workspace
+
+Note that the name matching will compare the first [n] characters, where [n] is
+the name of the specified string. In case the name matches multiple workspaces,
+the bahaviour is unspecified (should get fixed in the future).
 
