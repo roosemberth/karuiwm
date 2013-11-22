@@ -119,3 +119,5 @@ Note that the name matching will compare the first [n] characters, where [n] is
 the name of the specified string. In case the name matches multiple workspaces,
 the bahaviour is unspecified (should get fixed in the future).
 
+![screenshot](http://ayekat.ch/img/host/github.com/screen_stwm.png)
+
