@@ -1,7 +1,7 @@
 stwm
 ====
 
-An attempt to build a minimalitic dynamically tiling window manager with Xlib;
+An attempt to build a minimalistic dynamically tiling window manager with Xlib;
 inspired by [xmonad](http://xmonad.org/) and based on
 [dwm](http://dwm.suckless.org/).
 
@@ -79,9 +79,9 @@ The <code>Mod</code> key is set to Mod1 (<code>Alt</code>):
 **Workspaces**
 
 * <code>Mod</code>+<code>Ctrl</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
-  switch to left/below/above/right workspace
+  set view to left/below/above/right workspace
 * <code>Mod</code>+<code>Ctrl</code>+<code>Shift</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
-  move and follow window to left/below/above/right workspace
+  move and follow client to left/below/above/right workspace
 * <code>Mod</code>+<code>Space</code>
   open workspace dialog (see below)
 
@@ -114,11 +114,11 @@ selection on a "map":
 * <code>Mod</code>+<code>Space</code> or <code>Esc</code>
   close workspace dialog
 * <code>Mod</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
-  set target to left/below/above/right workspace
+  set selection to left/below/above/right workspace
 * <code>Mod</code>+<code>Shift</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
-  swap target with left/below/above/right workspace
+  swap selected workspace with left/below/above/right workspace
 * <code>Return</code>
-  switch to workspace by name, or to target workspace if name is not matched
+  switch to workspace by name, or to selected workspace if name is not matched
 * <code>Ctrl</code>+<code>Return</code>
   rename current workspace
 
