@@ -1,8 +1,9 @@
 stwm
 ====
 
-An attempt to build a minimalist tiling window manager with Xlib; inspired by
-and based on [dwm](http://dwm.suckless.org/).
+An attempt to build a minimalitic dynamically tiling window manager with Xlib;
+inspired by [xmonad](http://xmonad.org/) and based on
+[dwm](http://dwm.suckless.org/).
 
 
 build
@@ -54,6 +55,8 @@ The <code>Mod</code> key is set to Mod1 (<code>Alt</code>):
   launch xterm
 * <code>Mod</code>+<code>p</code>
   launch dmenu
+* <code>PrtSc</code>
+  launch scrot (screenshot)
 
 **Windows**
 
