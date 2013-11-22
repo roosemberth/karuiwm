@@ -315,14 +315,14 @@ clientmessage(XEvent *e)
 void
 configurenotify(XEvent *e)
 {
-	debug("configurenotify(%d)", e->xconfigure.window);
+	debug("\033[1;34mconfigurenotify(%d)\033[0m", e->xconfigure.window);
 
 	unsigned int pos;
 	Workspace *ws;
 	Client *c;
 	XWindowAttributes wa;
 
-	if (!locate(&ws, &c, &pos, e->xconfigure.window)) {
+	if (!locate(&ws, &c, &pos, e->xconfigurerequest.window)) {
 		return;
 	}
 
@@ -344,8 +344,20 @@ configurenotify(XEvent *e)
 void
 configurerequest(XEvent *e)
 {
-	debug("configurerequest(%d)", e->xconfigurerequest.window);
+	debug("\033[34mconfigurerequest(%d)\033[0m", e->xconfigurerequest.window);
+
+	XWindowChanges wc = {
+		.x = e->xconfigurerequest.x,
+		.y = e->xconfigurerequest.y,
+		.width = e->xconfigurerequest.width,
+		.height = e->xconfigurerequest.height,
+		.border_width = e->xconfigurerequest.border_width,
+	};
+
 	/* TODO */
+
+	XConfigureWindow(dpy, e->xconfigurerequest.window,
+			CWX|CWY|CWWidth|CWHeight|CWBorderWidth, &wc);
 }
 
 void
@@ -525,7 +537,7 @@ init(void)
 	cursor[CURSOR_RESIZE] = XCreateFontCursor(dpy, XC_sizing);
 	cursor[CURSOR_MOVE] = XCreateFontCursor(dpy, XC_fleur);
 	wa.cursor = cursor[CURSOR_NORMAL];
-	wa.event_mask = SubstructureNotifyMask|KeyPressMask;
+	wa.event_mask = SubstructureNotifyMask|SubstructureRedirectMask|KeyPressMask;
 	XChangeWindowAttributes(dpy, root, CWEventMask|CWCursor, &wa);
 
 	/* input */
@@ -779,7 +791,7 @@ locatews(Workspace **ws, unsigned int *pos, int x, int y, char const *name,
 void
 mapnotify(XEvent *e)
 {
-	debug("mapnotify(%d)", e->xmap.window);
+	debug("\033[1;32mmapnotify(%d)\033[0m", e->xmap.window);
 
 	attach(selws, initclient(e->xmap.window));
 }
@@ -787,8 +799,11 @@ mapnotify(XEvent *e)
 void
 maprequest(XEvent *e)
 {
-	debug("maprequest(%d)", e->xmaprequest.window);
+	debug("\033[32mmaprequest(%d)\033[0m", e->xmaprequest.window);
+
 	/* TODO */
+
+	XMapWindow(dpy, e->xmaprequest.window);
 }
 
 void
