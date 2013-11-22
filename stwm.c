@@ -92,7 +92,7 @@ typedef struct {
 
 /* functions */
 static void arrange(void);
-static void attach(Workspace *, Window);
+static void attach(Workspace *, Client *);
 static void attachws(Workspace *);
 static void buttonpress(XEvent *);
 static void buttonrelease(XEvent *);
@@ -102,7 +102,7 @@ static void configurerequest(XEvent *);
 static void configurenotify(XEvent *);
 static void createnotify(XEvent *);
 static void destroynotify(XEvent *);
-static void detach(Window);
+static void detach(Client *);
 static void detachws(Workspace *);
 static void enternotify(XEvent *);
 static void expose(XEvent *);
@@ -113,6 +113,7 @@ static void hide(Client *);
 static void hidews(Workspace *);
 static void init(void);
 static void initbar(void);
+static Client *initclient(Window);
 static void initfont(void);
 static void initwsd(void);
 static Window initwsdbox(void);
@@ -125,6 +126,7 @@ static void mapnotify(XEvent *);
 static void mappingnotify(XEvent *);
 static void maprequest(XEvent *);
 static void motionnotify(XEvent *);
+static void move(Arg const *);
 static void pop(Workspace *, Client *);
 static void propertynotify(XEvent *);
 static void push(Workspace *, Client *);
@@ -216,25 +218,12 @@ arrange(void)
 }
 
 void
-attach(Workspace *ws, Window w)
+attach(Workspace *ws, Client *c)
 {
-	Client *c;
 	unsigned int i, pos;
-	XWindowAttributes wa;
 
-	/* don't manage junk windows */
-	if (!XGetWindowAttributes(dpy, w, &wa)) {
-		warn("XGetWindowAttributes() failed for window %d", w);
-		return;
-	}
-	if (wa.override_redirect || wa.map_state != IsViewable) {
-		return;
-	}
-
-	/* create client */
-	c = malloc(sizeof(Client));
 	if (!c) {
-		die("could not allocate new client (%d bytes)", sizeof(Client));
+		return;
 	}
 
 	/* attach workspace if this is the first client */
@@ -264,7 +253,6 @@ attach(Workspace *ws, Window w)
 	ws->clients[pos] = c;
 
 	/* configure */
-	c->win = w;
 	XSelectInput(dpy, c->win, EnterWindowMask);
 	XSetWindowBorderWidth(dpy, c->win, borderwidth);
 
@@ -374,13 +362,12 @@ destroynotify(XEvent *e)
 }
 
 void
-detach(Window win)
+detach(Client *c)
 {
 	unsigned int i;
-	Client *c;
 	Workspace *ws;
 
-	if (!locate(&ws, &c, &i, win)) {
+	if (!locate(&ws, &c, &i, c->win)) {
 		return;
 	}
 
@@ -388,7 +375,6 @@ detach(Window win)
 	pop(ws, c);
 
 	/* remove client */
-	free(c);
 	ws->nc--;
 	for (; i < ws->nc; i++) {
 		ws->clients[i] = ws->clients[i+1];
@@ -619,6 +605,30 @@ initfont(void)
 	dc.font.height = dc.font.ascent + dc.font.descent;
 }
 
+Client *
+initclient(Window win)
+{
+	XWindowAttributes wa;
+	Client *c;
+
+	/* don't manage junk windows */
+	if (!XGetWindowAttributes(dpy, win, &wa)) {
+		warn("XGetWindowAttributes() failed for window %d", win);
+		return NULL;
+	}
+	if (wa.override_redirect || wa.map_state != IsViewable) {
+		return NULL;
+	}
+
+	/* create client */
+	c = malloc(sizeof(Client));
+	if (!c) {
+		die("could not allocate new client (%d bytes)", sizeof(Client));
+	}
+	c->win = win;
+	return c;
+}
+
 void
 initwsd(void)
 {
@@ -693,6 +703,7 @@ keypress(XEvent *e)
 			if (e->xkey.state == wsdkeys[i].mod && keysym == wsdkeys[i].key &&
 					wsdkeys[i].func) {
 				wsdkeys[i].func(&wsdkeys[i].arg);
+				updatewsd();
 				return;
 			}
 		}
@@ -769,7 +780,7 @@ mapnotify(XEvent *e)
 {
 	debug("mapnotify(%d)", e->xmap.window);
 
-	attach(selws, e->xmap.window);
+	attach(selws, initclient(e->xmap.window));
 }
 
 void
@@ -791,6 +802,16 @@ motionnotify(XEvent *e)
 {
 	debug("motionnotify(%d)", e->xmotion.window);
 	/* TODO */
+}
+
+void
+move(Arg const *arg)
+{
+	Client *c = selws->selcli;
+	detach(c);
+	stepws(arg);
+	attach(selws, c);
+
 }
 
 void
@@ -988,7 +1009,7 @@ scan(void)
 		return;
 	}
 	for (i = 0; i < nwins; i++) {
-		attach(selws, wins[i]);
+		attach(selws, initclient(wins[i]));
 	}
 }
 
@@ -1130,7 +1151,6 @@ stepwsdbox(Arg const *arg)
 	} else {
 		buf[0] = 0;
 	}
-	updatewsd();
 	updatewsdbar(NULL, buf);
 }
 
@@ -1269,7 +1289,12 @@ unmapnotify(XEvent *e)
 {
 	debug("unmapnotify(%d)", e->xunmap.window);
 
-	detach(e->xunmap.window);
+	Client *c;
+
+	if (locate(NULL, &c, NULL, e->xunmap.window)) {
+		detach(c);
+		free(c);
+	}
 }
 
 void

@@ -80,6 +80,8 @@ The <code>Mod</code> key is set to Mod1 (<code>Alt</code>):
 
 * <code>Mod</code>+<code>Ctrl</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
   switch to left/below/above/right workspace
+* <code>Mod</code>+<code>Ctrl</code>+<code>Shift</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
+  move and follow window to left/below/above/right workspace
 * <code>Mod</code>+<code>Space</code>
   open workspace dialog (see below)
 
