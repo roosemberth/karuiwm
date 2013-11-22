@@ -114,7 +114,9 @@ selection on a "map":
 * <code>Mod</code>+<code>Space</code> or <code>Esc</code>
   close workspace dialog
 * <code>Mod</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
-  move target to left/below/above/right workspace
+  set target to left/below/above/right workspace
+* <code>Mod</code>+<code>Shift</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
+  swap target with left/below/above/right workspace
 * <code>Return</code>
   switch to workspace by name, or to target workspace if name is not matched
 * <code>Ctrl</code>+<code>Return</code>

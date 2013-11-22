@@ -82,6 +82,12 @@ static Key const wsdkeys[] = {
 	{ MODKEY,                       XK_l,      stepwsdbox, { .i=RIGHT } },
 	{ MODKEY,                       XK_j,      stepwsdbox, { .i=DOWN } },
 	{ MODKEY,                       XK_k,      stepwsdbox, { .i=UP } },
+
+	/* move workspace */
+	{ MODKEY|ShiftMask,             XK_h,      movews,     { .i=LEFT } },
+	{ MODKEY|ShiftMask,             XK_l,      movews,     { .i=RIGHT } },
+	{ MODKEY|ShiftMask,             XK_j,      movews,     { .i=DOWN } },
+	{ MODKEY|ShiftMask,             XK_k,      movews,     { .i=UP } },
 };
 
 /* workspace dialog */

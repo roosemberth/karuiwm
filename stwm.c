@@ -127,6 +127,7 @@ static void mappingnotify(XEvent *);
 static void maprequest(XEvent *);
 static void motionnotify(XEvent *);
 static void move(Arg const *);
+static void movews(Arg const *);
 static void pop(Workspace *, Client *);
 static void propertynotify(XEvent *);
 static void push(Workspace *, Client *);
@@ -812,6 +813,26 @@ move(Arg const *arg)
 	stepws(arg);
 	attach(selws, c);
 
+}
+
+void
+movews(Arg const *arg)
+{
+	Workspace *ws;
+	int x=selws->x, y=selws->y;
+
+	switch (arg->i) {
+		case LEFT:  x--; break;
+		case RIGHT: x++; break;
+		case UP:    y--; break;
+		case DOWN:  y++; break;
+	}
+	if (locatews(&ws, NULL, x, y, NULL, 0)) {
+		ws->x = selws->x;
+		ws->y = selws->y;
+	}
+	wsd.target->x = selws->x = x;
+	wsd.target->y = selws->y = y;
 }
 
 void
