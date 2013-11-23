@@ -47,7 +47,7 @@ typedef struct {
 	unsigned int w, h;
 	char name[256];
 	Window win;
-	bool floating, mapped;
+	bool floating;
 } Client;
 
 typedef struct {
@@ -98,7 +98,6 @@ static void buttonpress(XEvent *);
 static void buttonrelease(XEvent *);
 static void cleanup(void);
 static void clientmessage(XEvent *);
-static void configure(Client *);
 static void configurerequest(XEvent *);
 static void configurenotify(XEvent *);
 static void createnotify(XEvent *);
@@ -130,6 +129,7 @@ static void maprequest(XEvent *);
 static void motionnotify(XEvent *);
 static void move(Arg const *);
 static void movews(Arg const *);
+static void place(Client *, int, int, unsigned int, unsigned int);
 static void pop(Workspace *, Client *);
 static void propertynotify(XEvent *);
 static void push(Workspace *, Client *);
@@ -251,13 +251,8 @@ attach(Workspace *ws, Client *c)
 	}
 	ws->clients[pos] = c;
 
-	/* update layout and focus if mapped to current workspace */
-	if (ws == selws) {
-		arrange();
-	}
-
-	/* update workspace dialog if present */
-	updatewsd();
+	/* add to stack */
+	push(ws, c);
 }
 
 void
@@ -305,48 +300,32 @@ clientmessage(XEvent *e)
 }
 
 void
-configure(Client *c)
-{
-	XConfigureEvent ev;
-	ev.type = ConfigureNotify;
-	ev.display = dpy;
-	ev.event = c->win;
-	ev.window = c->win;
-	ev.x = c->x;
-	ev.y = c->y;
-	ev.width = c->w;
-	ev.height = c->h;
-	ev.border_width = borderwidth;
-	ev.above = None;
-	ev.override_redirect = False;
-	XSendEvent(dpy, c->win, False, StructureNotifyMask, (XEvent *) &ev);
-
-}
-
-void
 configurenotify(XEvent *e)
 {
-	debug("\033[1;34mconfigurenotify(%d)\033[0m", e->xconfigure.window);
+	debug("configurenotify(%d)", e->xconfigure.window);
 
-	unsigned int pos;
 	Workspace *ws;
 	Client *c;
 	XWindowAttributes wa;
 
-	if (!locate(&ws, &c, &pos, e->xconfigurerequest.window)) {
+	/* ignore unhandled windows */
+	if (!locate(&ws, &c, NULL, e->xconfigure.window)) {
 		return;
 	}
 
-	/* correct the size of the window if necessary (size hints) */
+	/* ignore buggy windows or windows with override_redirect */
 	if (!XGetWindowAttributes(dpy, c->win, &wa)) {
-		warn("configurenotify(): XGetWindowAttributes(%d) failed", c->win);
+		warn("initclient(): XGetWindowAttributes() failed for window %d",
+				c->win);
 		return;
 	}
+
+	/* force client dimensions */
 	if (wa.x != c->x || wa.y != c->y || wa.width != c->w || wa.height != c->h) {
-		XResizeWindow(dpy, c->win, c->w-2*borderwidth, c->h-2*borderwidth);
+		XResizeWindow(dpy, c->win, c->w, c->h);
 	}
 
-	/* make sure window stays invisible if not on current workspace */
+	/* make sure client stays invisible if not on current workspace */
 	if (ws != selws) {
 		hide(c);
 	}
@@ -355,20 +334,20 @@ configurenotify(XEvent *e)
 void
 configurerequest(XEvent *e)
 {
-	debug("\033[34mconfigurerequest(%d)\033[0m", e->xconfigurerequest.window);
+	debug("configurerequest(%d)", e->xconfigurerequest.window);
+
+	XConfigureRequestEvent *ev = &e->xconfigurerequest;
 
 	XWindowChanges wc = {
-		.x = e->xconfigurerequest.x,
-		.y = e->xconfigurerequest.y,
-		.width = e->xconfigurerequest.width,
-		.height = e->xconfigurerequest.height,
-		.border_width = e->xconfigurerequest.border_width,
+		.x = ev->x,
+		.y = ev->y,
+		.width = ev->width,
+		.height = ev->height,
+		.border_width = ev->border_width,
+		.sibling = ev->above,
+		.stack_mode = ev->detail,
 	};
-
-	/* TODO */
-
-	XConfigureWindow(dpy, e->xconfigurerequest.window,
-			CWX|CWY|CWWidth|CWHeight|CWBorderWidth, &wc);
+	XConfigureWindow(dpy, ev->window, ev->value_mask, &wc);
 }
 
 void
@@ -392,31 +371,23 @@ detach(Client *c)
 	Workspace *ws;
 
 	if (!locate(&ws, &c, &i, c->win)) {
+		warn("attempt to detach an unhandled window %d", c->win);
 		return;
 	}
 
 	/* remove from stack */
 	pop(ws, c);
 
-	/* remove client */
+	/* remove from list */
 	ws->nc--;
 	for (; i < ws->nc; i++) {
 		ws->clients[i] = ws->clients[i+1];
-	}
-
-	/* update layout if the client was removed from the current workspace */
-	if (ws == selws) {
-		arrange();
-		updatefocus();
 	}
 
 	/* remove the layout if the last client was removed */
 	if (!ws->nc) {
 		detachws(ws);
 	}
-
-	/* update workspace dialog if present */
-	updatewsd();
 }
 
 void
@@ -517,7 +488,7 @@ grabkeys(void)
 void
 hide(Client *c)
 {
-	XMoveWindow(dpy, c->win, -c->w, c->y);
+	XMoveWindow(dpy, c->win, -c->w-2*borderwidth, c->y);
 }
 
 void
@@ -603,12 +574,13 @@ initbar(void)
 Client *
 initclient(Window win)
 {
-	XWindowAttributes wa;
 	Client *c;
+	XWindowAttributes wa;
 
-	/* don't manage junk windows */
+	/* ignore buggy windows or windows with override_redirect */
 	if (!XGetWindowAttributes(dpy, win, &wa)) {
-		warn("initclient(): XGetWindowAttributes() failed for window %d", win);
+		warn("initclient(): XGetWindowAttributes() failed for window %d",
+				win);
 		return NULL;
 	}
 	if (wa.override_redirect) {
@@ -621,11 +593,6 @@ initclient(Window win)
 		die("could not allocate new client (%d bytes)", sizeof(Client));
 	}
 	c->win = win;
-	c->mapped = false;
-
-	/* configure */
-	XSelectInput(dpy, c->win, EnterWindowMask|FocusChangeMask);
-	XSetWindowBorderWidth(dpy, c->win, borderwidth);
 	return c;
 }
 
@@ -814,29 +781,24 @@ locatews(Workspace **ws, unsigned int *pos, int x, int y, char const *name,
 void
 mapnotify(XEvent *e)
 {
-	debug("\033[1;32mmapnotify(%d)\033[0m", e->xmap.window);
-
-	Client *c;
-	Workspace *ws;
-
-	if (locate(&ws, &c, NULL, e->xmap.window)) {
-		push(ws, c);
-		if (ws == selws) {
-			updatefocus();
-		}
-	}
+	debug("mapnotify(%d)", e->xmap.window);
+	/* TODO root window may generate mapnotify()s */
 }
 
 void
 maprequest(XEvent *e)
 {
-	debug("\033[32mmaprequest(%d)\033[0m", e->xmaprequest.window);
+	debug("maprequest(%d)", e->xmaprequest.window);
 
 	Client *c = initclient(e->xmap.window);
 	if (c) {
 		attach(selws, c);
+		arrange();
+		XSetWindowBorderWidth(dpy, c->win, borderwidth);
 		XMapWindow(dpy, c->win);
+		updatefocus();
 	}
+	updatewsd();
 }
 
 void
@@ -860,7 +822,9 @@ move(Arg const *arg)
 	detach(c);
 	stepws(arg);
 	attach(selws, c);
-
+	arrange();
+	updatefocus();
+	updatewsd();
 }
 
 void
@@ -881,6 +845,16 @@ movews(Arg const *arg)
 	}
 	wsd.target->x = selws->x = x;
 	wsd.target->y = selws->y = y;
+}
+
+void
+place(Client *c, int x, int y, unsigned int w, unsigned int h)
+{
+	c->x = x;
+	c->y = y;
+	c->w = w;
+	c->h = h;
+	XMoveResizeWindow(dpy, c->win, x, y, w, h);
 }
 
 void
@@ -1078,12 +1052,13 @@ scan(void)
 		warn("scan(): XQueryTree() failed");
 		return;
 	}
+	note("found %d clients from last session", nwins);
 	XFree(wins);
-	debug("found %d windows from previous session", nwins);
 	for (i = 0; i < nwins; i++) {
 		c = initclient(wins[i]);
 		if (c) {
 			attach(selws, c);
+			updatefocus();
 		}
 	}
 }
@@ -1272,14 +1247,8 @@ tile(void)
 		w = selws->nmaster >= selws->nc ? ww : selws->mfact*ww;
 		h = wh/ncm;
 		for (i = 0; i < ncm; i++) {
-			selws->clients[i]->x = x;
-			selws->clients[i]->y = wy+i*h;
-			selws->clients[i]->w = w;
-			selws->clients[i]->h = h;
-			XMoveResizeWindow(dpy, selws->clients[i]->win,
-					selws->clients[i]->x, selws->clients[i]->y,
-					selws->clients[i]->w-2*borderwidth,
-					selws->clients[i]->h-2*borderwidth);
+			place(selws->clients[i], x, wy+i*h, w-2*borderwidth,
+					h-2*borderwidth);
 		}
 	}
 	if (ncm == selws->nc) {
@@ -1291,14 +1260,8 @@ tile(void)
 	w = ncm ? ww-x : ww;
 	h = wh/(selws->nc-ncm);
 	for (i = ncm; i < selws->nc; i++) {
-		selws->clients[i]->x = x;
-		selws->clients[i]->y = wy+(i-ncm)*h;
-		selws->clients[i]->w = w;
-		selws->clients[i]->h = h;
-		XMoveResizeWindow(dpy, selws->clients[i]->win,
-				selws->clients[i]->x, selws->clients[i]->y,
-				selws->clients[i]->w-2*borderwidth,
-				selws->clients[i]->h-2*borderwidth);
+		place(selws->clients[i], x, wy+(i-ncm)*h, w-2*borderwidth,
+				h-2*borderwidth);
 	}
 }
 
@@ -1366,11 +1329,17 @@ unmapnotify(XEvent *e)
 	debug("unmapnotify(%d)", e->xunmap.window);
 
 	Client *c;
+	Workspace *ws;
 
-	if (locate(NULL, &c, NULL, e->xunmap.window)) {
+	if (locate(&ws, &c, NULL, e->xunmap.window)) {
 		detach(c);
 		free(c);
+		if (ws == selws) {
+			arrange();
+			updatefocus();
+		}
 	}
+	updatewsd();
 }
 
 void
