@@ -114,7 +114,7 @@ static void hide(Client *);
 static void hidews(Workspace *);
 static void init(void);
 static void initbar(void);
-static Client *initclient(Window);
+static Client *initclient(Window, bool);
 static void initfont(void);
 static void initwsd(void);
 static Window initwsdbox(void);
@@ -156,6 +156,7 @@ static unsigned int textwidth(char const *, unsigned int);
 static void tile(void);
 static void togglewsd(Arg const *);
 static void unmapnotify(XEvent *);
+static void updatebar(void);
 static void updatefocus(void);
 static void updatewsd(void);
 static void updatewsdbar(XEvent *, char const *);
@@ -209,16 +210,8 @@ static WorkspaceDialog wsd;         /* workspace dialog */
 void
 arrange(void)
 {
-	unsigned int i = 0;
-
-	/* disable EnterWindowMask, so the focus won't change at every rearrange */
-	for (i = 0; i < selws->nc; i++) {
-		XSelectInput(dpy, selws->clients[i]->win, 0);
-	}
+	/* TODO use array of layouts */
 	tile();
-	for (i = 0; i < selws->nc; i++) {
-		XSelectInput(dpy, selws->clients[i]->win, EnterWindowMask);
-	}
 }
 
 void
@@ -284,11 +277,27 @@ buttonrelease(XEvent *e)
 void
 cleanup(void)
 {
-	unsigned int i;
-	for (i = 0; i < selws->nc; i++) {
-		free(selws->clients[i]);
+	unsigned int i, j;
+	bool selfound = false;
+
+	for (i = 0; i < nws; i++) {
+		for (j = 0; j < workspaces[i]->nc; j++) {
+			free(workspaces[i]->clients[j]);
+		}
+		free(workspaces[i]->clients);
+		if (workspaces[i] == selws) {
+			selfound = true;
+		}
+		free(workspaces[i]);
 	}
-	free(selws);
+	free(workspaces);
+	if (!selfound) {
+		free(selws);
+	}
+	XDestroyWindow(dpy, barwin);
+	XDestroyWindow(dpy, wsd.barwin);
+	XDestroyWindow(dpy, wsd.target->wsdbox);
+	free(wsd.target);
 	XFreeGC(dpy, dc.gc);
 }
 
@@ -315,8 +324,7 @@ configurenotify(XEvent *e)
 
 	/* ignore buggy windows or windows with override_redirect */
 	if (!XGetWindowAttributes(dpy, c->win, &wa)) {
-		warn("initclient(): XGetWindowAttributes() failed for window %d",
-				c->win);
+		warn("XGetWindowAttributes() failed for window %d", c->win);
 		return;
 	}
 
@@ -396,7 +404,7 @@ detachws(Workspace *ws)
 	unsigned int i;
 
 	if (!locatews(&ws, &i, ws->x, ws->y, NULL, 0)) {
-		warn("detachws(): attempt to detach non-existing workspace");
+		warn("attempt to detach non-existing workspace");
 		return;
 	}
 
@@ -421,7 +429,7 @@ enternotify(XEvent *e)
 	Client *c;
 
 	if (!locate(&ws, &c, &pos, e->xcrossing.window) || ws != selws) {
-		warn("enternotify(): attempt to enter unhandled/invisible window %d",
+		warn("attempt to enter unhandled/invisible window %d",
 				e->xcrossing.window);
 		return;
 	}
@@ -568,22 +576,24 @@ initbar(void)
 			DefaultVisual(dpy, screen),
 			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
 	XMapRaised(dpy, barwin);
-	renderbar();
+	updatebar();
 }
 
 Client *
-initclient(Window win)
+initclient(Window win, bool viewable)
 {
 	Client *c;
 	XWindowAttributes wa;
 
 	/* ignore buggy windows or windows with override_redirect */
 	if (!XGetWindowAttributes(dpy, win, &wa)) {
-		warn("initclient(): XGetWindowAttributes() failed for window %d",
-				win);
+		warn("XGetWindowAttributes() failed for window %d", win);
 		return NULL;
 	}
 	if (wa.override_redirect) {
+		return NULL;
+	}
+	if (viewable && wa.map_state != IsViewable) {
 		return NULL;
 	}
 
@@ -615,7 +625,7 @@ initfont(void)
 	/* if fontset load is successful, get information; otherwise dummy font */
 	if (dc.font.xfontset) {
 		dc.font.ascent = dc.font.descent = 0;
-		XExtentsOfFontSet(dc.font.xfontset); /* TODO why? */
+		//XExtentsOfFontSet(dc.font.xfontset); /* TODO why? */
 		n = XFontsOfFontSet(dc.font.xfontset, &xfonts, &xfontnames);
 		while (n--) {
 			dc.font.ascent = MAX(dc.font.ascent, xfonts[n]->ascent);
@@ -790,13 +800,14 @@ maprequest(XEvent *e)
 {
 	debug("maprequest(%d)", e->xmaprequest.window);
 
-	Client *c = initclient(e->xmap.window);
+	Client *c = initclient(e->xmap.window, false);
 	if (c) {
 		attach(selws, c);
 		arrange();
 		XSetWindowBorderWidth(dpy, c->win, borderwidth);
 		XMapWindow(dpy, c->win);
 		updatefocus();
+		updatebar();
 	}
 	updatewsd();
 }
@@ -830,8 +841,8 @@ move(Arg const *arg)
 void
 movews(Arg const *arg)
 {
-	Workspace *ws;
-	int x=selws->x, y=selws->y;
+	Workspace *src=NULL, *dst=NULL;
+	int x=wsd.target->x, y=wsd.target->y;
 
 	switch (arg->i) {
 		case LEFT:  x--; break;
@@ -839,12 +850,19 @@ movews(Arg const *arg)
 		case UP:    y--; break;
 		case DOWN:  y++; break;
 	}
-	if (locatews(&ws, NULL, x, y, NULL, 0)) {
-		ws->x = selws->x;
-		ws->y = selws->y;
+
+	locatews(&src, NULL, wsd.target->x, wsd.target->y, NULL, 0);
+	locatews(&dst, NULL, x, y, NULL, 0);
+	if (src) {
+		src->x = x;
+		src->y = y;
 	}
-	wsd.target->x = selws->x = x;
-	wsd.target->y = selws->y = y;
+	if (dst) {
+		dst->x = wsd.target->x;
+		dst->y = wsd.target->y;
+	}
+	wsd.target->x = x;
+	wsd.target->y = y;
 }
 
 void
@@ -863,7 +881,7 @@ pop(Workspace *ws, Client *c)
 	unsigned int i;
 
 	if (!c) {
-		warn("pop(): attempt to pop NULL client");
+		warn("attempt to pop NULL client");
 		return;
 	}
 
@@ -894,7 +912,7 @@ void
 push(Workspace *ws, Client *c)
 {
 	if (!c) {
-		warn("push(): attempt to push NULL client");
+		warn("attempt to push NULL client");
 	}
 
 	pop(ws, c);
@@ -1049,13 +1067,12 @@ scan(void)
 	Client *c;
 
 	if (!XQueryTree(dpy, root, &r, &p, &wins, &nwins)) {
-		warn("scan(): XQueryTree() failed");
+		warn("XQueryTree() failed");
 		return;
 	}
 	note("found %d clients from last session", nwins);
-	XFree(wins);
 	for (i = 0; i < nwins; i++) {
-		c = initclient(wins[i]);
+		c = initclient(wins[i], true);
 		if (c) {
 			attach(selws, c);
 			updatefocus();
@@ -1095,7 +1112,7 @@ setws(int x, int y)
 	}
 	arrange();
 	updatefocus();
-	renderbar();
+	updatebar();
 }
 
 void
@@ -1117,8 +1134,7 @@ shift(Arg const *arg)
 		return;
 	}
 	if (!locate(NULL, NULL, &pos, selws->selcli->win)) {
-		warn("shift(): attempt to shift non-existent window %d",
-				selws->selcli->win);
+		warn("attempt to shift non-existent window %d", selws->selcli->win);
 	}
 	selws->clients[pos] = selws->clients[(pos+selws->nc+arg->i)%selws->nc];
 	selws->clients[(pos+selws->nc+arg->i)%selws->nc] = selws->selcli;
@@ -1143,10 +1159,10 @@ spawn(Arg const *arg)
 	pid_t pid = fork();
 	if (pid == 0) {
 		execvp(((char const **)arg->v)[0], (char **)arg->v);
-		warn("spawn(): execvp(%s) failed", ((char const **)arg->v)[0]);
+		warn("execvp(%s) failed", ((char const **)arg->v)[0]);
 		_exit(EXIT_FAILURE);
 	} else if (pid < 0) {
-		warn("spawn(): vfork() failed with code %d", pid);
+		warn("vfork() failed with code %d", pid);
 	}
 }
 
@@ -1343,6 +1359,12 @@ unmapnotify(XEvent *e)
 }
 
 void
+updatebar(void)
+{
+	renderbar();
+}
+
+void
 updatefocus(void)
 {
 	unsigned int i;
@@ -1490,7 +1512,7 @@ updatewsdbar(XEvent *e, char const *name)
 		strncpy(wsd.barbuf+wsd.barcur, code, count);
 		wsd.barcur += count;
 	} else {
-		warn("updatewsdbar(): buffer full");
+		warn("WSD bar: buffer is full");
 	}
 
 	renderwsdbar();
@@ -1523,8 +1545,7 @@ zoom(Arg const *arg)
 	}
 
 	if (!locate(NULL, &c, &pos, selws->selcli->win)) {
-		warn("zoom(): attempt to zoom non-existing window %d",
-				selws->selcli->win);
+		warn("attempt to zoom non-existing window %d", selws->selcli->win);
 		return;
 	}
 
