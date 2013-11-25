@@ -112,6 +112,7 @@ static void init(void);
 static void initbar(void);
 static Client *initclient(Window, bool);
 static void initfont(void);
+static Workspace *initws(int, int);
 static void initwsd(void);
 static Window initwsdbox(void);
 static void keypress(XEvent *);
@@ -133,7 +134,6 @@ static void renamews(Workspace *, char const *);
 static void renderbar(void);
 static void renderwsdbar(void);
 static void renderwsdbox(Workspace *);
-static void resetws(Workspace *, int, int);
 static void restart(Arg const *);
 static void run(void);
 static void scan(void);
@@ -217,11 +217,6 @@ void
 attach(Workspace *ws, Client *c)
 {
 	unsigned int i, pos;
-
-	/* attach workspace if this is the first client */
-	if (!ws->nc) {
-		attachws(ws);
-	}
 
 	/* add to list */
 	ws->clients = realloc(ws->clients, ++ws->nc*sizeof(Client *));
@@ -390,8 +385,8 @@ detach(Client *c)
 		ws->clients[i] = ws->clients[i+1];
 	}
 
-	/* remove the layout if the last client was removed */
-	if (!ws->nc) {
+	/* remove workspace if not selected and last client was removed */
+	if (ws != selws && !ws->nc) {
 		detachws(ws);
 	}
 }
@@ -528,11 +523,8 @@ init(void)
 	XChangeWindowAttributes(dpy, root, CWEventMask, &wa);
 
 	/* initial workspace */
-	selws = malloc(sizeof(Workspace));
-	if (!selws) {
-		die("could not allocate %d bytes for workspace", sizeof(Workspace));
-	}
-	resetws(selws, 0, 0);
+	selws = initws(0, 0);
+	attachws(selws);
 
 	/* font */
 	initfont();
@@ -658,11 +650,8 @@ initwsd(void)
 	wsd.wa.event_mask = ExposureMask;
 
 	/* target box */
-	wsd.target = malloc(sizeof(Workspace));
-	if (!wsd.target) {
-		die("could not allocate %d bytes for workspace", sizeof(Workspace));
-	}
-	resetws(wsd.target, 0, 0);
+	wsd.target = initws(0, 0);
+	wsd.target->name[0] = 0;
 	wsd.target->wsdbox = initwsdbox();
 	XMapRaised(dpy, wsd.target->wsdbox);
 
@@ -864,6 +853,7 @@ move(Arg const *arg)
 	attach(selws, c);
 	arrange();
 	updatefocus();
+	updatebar();
 	updatewsd();
 }
 
@@ -938,8 +928,8 @@ push(Workspace *ws, Client *c)
 {
 	if (!c) {
 		warn("attempt to push NULL client");
+		return;
 	}
-
 	pop(ws, c);
 	ws->stack = realloc(ws->stack, ++ws->ns*sizeof(Client *));
 	if (!ws->stack) {
@@ -982,8 +972,7 @@ renamews(Workspace *ws, char const *name)
 			return;
 		}
 	}
-
-	/* no random name available */
+	warn("workspace name pool exhausted");
 	strcpy(ws->name, "");
 }
 
@@ -1049,17 +1038,22 @@ renderwsdbox(Workspace *ws)
 			dc.font.ascent+1, name, strlen(name));
 }
 
-void
-resetws(Workspace *ws, int x, int y)
+Workspace *
+initws(int x, int y)
 {
-	ws->clients = selws->stack = NULL;
-	ws->nc = selws->ns = 0;
+	Workspace *ws = malloc(sizeof(Workspace));
+	if (!ws) {
+		die("could not allocate %d bytes for workspace", sizeof(Workspace));
+	}
+	ws->clients = ws->stack = NULL;
+	ws->nc = ws->ns = 0;
 	ws->x = x;
 	ws->y = y;
 	ws->mfact = MFACT;
 	ws->nmaster = NMASTER;
 	ws->name[0] = 0;
 	ws->wsdbox = 0;
+	return ws;
 }
 
 void
@@ -1114,23 +1108,20 @@ setws(int x, int y)
 {
 	Workspace *next;
 
+	/* current workspace */
+	if (selws->nc) {
+		hidews(selws);
+	} else {
+		detachws(selws);
+		free(selws);
+	}
+
+	/* next workspace */
 	if (locatews(&next, NULL, x, y, NULL, 0)) {
-		if (!selws->nc) {
-			free(selws);
-		} else {
-			hidews(selws);
-		}
 		selws = next;
 	} else {
-		if (selws->nc) {
-			hidews(selws);
-			selws = malloc(sizeof(Workspace));
-			if (!selws) {
-				die("could not allocate %d bytes for workspace",
-						sizeof(Workspace));
-			}
-		}
-		resetws(selws, x, y);
+		selws = initws(x, y);
+		attachws(selws);
 	}
 	arrange();
 	updatefocus();
