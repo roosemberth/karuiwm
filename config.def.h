@@ -1,23 +1,47 @@
 /* stwm configuration */
 
-static char const *font = "-misc-fixed-medium-r-semicondensed--13-100-100-100-c-60-iso8859-1";
-static unsigned int const nmaster = 1;      /* #windows in the master area */
-static float const mfact = 0.5;             /* size of master area */
-static unsigned int const borderwidth  = 1; /* window border width */
+/* layout */
+#define FONTSTR "-misc-fixed-medium-r-semicondensed--13-100-100-100-c-60-iso8859-1"
+#define NMASTER 1        /* number of clients in master area */
+#define MFACT 0.5        /* size of master area */
+#define FORCESIZE true   /* force terminals to fit the layout? */
+#define BORDERWIDTH 1    /* window border width */
+#define WSDBORDERWIDTH 1 /* WSD box border width */
+#define WSDRADIUS 5      /* number of workspaces around WSD centre */
+
+/* colours */
+#define CBORDERNORM      0x222222   /* normal windows */
+#define CBORDERSEL       0xAFD700   /* selected windows */
+
+#define CNORM            0x888888   /* status bar */
+#define CBGNORM          0x222222
+
+#define CSEL             0xCCCCCC   /* input bar (e.g. WSD bar) */
+#define CBGSEL           0x444444
+
+#define WSDCNORM         CNORM      /* WSD box of normal workspaces */
+#define WSDCBGNORM       CBGNORM
+#define WSDCBORDERNORM   CBGSEL
+
+#define WSDCSEL          CSEL       /* WSD box of current workspace */
+#define WSDCBGSEL        CBGSEL
+#define WSDCBORDERSEL    CSEL
+
+#define WSDCTARGET       CBORDERSEL /* WSD box of selected workspace */
+#define WSDCBGTARGET     CBGSEL
+#define WSDCBORDERTARGET CBORDERSEL
+
+/* commands */
+static char const *termcmd[] = { "xfce4-terminal", NULL };
+static char const *dmenucmd[] = { "dmenu_run", NULL };
+static char const *scrotcmd[] = { "scrot", NULL };
+
+/* default workspace names */
 static char const *wsnames[] = { "alpha", "beta", "gamma", "delta", "epsilon",
                                  "zeta", "eta", "theta", "iota", "kappa",
                                  "lambda", "mu", "nu", "xi", "omicron", "pi",
                                  "rho", "sigma", "tau", "upsilon", "phi", "chi",
                                  "psi", "omega" };
-
-/* colours */
-#define cbordernorm 0x222222
-#define cbordersel  0xAFD700
-
-/* commands */
-static char const *termcmd[] = { "xterm", NULL };
-static char const *dmenucmd[] = { "dmenu_run", NULL };
-static char const *scrotcmd[] = { "scrot", NULL };
 
 /* custom behaviour */
 static void
@@ -71,7 +95,7 @@ static Key const keys[] = {
 	{ MODKEY|ShiftMask,             XK_q,      quit,       { 0 } },
 };
 
-/* workspace dialog keys */
+/* WSD keys */
 static Key const wsdkeys[] = {
 	{ 0,                            XK_Print,  spawn,      { .v=scrotcmd } },
 	{ 0,                            XK_Escape, togglewsd,  { 0 } },
@@ -89,21 +113,4 @@ static Key const wsdkeys[] = {
 	{ MODKEY|ShiftMask,             XK_j,      movews,     { .i=DOWN } },
 	{ MODKEY|ShiftMask,             XK_k,      movews,     { .i=UP } },
 };
-
-/* workspace dialog */
-static int const wsdradius = 5;     /* workspaces around the centre */
-static int const wsdborder = 1;     /* border width of one box */
-
-/* workspace dialog - colours */
-#define wsdcbordernorm   0x555555
-#define wsdcbgnorm       cbordernorm
-#define wsdcnorm         0x888888
-
-#define wsdcbordersel    0xAAAAAA
-#define wsdcbgsel        0x333333
-#define wsdcsel          0xAAAAAA
-
-#define wsdcbordertarget cbordersel
-#define wsdcbgtarget     0x334000
-#define wsdctarget       cbordersel
 

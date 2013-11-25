@@ -108,8 +108,9 @@ upon removing the last client (or placing the first client).
 workspace dialog (default configuration)
 ----------------------------------------
 
-The workspace dialog allows you to change the workspace either by name or by
-selection on a "map":
+The workspace dialog is a view that comes with a separately configured set of
+keys, and it allows you to change the workspace either by name or by selection
+on a "map":
 
 * <code>Mod</code>+<code>Space</code> or <code>Esc</code>
   close workspace dialog

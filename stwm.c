@@ -15,9 +15,10 @@
 
 /* macros */
 #define APPNAME "stwm"
+#define CLIENTMASK EnterWindowMask
 #define LENGTH(ARR) (sizeof(ARR)/sizeof(ARR[0]))
-#define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
 #define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
+#define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
 
 /* log macros */
 #define warn(...) stdlog(stderr, "\033[33mWRN\033[0m "__VA_ARGS__)
@@ -210,8 +211,16 @@ static WorkspaceDialog wsd;         /* workspace dialog */
 void
 arrange(void)
 {
+	/* disable client event masks, to prevent weird focus behaviour */
+	unsigned int i;
+	for (i = 0; i < selws->nc; i++) {
+		XSelectInput(dpy, selws->clients[i]->win, 0);
+	}
 	/* TODO use array of layouts */
 	tile();
+	for (i = 0; i < selws->nc; i++) {
+		XSelectInput(dpy, selws->clients[i]->win, CLIENTMASK);
+	}
 }
 
 void
@@ -312,31 +321,7 @@ void
 configurenotify(XEvent *e)
 {
 	debug("configurenotify(%d)", e->xconfigure.window);
-
-	Workspace *ws;
-	Client *c;
-	XWindowAttributes wa;
-
-	/* ignore unhandled windows */
-	if (!locate(&ws, &c, NULL, e->xconfigure.window)) {
-		return;
-	}
-
-	/* ignore buggy windows or windows with override_redirect */
-	if (!XGetWindowAttributes(dpy, c->win, &wa)) {
-		warn("XGetWindowAttributes() failed for window %d", c->win);
-		return;
-	}
-
-	/* force client dimensions */
-	if (wa.x != c->x || wa.y != c->y || wa.width != c->w || wa.height != c->h) {
-		XResizeWindow(dpy, c->win, c->w, c->h);
-	}
-
-	/* make sure client stays invisible if not on current workspace */
-	if (ws != selws) {
-		hide(c);
-	}
+	/* TODO root window notifications */
 }
 
 void
@@ -344,18 +329,41 @@ configurerequest(XEvent *e)
 {
 	debug("configurerequest(%d)", e->xconfigurerequest.window);
 
+	Client *c = NULL;
+	XWindowChanges wc;
+	XConfigureEvent cev;
 	XConfigureRequestEvent *ev = &e->xconfigurerequest;
 
-	XWindowChanges wc = {
-		.x = ev->x,
-		.y = ev->y,
-		.width = ev->width,
-		.height = ev->height,
-		.border_width = ev->border_width,
-		.sibling = ev->above,
-		.stack_mode = ev->detail,
+	/* forward configuration if not managed (or if we don't force the size) */
+	if (!FORCESIZE || !locate(NULL, &c, NULL, ev->window)) {
+		wc = (XWindowChanges) {
+			.x = ev->x,
+			.y = ev->y,
+			.width = ev->width,
+			.height = ev->height,
+			.border_width = ev->border_width,
+			.sibling = ev->above,
+			.stack_mode = ev->detail
+		};
+		XConfigureWindow(dpy, ev->window, ev->value_mask, &wc);
+		return;
+	}
+
+	/* terminal sizes are forced with send_event=true, so send an event! */
+	cev = (XConfigureEvent) {
+		.type = ConfigureNotify,
+		.display = dpy,
+		.event = c->win,
+		.window = c->win,
+		.x = c->x,
+		.y = c->y,
+		.width = c->w,
+		.height = c->h,
+		.border_width = BORDERWIDTH,
+		.above = None,
+		.override_redirect = False,
 	};
-	XConfigureWindow(dpy, ev->window, ev->value_mask, &wc);
+	XSendEvent(dpy, c->win, false, StructureNotifyMask, (XEvent *) &cev);
 }
 
 void
@@ -496,7 +504,7 @@ grabkeys(void)
 void
 hide(Client *c)
 {
-	XMoveWindow(dpy, c->win, -c->w-2*borderwidth, c->y);
+	XMoveWindow(dpy, c->win, -c->w-2*BORDERWIDTH, c->y);
 }
 
 void
@@ -529,28 +537,34 @@ init(void)
 	xerrorxlib = XSetErrorHandler(xerror);
 	dc.gc = XCreateGC(dpy, root, 0, NULL);
 
-	/* cursor/input */
+	/* input (cursor/keys) */
 	cursor[CURSOR_NORMAL] = XCreateFontCursor(dpy, XC_left_ptr);
 	cursor[CURSOR_RESIZE] = XCreateFontCursor(dpy, XC_sizing);
 	cursor[CURSOR_MOVE] = XCreateFontCursor(dpy, XC_fleur);
 	wa.cursor = cursor[CURSOR_NORMAL];
-	wa.event_mask = SubstructureNotifyMask|SubstructureRedirectMask|KeyPressMask;
 	XChangeWindowAttributes(dpy, root, CWEventMask|CWCursor, &wa);
-
-	/* input */
 	grabbuttons();
 	grabkeys();
 
-	/* workspace (TODO duplication) */
+	/* event mask */
+	wa.event_mask = SubstructureNotifyMask|SubstructureRedirectMask|
+			KeyPressMask;
+	XChangeWindowAttributes(dpy, root, CWEventMask|CWCursor, &wa);
+
+	/* initial workspace */
 	selws = malloc(sizeof(Workspace));
 	if (!selws) {
 		die("could not allocate %d bytes for workspace", sizeof(Workspace));
 	}
 	resetws(selws, 0, 0);
 
-	/* status bar */
+	/* font */
 	initfont();
+
+	/* status bar */
 	initbar();
+
+	/* workspace dialog */
 	initwsd();
 }
 
@@ -614,7 +628,7 @@ initfont(void)
 	char *def, **missing;
 	int n;
 
-	dc.font.xfontset = XCreateFontSet(dpy, font, &missing, &n, &def);
+	dc.font.xfontset = XCreateFontSet(dpy, FONTSTR, &missing, &n, &def);
 	if (missing) {
 		while (n--) {
 			warn("missing fontset: %s", missing[n]);
@@ -632,9 +646,9 @@ initfont(void)
 			dc.font.descent = MAX(dc.font.descent, xfonts[n]->descent);
 		}
 	} else {
-		dc.font.xfontstruct = XLoadQueryFont(dpy, font);
+		dc.font.xfontstruct = XLoadQueryFont(dpy, FONTSTR);
 		if (!dc.font.xfontstruct) {
-			die("cannot load font '%s'", font);
+			die("cannot load font '%s'", FONTSTR);
 		}
 		dc.font.ascent = dc.font.xfontstruct->ascent;
 		dc.font.descent = dc.font.xfontstruct->descent;
@@ -646,7 +660,7 @@ void
 initwsd(void)
 {
 	/* WSD data */
-	wsd.rad = wsdradius;
+	wsd.rad = WSDRADIUS;
 	wsd.rows = 2*wsd.rad+1;
 	wsd.cols = 2*wsd.rad+1;
 	wsd.w = ww/wsd.cols;
@@ -691,8 +705,9 @@ Window
 initwsdbox(void)
 {
 	return XCreateWindow(dpy, root, -wsd.w, -wsd.h,
-			wsd.w-2*wsdborder, wsd.h-2*wsdborder, 0, DefaultDepth(dpy, screen),
-			CopyFromParent, DefaultVisual(dpy, screen),
+			wsd.w-2*WSDBORDERWIDTH, wsd.h-2*WSDBORDERWIDTH, 0,
+			DefaultDepth(dpy, screen), CopyFromParent,
+			DefaultVisual(dpy, screen),
 			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wsd.wa);
 }
 void
@@ -733,6 +748,9 @@ keyrelease(XEvent *e)
 void
 killclient(Arg const *arg)
 {
+	if (!selws->nc) {
+		return;
+	}
 	XKillClient(dpy, selws->selcli->win);
 	XSync(dpy, false);
 }
@@ -804,8 +822,9 @@ maprequest(XEvent *e)
 	if (c) {
 		attach(selws, c);
 		arrange();
-		XSetWindowBorderWidth(dpy, c->win, borderwidth);
+		XSetWindowBorderWidth(dpy, c->win, BORDERWIDTH);
 		XMapWindow(dpy, c->win);
+		XSelectInput(dpy, c->win, CLIENTMASK);
 		updatefocus();
 		updatebar();
 	}
@@ -868,11 +887,7 @@ movews(Arg const *arg)
 void
 place(Client *c, int x, int y, unsigned int w, unsigned int h)
 {
-	c->x = x;
-	c->y = y;
-	c->w = w;
-	c->h = h;
-	XMoveResizeWindow(dpy, c->win, x, y, w, h);
+	XMoveResizeWindow(dpy, c->win, c->x=x, c->y=y, c->w=w, c->h=h);
 }
 
 void
@@ -968,7 +983,7 @@ renderbar(void)
 	char *empty = "<empty>";
 	unsigned int len = strlen(selws->name);
 
-	XSetForeground(dpy, dc.gc, cbordernorm);
+	XSetForeground(dpy, dc.gc, CBORDERNORM);
 	XFillRectangle(dpy, barwin, dc.gc, 0, 0, bw, bh);
 	XSetForeground(dpy, dc.gc, 0x888888);
 	XDrawString(dpy, barwin, dc.gc, 0, dc.font.ascent+1,
@@ -982,9 +997,9 @@ renderwsdbar(void)
 	int cursorx;
 
 	/* text */
-	XSetForeground(dpy, dc.gc, cbordernorm);
+	XSetForeground(dpy, dc.gc, CBGSEL);
 	XFillRectangle(dpy, wsd.barwin, dc.gc, 0, 0, bw, bh);
-	XSetForeground(dpy, dc.gc, wsdcsel);
+	XSetForeground(dpy, dc.gc, CSEL);
 	Xutf8DrawString(dpy, wsd.barwin, dc.font.xfontset, dc.gc, 6,
 			dc.font.ascent+1, wsd.barbuf, strlen(wsd.barbuf));
 
@@ -1003,25 +1018,23 @@ renderwsdbox(Workspace *ws)
 	/* data */
 	if (ws == wsd.target && locatews(&ws2, NULL, ws->x, ws->y, NULL, 0)) {
 		strcpy(name, ws2->name);
-	} else if (strlen(ws->name)) {
-		strcpy(name, ws->name);
 	} else {
-		strcpy(name, "");
+		strcpy(name, ws->name);
 	}
 
 	/* border */
-	XSetWindowBorderWidth(dpy, ws->wsdbox, wsdborder);
-	XSetWindowBorder(dpy, ws->wsdbox, ws == selws ? wsdcbordersel
-			: ws == wsd.target ? wsdcbordertarget : wsdcbordernorm);
+	XSetWindowBorderWidth(dpy, ws->wsdbox, WSDBORDERWIDTH);
+	XSetWindowBorder(dpy, ws->wsdbox, ws == selws ? WSDCBORDERSEL
+			: ws == wsd.target ? WSDCBORDERTARGET : WSDCBORDERNORM);
 
 	/* background */
-	XSetForeground(dpy, dc.gc, ws == selws ? wsdcbgsel
-			: ws == wsd.target ? wsdcbgtarget : wsdcbgnorm);
+	XSetForeground(dpy, dc.gc, ws == selws ? WSDCBGSEL
+			: ws == wsd.target ? WSDCBGTARGET : WSDCBGNORM);
 	XFillRectangle(dpy, ws->wsdbox, dc.gc, 0, 0, wsd.w, wsd.h);
 
 	/* text */
-	XSetForeground(dpy, dc.gc, ws == selws ? wsdcsel
-			: ws == wsd.target ? wsdctarget : wsdcnorm);
+	XSetForeground(dpy, dc.gc, ws == selws ? WSDCSEL
+			: ws == wsd.target ? WSDCTARGET : WSDCNORM);
 	Xutf8DrawString(dpy, ws->wsdbox, dc.font.xfontset, dc.gc, 2,
 			dc.font.ascent+1, name, strlen(name));
 }
@@ -1033,8 +1046,8 @@ resetws(Workspace *ws, int x, int y)
 	ws->nc = selws->ns = 0;
 	ws->x = x;
 	ws->y = y;
-	ws->mfact = mfact;
-	ws->nmaster = nmaster;
+	ws->mfact = MFACT;
+	ws->nmaster = NMASTER;
 	ws->name[0] = 0;
 	ws->wsdbox = 0;
 }
@@ -1246,6 +1259,7 @@ textwidth(char const *str, unsigned int len)
 	return XTextWidth(dc.font.xfontstruct, str, len);
 }
 
+/* TODO move to layouts.h */
 void
 tile(void)
 {
@@ -1263,8 +1277,8 @@ tile(void)
 		w = selws->nmaster >= selws->nc ? ww : selws->mfact*ww;
 		h = wh/ncm;
 		for (i = 0; i < ncm; i++) {
-			place(selws->clients[i], x, wy+i*h, w-2*borderwidth,
-					h-2*borderwidth);
+			place(selws->clients[i], x, wy+i*h, w-2*BORDERWIDTH,
+					h-2*BORDERWIDTH);
 		}
 	}
 	if (ncm == selws->nc) {
@@ -1276,8 +1290,8 @@ tile(void)
 	w = ncm ? ww-x : ww;
 	h = wh/(selws->nc-ncm);
 	for (i = ncm; i < selws->nc; i++) {
-		place(selws->clients[i], x, wy+(i-ncm)*h, w-2*borderwidth,
-				h-2*borderwidth);
+		place(selws->clients[i], x, wy+(i-ncm)*h, w-2*BORDERWIDTH,
+				h-2*BORDERWIDTH);
 	}
 }
 
@@ -1375,12 +1389,12 @@ updatefocus(void)
 
 	/* unfocus all but the top of the stack */
 	for (i = 0; i < selws->ns-1; i++) {
-		XSetWindowBorder(dpy, selws->stack[i]->win, cbordernorm);
+		XSetWindowBorder(dpy, selws->stack[i]->win, CBORDERNORM);
 	}
 
 	/* focus top of the stack */
 	selws->selcli = selws->stack[selws->ns-1];
-	XSetWindowBorder(dpy, selws->selcli->win, cbordersel);
+	XSetWindowBorder(dpy, selws->selcli->win, CBORDERSEL);
 	XSetInputFocus(dpy, selws->selcli->win, RevertToPointerRoot, CurrentTime);
 }
 
