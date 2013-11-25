@@ -31,11 +31,8 @@
 #endif
 
 /* enums */
-
 enum { CURSOR_NORMAL, CURSOR_RESIZE, CURSOR_MOVE, CURSOR_LAST };
 enum { LEFT, RIGHT, UP, DOWN };
-
-/* structs */
 
 typedef union {
 	int i;
@@ -107,8 +104,6 @@ static void detach(Client *);
 static void detachws(Workspace *);
 static void enternotify(XEvent *);
 static void expose(XEvent *);
-static void focusin(XEvent *);
-static void focusout(XEvent *);
 static void grabbuttons(void);
 static void grabkeys(void);
 static void hide(Client *);
@@ -124,7 +119,6 @@ static void keyrelease(XEvent *);
 static void killclient(Arg const *);
 static bool locate(Workspace **, Client **, unsigned int *, Window);
 static bool locatews(Workspace **, unsigned int *, int, int, char const *, unsigned int);
-static void mapnotify(XEvent *);
 static void mappingnotify(XEvent *);
 static void maprequest(XEvent *);
 static void motionnotify(XEvent *);
@@ -177,11 +171,8 @@ static void (*handle[LASTEvent])(XEvent *) = {
 	[DestroyNotify]    = destroynotify,    /*17*/
 	[EnterNotify]      = enternotify,      /* 7*/
 	[Expose]           = expose,           /*12*/
-	[FocusIn]          = focusin,          /* 9*/
-	[FocusOut]         = focusout,         /*10*/
 	[KeyPress]         = keypress,         /* 2*/
 	[KeyRelease]       = keyrelease,       /* 3*/
-	[MapNotify]        = mapnotify,        /*19*/
 	[MapRequest]       = maprequest,       /*20*/
 	[MappingNotify]    = mappingnotify,    /*34*/
 	[MotionNotify]     = motionnotify,     /* 6*/
@@ -211,7 +202,6 @@ static WorkspaceDialog wsd;         /* workspace dialog */
 void
 arrange(void)
 {
-	/* disable client event masks, to prevent weird focus behaviour */
 	unsigned int i;
 	for (i = 0; i < selws->nc; i++) {
 		XSelectInput(dpy, selws->clients[i]->win, 0);
@@ -470,20 +460,6 @@ expose(XEvent *e)
 }
 
 void
-focusin(XEvent *e)
-{
-	debug("focusin(%d)", e->xfocus.window);
-	/* TODO */
-}
-
-void
-focusout(XEvent *e)
-{
-	debug("focusout(%d)", e->xfocus.window);
-	/* TODO */
-}
-
-void
 grabbuttons(void)
 {
 	/* TODO */
@@ -542,14 +518,14 @@ init(void)
 	cursor[CURSOR_RESIZE] = XCreateFontCursor(dpy, XC_sizing);
 	cursor[CURSOR_MOVE] = XCreateFontCursor(dpy, XC_fleur);
 	wa.cursor = cursor[CURSOR_NORMAL];
-	XChangeWindowAttributes(dpy, root, CWEventMask|CWCursor, &wa);
+	XChangeWindowAttributes(dpy, root, CWCursor, &wa);
 	grabbuttons();
 	grabkeys();
 
 	/* event mask */
 	wa.event_mask = SubstructureNotifyMask|SubstructureRedirectMask|
 			KeyPressMask;
-	XChangeWindowAttributes(dpy, root, CWEventMask|CWCursor, &wa);
+	XChangeWindowAttributes(dpy, root, CWEventMask, &wa);
 
 	/* initial workspace */
 	selws = malloc(sizeof(Workspace));
@@ -607,6 +583,8 @@ initclient(Window win, bool viewable)
 	if (wa.override_redirect) {
 		return NULL;
 	}
+
+	/* ignore unviewable windows if we request for viewable windows */
 	if (viewable && wa.map_state != IsViewable) {
 		return NULL;
 	}
@@ -617,6 +595,13 @@ initclient(Window win, bool viewable)
 		die("could not allocate new client (%d bytes)", sizeof(Client));
 	}
 	c->win = win;
+
+	/* common actions (maprequest() and scan()) */
+	attach(selws, c);
+	arrange();
+	XSetWindowBorderWidth(dpy, c->win, BORDERWIDTH);
+	XSelectInput(dpy, c->win, CLIENTMASK);
+	updatebar();
 	return c;
 }
 
@@ -844,26 +829,14 @@ locatews(Workspace **ws, unsigned int *pos, int x, int y, char const *name,
 }
 
 void
-mapnotify(XEvent *e)
-{
-	debug("mapnotify(%d)", e->xmap.window);
-	/* TODO root window may generate mapnotify()s */
-}
-
-void
 maprequest(XEvent *e)
 {
 	debug("maprequest(%d)", e->xmaprequest.window);
 
 	Client *c = initclient(e->xmap.window, false);
 	if (c) {
-		attach(selws, c);
-		arrange();
-		XSetWindowBorderWidth(dpy, c->win, BORDERWIDTH);
 		XMapWindow(dpy, c->win);
-		XSelectInput(dpy, c->win, CLIENTMASK);
 		updatefocus();
-		updatebar();
 	}
 	updatewsd();
 }
@@ -1124,7 +1097,6 @@ scan(void)
 	for (i = 0; i < nwins; i++) {
 		c = initclient(wins[i], true);
 		if (c) {
-			attach(selws, c);
 			updatefocus();
 		}
 	}
@@ -1163,6 +1135,7 @@ setws(int x, int y)
 	arrange();
 	updatefocus();
 	updatebar();
+	updatewsd();
 }
 
 void
@@ -1424,13 +1397,10 @@ updatefocus(void)
 		return;
 	}
 
-	/* unfocus all but the top of the stack */
+	selws->selcli = selws->stack[selws->ns-1];
 	for (i = 0; i < selws->ns-1; i++) {
 		XSetWindowBorder(dpy, selws->stack[i]->win, CBORDERNORM);
 	}
-
-	/* focus top of the stack */
-	selws->selcli = selws->stack[selws->ns-1];
 	XSetWindowBorder(dpy, selws->selcli->win, CBORDERSEL);
 	XSetInputFocus(dpy, selws->selcli->win, RevertToPointerRoot, CurrentTime);
 }
