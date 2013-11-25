@@ -12,8 +12,11 @@ dev: build
 scan:
 	scan-build make dev
 
-all: build run
-
 run:
 	xinit ./xinitrc -- :1
+
+xephyr:
+	xinit ./xinitrc -- $(shell which Xephyr) :1
+
+all: dev xephyr
 
