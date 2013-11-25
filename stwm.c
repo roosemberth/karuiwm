@@ -108,12 +108,8 @@ static void grabbuttons(void);
 static void grabkeys(void);
 static void hide(Client *);
 static void hidews(Workspace *);
-static void init(void);
-static void initbar(void);
 static Client *initclient(Window, bool);
-static void initfont(void);
 static Workspace *initws(int, int);
-static void initwsd(void);
 static Window initwsdbox(void);
 static void keypress(XEvent *);
 static void keyrelease(XEvent *);
@@ -138,8 +134,12 @@ static void restart(Arg const *);
 static void run(void);
 static void scan(void);
 static void setmfact(Arg const *);
-static void setws(int, int);
+static void setup(void);
+static void setupbar(void);
+static void setupfont(void);
+static void setupwsd(void);
 static void setnmaster(Arg const *);
+static void setws(int, int);
 static void shift(Arg const *);
 static void sigchld(int);
 static void spawn(Arg const *);
@@ -484,80 +484,6 @@ hidews(Workspace *ws)
 	}
 }
 
-void
-init(void)
-{
-	XSetWindowAttributes wa;
-
-	/* kill zombies */
-	sigchld(0);
-
-	/* locale */
-	if (!setlocale(LC_ALL, "") || !XSupportsLocale()) {
-		die("could not set locale");
-	}
-
-	/* X */
-	screen = DefaultScreen(dpy);
-	root = RootWindow(dpy, screen);
-	sw = DisplayWidth(dpy, screen);
-	sh = DisplayHeight(dpy, screen);
-	xerrorxlib = XSetErrorHandler(xerror);
-	dc.gc = XCreateGC(dpy, root, 0, NULL);
-
-	/* input (cursor/keys) */
-	cursor[CURSOR_NORMAL] = XCreateFontCursor(dpy, XC_left_ptr);
-	cursor[CURSOR_RESIZE] = XCreateFontCursor(dpy, XC_sizing);
-	cursor[CURSOR_MOVE] = XCreateFontCursor(dpy, XC_fleur);
-	wa.cursor = cursor[CURSOR_NORMAL];
-	XChangeWindowAttributes(dpy, root, CWCursor, &wa);
-	grabbuttons();
-	grabkeys();
-
-	/* event mask */
-	wa.event_mask = SubstructureNotifyMask|SubstructureRedirectMask|
-			KeyPressMask;
-	XChangeWindowAttributes(dpy, root, CWEventMask, &wa);
-
-	/* initial workspace */
-	selws = initws(0, 0);
-	attachws(selws);
-
-	/* font */
-	initfont();
-
-	/* status bar */
-	initbar();
-
-	/* workspace dialog */
-	initwsd();
-}
-
-void
-initbar(void)
-{
-	XSetWindowAttributes wa;
-
-	bx = 0;
-	by = 0; /* TODO allow bar to be at bottom */
-	bh = dc.font.height + 2;
-	bw = sw;
-	wx = 0;
-	wy = bh;
-	ww = sw;
-	wh = sh-bh;
-
-	wa.override_redirect = true;
-	wa.background_pixmap = ParentRelative;
-	wa.event_mask = ExposureMask;
-	barwin = XCreateWindow(dpy, root, bx, by, bw, bh, 0,
-			DefaultDepth(dpy, screen), CopyFromParent,
-			DefaultVisual(dpy, screen),
-			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
-	XMapRaised(dpy, barwin);
-	updatebar();
-}
-
 Client *
 initclient(Window win, bool viewable)
 {
@@ -594,81 +520,22 @@ initclient(Window win, bool viewable)
 	return c;
 }
 
-void
-initfont(void)
+Workspace *
+initws(int x, int y)
 {
-	XFontStruct **xfonts;
-	char **xfontnames;
-	char *def, **missing;
-	int n;
-
-	dc.font.xfontset = XCreateFontSet(dpy, FONTSTR, &missing, &n, &def);
-	if (missing) {
-		while (n--) {
-			warn("missing fontset: %s", missing[n]);
-		}
-		XFreeStringList(missing);
+	Workspace *ws = malloc(sizeof(Workspace));
+	if (!ws) {
+		die("could not allocate %d bytes for workspace", sizeof(Workspace));
 	}
-
-	/* if fontset load is successful, get information; otherwise dummy font */
-	if (dc.font.xfontset) {
-		dc.font.ascent = dc.font.descent = 0;
-		n = XFontsOfFontSet(dc.font.xfontset, &xfonts, &xfontnames);
-		while (n--) {
-			dc.font.ascent = MAX(dc.font.ascent, xfonts[n]->ascent);
-			dc.font.descent = MAX(dc.font.descent, xfonts[n]->descent);
-		}
-	} else {
-		dc.font.xfontstruct = XLoadQueryFont(dpy, FONTSTR);
-		if (!dc.font.xfontstruct) {
-			die("cannot load font '%s'", FONTSTR);
-		}
-		dc.font.ascent = dc.font.xfontstruct->ascent;
-		dc.font.descent = dc.font.xfontstruct->descent;
-	}
-	dc.font.height = dc.font.ascent + dc.font.descent;
-}
-
-void
-initwsd(void)
-{
-	/* WSD data */
-	wsd.rad = WSDRADIUS;
-	wsd.rows = 2*wsd.rad+1;
-	wsd.cols = 2*wsd.rad+1;
-	wsd.w = ww/wsd.cols;
-	wsd.h = wh/wsd.rows;
-	wsd.shown = false;
-
-	/* WSD window informations */
-	wsd.wa.override_redirect = true;
-	wsd.wa.background_pixmap = ParentRelative;
-	wsd.wa.event_mask = ExposureMask;
-
-	/* target box */
-	wsd.target = initws(0, 0);
-	wsd.target->name[0] = 0;
-	wsd.target->wsdbox = initwsdbox();
-	XMapRaised(dpy, wsd.target->wsdbox);
-
-	/* bar */
-	wsd.barwin = XCreateWindow(dpy, root, -bw, -bh, bw, bh, 0,
-			DefaultDepth(dpy, screen), CopyFromParent,
-			DefaultVisual(dpy, screen),
-			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wsd.wa);
-	XMapWindow(dpy, wsd.barwin);
-
-	/* bar input */
-	wsd.im = XOpenIM(dpy, NULL, NULL, NULL);
-	if (!wsd.im) {
-		die("could not open input method");
-	}
-	wsd.ic = XCreateIC(wsd.im, XNInputStyle, XIMPreeditNothing|XIMStatusNothing,
-			XNClientWindow, wsd.barwin, NULL);
-	if (!wsd.ic) {
-		die("could not open input context");
-	}
-	XSetICFocus(wsd.ic);
+	ws->clients = ws->stack = NULL;
+	ws->nc = ws->ns = 0;
+	ws->x = x;
+	ws->y = y;
+	ws->mfact = MFACT;
+	ws->nmaster = NMASTER;
+	ws->name[0] = 0;
+	ws->wsdbox = 0;
+	return ws;
 }
 
 Window
@@ -1024,24 +891,6 @@ renderwsdbox(Workspace *ws)
 			dc.font.ascent+1, ws->name, strlen(ws->name));
 }
 
-Workspace *
-initws(int x, int y)
-{
-	Workspace *ws = malloc(sizeof(Workspace));
-	if (!ws) {
-		die("could not allocate %d bytes for workspace", sizeof(Workspace));
-	}
-	ws->clients = ws->stack = NULL;
-	ws->nc = ws->ns = 0;
-	ws->x = x;
-	ws->y = y;
-	ws->mfact = MFACT;
-	ws->nmaster = NMASTER;
-	ws->name[0] = 0;
-	ws->wsdbox = 0;
-	return ws;
-}
-
 void
 restart(Arg const *arg)
 {
@@ -1087,6 +936,157 @@ setmfact(Arg const *arg)
 {
 	selws->mfact = MAX(0.1, MIN(0.9, selws->mfact+arg->f));
 	arrange();
+}
+
+void
+setup(void)
+{
+	XSetWindowAttributes wa;
+
+	/* kill zombies */
+	sigchld(0);
+
+	/* locale */
+	if (!setlocale(LC_ALL, "") || !XSupportsLocale()) {
+		die("could not set locale");
+	}
+
+	/* X */
+	screen = DefaultScreen(dpy);
+	root = RootWindow(dpy, screen);
+	sw = DisplayWidth(dpy, screen);
+	sh = DisplayHeight(dpy, screen);
+	xerrorxlib = XSetErrorHandler(xerror);
+	dc.gc = XCreateGC(dpy, root, 0, NULL);
+
+	/* input (cursor/keys) */
+	cursor[CURSOR_NORMAL] = XCreateFontCursor(dpy, XC_left_ptr);
+	cursor[CURSOR_RESIZE] = XCreateFontCursor(dpy, XC_sizing);
+	cursor[CURSOR_MOVE] = XCreateFontCursor(dpy, XC_fleur);
+	wa.cursor = cursor[CURSOR_NORMAL];
+	XChangeWindowAttributes(dpy, root, CWCursor, &wa);
+	grabbuttons();
+	grabkeys();
+
+	/* event mask */
+	wa.event_mask = SubstructureNotifyMask|SubstructureRedirectMask|
+			KeyPressMask;
+	XChangeWindowAttributes(dpy, root, CWEventMask, &wa);
+
+	/* initial workspace */
+	selws = initws(0, 0);
+	attachws(selws);
+
+	/* font */
+	setupfont();
+
+	/* status bar */
+	setupbar();
+
+	/* workspace dialog */
+	setupwsd();
+}
+
+void
+setupbar(void)
+{
+	XSetWindowAttributes wa;
+
+	bx = 0;
+	by = 0; /* TODO allow bar to be at bottom */
+	bh = dc.font.height + 2;
+	bw = sw;
+	wx = 0;
+	wy = bh;
+	ww = sw;
+	wh = sh-bh;
+
+	wa.override_redirect = true;
+	wa.background_pixmap = ParentRelative;
+	wa.event_mask = ExposureMask;
+	barwin = XCreateWindow(dpy, root, bx, by, bw, bh, 0,
+			DefaultDepth(dpy, screen), CopyFromParent,
+			DefaultVisual(dpy, screen),
+			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
+	XMapRaised(dpy, barwin);
+	updatebar();
+}
+
+void
+setupfont(void)
+{
+	XFontStruct **xfonts;
+	char **xfontnames;
+	char *def, **missing;
+	int n;
+
+	dc.font.xfontset = XCreateFontSet(dpy, FONTSTR, &missing, &n, &def);
+	if (missing) {
+		while (n--) {
+			warn("missing fontset: %s", missing[n]);
+		}
+		XFreeStringList(missing);
+	}
+
+	/* if fontset load is successful, get information; otherwise dummy font */
+	if (dc.font.xfontset) {
+		dc.font.ascent = dc.font.descent = 0;
+		n = XFontsOfFontSet(dc.font.xfontset, &xfonts, &xfontnames);
+		while (n--) {
+			dc.font.ascent = MAX(dc.font.ascent, xfonts[n]->ascent);
+			dc.font.descent = MAX(dc.font.descent, xfonts[n]->descent);
+		}
+	} else {
+		dc.font.xfontstruct = XLoadQueryFont(dpy, FONTSTR);
+		if (!dc.font.xfontstruct) {
+			die("cannot load font '%s'", FONTSTR);
+		}
+		dc.font.ascent = dc.font.xfontstruct->ascent;
+		dc.font.descent = dc.font.xfontstruct->descent;
+	}
+	dc.font.height = dc.font.ascent + dc.font.descent;
+}
+
+void
+setupwsd(void)
+{
+	/* WSD data */
+	wsd.rad = WSDRADIUS;
+	wsd.rows = 2*wsd.rad+1;
+	wsd.cols = 2*wsd.rad+1;
+	wsd.w = ww/wsd.cols;
+	wsd.h = wh/wsd.rows;
+	wsd.shown = false;
+
+	/* WSD window informations */
+	wsd.wa.override_redirect = true;
+	wsd.wa.background_pixmap = ParentRelative;
+	wsd.wa.event_mask = ExposureMask;
+
+	/* target box */
+	wsd.target = initws(0, 0);
+	wsd.target->name[0] = 0;
+	wsd.target->wsdbox = initwsdbox();
+	XMapRaised(dpy, wsd.target->wsdbox);
+
+	/* bar */
+	wsd.barwin = XCreateWindow(dpy, root, -bw, -bh, bw, bh, 0,
+			DefaultDepth(dpy, screen), CopyFromParent,
+			DefaultVisual(dpy, screen),
+			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wsd.wa);
+	XMapWindow(dpy, wsd.barwin);
+
+	/* bar input */
+	wsd.im = XOpenIM(dpy, NULL, NULL, NULL);
+	if (!wsd.im) {
+		die("could not open input method");
+	}
+	wsd.ic = XCreateIC(wsd.im, XNInputStyle, XIMPreeditNothing|XIMStatusNothing,
+			XNClientWindow, wsd.barwin, NULL);
+	if (!wsd.ic) {
+		die("could not open input context");
+	}
+	XSetICFocus(wsd.ic);
 }
 
 void
@@ -1562,7 +1562,7 @@ main(int argc, char **argv)
 		die("could not open X");
 	}
 	note("starting ...");
-	init();
+	setup();
 	scan();
 	custom_startup();
 	run();
