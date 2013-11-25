@@ -32,7 +32,7 @@
 
 /* enums */
 enum { CURSOR_NORMAL, CURSOR_RESIZE, CURSOR_MOVE, CURSOR_LAST };
-enum { LEFT, RIGHT, UP, DOWN };
+enum { LEFT, RIGHT, UP, DOWN, NO_DIRECTION };
 
 typedef union {
 	int i;
@@ -446,9 +446,6 @@ expose(XEvent *e)
 			renderwsdbox(workspaces[i]);
 		}
 	}
-	if (e->xexpose.window == selws->wsdbox) {
-		renderwsdbox(selws);
-	}
 	if (e->xexpose.window == wsd.target->wsdbox) {
 		renderwsdbox(wsd.target);
 	}
@@ -616,7 +613,6 @@ initfont(void)
 	/* if fontset load is successful, get information; otherwise dummy font */
 	if (dc.font.xfontset) {
 		dc.font.ascent = dc.font.descent = 0;
-		//XExtentsOfFontSet(dc.font.xfontset); /* TODO why? */
 		n = XFontsOfFontSet(dc.font.xfontset, &xfonts, &xfontnames);
 		while (n--) {
 			dc.font.ascent = MAX(dc.font.ascent, xfonts[n]->ascent);
@@ -1011,16 +1007,6 @@ renderwsdbar(void)
 void
 renderwsdbox(Workspace *ws)
 {
-	Workspace *ws2;
-	char name[256];
-
-	/* data */
-	if (ws == wsd.target && locatews(&ws2, NULL, ws->x, ws->y, NULL, 0)) {
-		strcpy(name, ws2->name);
-	} else {
-		strcpy(name, ws->name);
-	}
-
 	/* border */
 	XSetWindowBorderWidth(dpy, ws->wsdbox, WSDBORDERWIDTH);
 	XSetWindowBorder(dpy, ws->wsdbox, ws == selws ? WSDCBORDERSEL
@@ -1035,7 +1021,7 @@ renderwsdbox(Workspace *ws)
 	XSetForeground(dpy, dc.gc, ws == selws ? WSDCSEL
 			: ws == wsd.target ? WSDCTARGET : WSDCNORM);
 	Xutf8DrawString(dpy, ws->wsdbox, dc.font.xfontset, dc.gc, 2,
-			dc.font.ascent+1, name, strlen(name));
+			dc.font.ascent+1, ws->name, strlen(ws->name));
 }
 
 Workspace *
@@ -1218,21 +1204,20 @@ void
 stepwsdbox(Arg const *arg)
 {
 	Workspace *ws;
-	char buf[256];
 
 	switch (arg->i) {
 		case LEFT:  wsd.target->x--; break;
 		case RIGHT: wsd.target->x++; break;
 		case UP:    wsd.target->y--; break;
 		case DOWN:  wsd.target->y++; break;
+		default: /* NO_DIRECTION */  break;
 	}
 	if (locatews(&ws, NULL, wsd.target->x, wsd.target->y, NULL, 0)) {
-		strncpy(buf, ws->name, 255);
-		buf[255] = 0;
+		strcpy(wsd.target->name, ws->name);
 	} else {
-		buf[0] = 0;
+		wsd.target->name[0] = 0;
 	}
-	updatewsdbar(NULL, buf);
+	updatewsdbar(NULL, wsd.target->name);
 }
 
 void
@@ -1309,10 +1294,6 @@ togglewsd(Arg const *arg)
 				workspaces[i]->wsdbox = 0;
 			}
 		}
-		if (selws->wsdbox) {
-			XDestroyWindow(dpy, selws->wsdbox);
-			selws->wsdbox = 0;
-		}
 		/* hide target box and input bar */
 		XMoveWindow(dpy, wsd.target->wsdbox, -wsd.w, -wsd.h);
 		XMoveWindow(dpy, wsd.barwin, -bh, -bw);
@@ -1323,32 +1304,26 @@ togglewsd(Arg const *arg)
 		return;
 	}
 
-	/* create a box for all mapped + current workspace(s) and hide it */
+	/* create a box for each workspace and hide it */
 	for (i = 0; i < nws; i++) {
 		workspaces[i]->wsdbox = initwsdbox();
-		XMapRaised(dpy, workspaces[i]->wsdbox);
+		XMapWindow(dpy, workspaces[i]->wsdbox);
 	}
-	if (!selws->wsdbox) {
-		selws->wsdbox = initwsdbox();
-		XMapRaised(dpy, selws->wsdbox);
-	}
-	XRaiseWindow(dpy, wsd.target->wsdbox);
+
+	/* initial target is the current workspace (make a "0-step") */
+	wsd.target->x = selws->x;
+	wsd.target->y = selws->y;
+	stepwsdbox(&((Arg const) { .i = NO_DIRECTION }));
 
 	/* show input bar */
 	XMoveWindow(dpy, wsd.barwin, bx, by);
 	XRaiseWindow(dpy, wsd.barwin);
-	wsd.barbuf[0] = 0;
-	wsd.barcur = 0;
-	renderwsdbar();
-
-	/* initially selected workspace is the current workspace */
-	wsd.target->x = selws->x;
-	wsd.target->y = selws->y;
-	wsd.shown = true;
+	updatewsdbar(NULL, wsd.target->name);
 
 	/* grab keyboard, now we're in WSD mode */
 	XGrabKeyboard(dpy, selws->wsdbox, false, GrabModeAsync, GrabModeAsync,
 			CurrentTime);
+	wsd.shown = true;
 
 	/* initial update */
 	updatewsd();
@@ -1408,7 +1383,6 @@ updatewsd(void)
 	for (i = 0; i < nws; i++) {
 		updatewsdbox(workspaces[i]);
 	}
-	updatewsdbox(selws);
 	updatewsdbox(wsd.target);
 	XSync(dpy, false);
 }

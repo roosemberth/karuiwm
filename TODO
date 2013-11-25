@@ -1,0 +1,12 @@
+TODO
+----
+
+* unify x-offset for printing strings (statusbar vs WSDbar)
+* updatewsd() => updatewsdmap()
+* initws() => move to right position
+* init*() => setup*()
+* initclient() => manage()
+* tile() (and possibly other layouts) => layout.h
+* add client counter on WSD box
+* re-examine focusin()/focusout() (why did that bug?)
+
