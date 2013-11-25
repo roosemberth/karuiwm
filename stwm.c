@@ -349,7 +349,7 @@ configurerequest(XEvent *e)
 		return;
 	}
 
-	/* terminal sizes are forced with send_event=true, so send an event! */
+	/* force size with XSendEvent() instead of ordinary XConfigureWindow() */
 	cev = (XConfigureEvent) {
 		.type = ConfigureNotify,
 		.display = dpy,
@@ -748,11 +748,48 @@ keyrelease(XEvent *e)
 void
 killclient(Arg const *arg)
 {
+	int n;
+	Client *c;
+	Atom request;
+	Atom protocol;
+	Atom *supported;
+	bool match;
+	XClientMessageEvent cmev;
+
+	/* nothing to kill */
 	if (!selws->nc) {
 		return;
 	}
+
+	/* check if we may communicate to the client via atoms */
+	protocol = XInternAtom(dpy, "WM_PROTOCOLS", false);
+	request = XInternAtom(dpy, "WM_DELETE_WINDOW", false);
+	c = selws->selcli;
+	if (XGetWMProtocols(dpy, c->win, &supported, &n)) {
+		while (!match && n--) {
+			match = supported[n] == request;
+		}
+		XFree(supported);
+	}
+	if (match) {
+		cmev = (XClientMessageEvent) {
+			.type = ClientMessage,
+			.window = c->win,
+			.message_type = protocol,
+			.format = 32,
+			.data.l[0] = request,
+			.data.l[1] = CurrentTime
+		};
+		XSendEvent(dpy, c->win, false, NoEventMask, (XEvent *) &cmev);
+		return;
+	}
+
+	/* fallback if the client does not speak our language */
+	XGrabServer(dpy);
+	XSetCloseDownMode(dpy, DestroyAll);
 	XKillClient(dpy, selws->selcli->win);
 	XSync(dpy, false);
+	XUngrabServer(dpy);
 }
 
 bool
