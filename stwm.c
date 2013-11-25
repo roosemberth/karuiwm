@@ -153,7 +153,7 @@ static void togglewsd(Arg const *);
 static void unmapnotify(XEvent *);
 static void updatebar(void);
 static void updatefocus(void);
-static void updatewsd(void);
+static void updatewsdmap(void);
 static void updatewsdbar(XEvent *, char const *);
 static void updatewsdbox(Workspace *);
 static int xerror(Display *, XErrorEvent *);
@@ -285,9 +285,6 @@ cleanup(void)
 		free(workspaces[i]);
 	}
 	free(workspaces);
-	if (!selfound) {
-		free(selws);
-	}
 	XDestroyWindow(dpy, barwin);
 	XDestroyWindow(dpy, wsd.barwin);
 	XDestroyWindow(dpy, wsd.target->wsdbox);
@@ -409,6 +406,11 @@ detachws(Workspace *ws)
 	if (!workspaces && nws) {
 		die("could not allocate %d bytes for workspaces",
 				nws*sizeof(Workspace *));
+	}
+
+	if (ws->wsdbox) {
+		XDestroyWindow(dpy, ws->wsdbox);
+		updatewsdmap();
 	}
 }
 
@@ -555,6 +557,7 @@ keypress(XEvent *e)
 	unsigned int i;
 	KeySym keysym = XLookupKeysym(&e->xkey, 0);
 
+	/* catch normal keys */
 	if (!wsd.shown) {
 		for (i = 0; i < LENGTH(keys); i++) {
 			if (e->xkey.state == keys[i].mod && keysym == keys[i].key &&
@@ -563,17 +566,20 @@ keypress(XEvent *e)
 				return;
 			}
 		}
-	} else {
-		for (i = 0; i < LENGTH(wsdkeys); i++) {
-			if (e->xkey.state == wsdkeys[i].mod && keysym == wsdkeys[i].key &&
-					wsdkeys[i].func) {
-				wsdkeys[i].func(&wsdkeys[i].arg);
-				updatewsd();
-				return;
-			}
-		}
-		updatewsdbar(e, NULL);
 	}
+
+	/* catch WSD keys */
+	for (i = 0; i < LENGTH(wsdkeys); i++) {
+		if (e->xkey.state == wsdkeys[i].mod && keysym == wsdkeys[i].key &&
+				wsdkeys[i].func) {
+			wsdkeys[i].func(&wsdkeys[i].arg);
+			updatewsdmap();
+			return;
+		}
+	}
+
+	/* pass rest on to input bar */
+	updatewsdbar(e, NULL);
 }
 
 void
@@ -587,8 +593,7 @@ killclient(Arg const *arg)
 {
 	int n;
 	Client *c;
-	Atom request;
-	Atom protocol;
+	Atom protocol, request;
 	Atom *supported;
 	bool match;
 	XClientMessageEvent cmev;
@@ -690,7 +695,6 @@ maprequest(XEvent *e)
 		XMapWindow(dpy, c->win);
 		updatefocus();
 	}
-	updatewsd();
 }
 
 void
@@ -717,7 +721,6 @@ move(Arg const *arg)
 	arrange();
 	updatefocus();
 	updatebar();
-	updatewsd();
 }
 
 void
@@ -1110,9 +1113,8 @@ setws(int x, int y)
 		attachws(selws);
 	}
 	arrange();
-	updatefocus();
 	updatebar();
-	updatewsd();
+	updatefocus();
 }
 
 void
@@ -1230,6 +1232,7 @@ stepws(Arg const *arg)
 		case RIGHT: x = selws->x+1; break;
 		case UP:    y = selws->y-1; break;
 		case DOWN:  y = selws->y+1; break;
+		default: /* NO_DIRECTION */ break;
 	}
 	setws(x, y);
 }
@@ -1310,23 +1313,22 @@ togglewsd(Arg const *arg)
 		XMapWindow(dpy, workspaces[i]->wsdbox);
 	}
 
-	/* initial target is the current workspace (make a "0-step") */
-	wsd.target->x = selws->x;
-	wsd.target->y = selws->y;
-	stepwsdbox(&((Arg const) { .i = NO_DIRECTION }));
-
 	/* show input bar */
 	XMoveWindow(dpy, wsd.barwin, bx, by);
 	XRaiseWindow(dpy, wsd.barwin);
-	updatewsdbar(NULL, wsd.target->name);
+
+	/* initial target is the current workspace (make a "0-step") */
+	wsd.target->x = selws->x;
+	wsd.target->y = selws->y;
+	stepwsdbox(&((Arg const) { .i = NO_DIRECTION })); /* updates input bar */
 
 	/* grab keyboard, now we're in WSD mode */
 	XGrabKeyboard(dpy, selws->wsdbox, false, GrabModeAsync, GrabModeAsync,
 			CurrentTime);
 	wsd.shown = true;
 
-	/* initial update */
-	updatewsd();
+	/* initial update for map */
+	updatewsdmap();
 }
 
 void
@@ -1345,7 +1347,6 @@ unmapnotify(XEvent *e)
 			updatefocus();
 		}
 	}
-	updatewsd();
 }
 
 void
@@ -1372,7 +1373,7 @@ updatefocus(void)
 }
 
 void
-updatewsd(void)
+updatewsdmap(void)
 {
 	unsigned int i;
 
