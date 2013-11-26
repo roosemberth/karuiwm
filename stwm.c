@@ -12,6 +12,7 @@
 #include <X11/keysym.h>
 #include <X11/Xproto.h>
 #include <X11/cursorfont.h>
+#include <X11/extensions/Xinerama.h>
 
 /* macros */
 #define APPNAME "stwm"
@@ -33,6 +34,8 @@
 /* enums */
 enum { CURSOR_NORMAL, CURSOR_RESIZE, CURSOR_MOVE, CURSOR_LAST };
 enum { LEFT, RIGHT, UP, DOWN, NO_DIRECTION };
+
+typedef struct Workspace Workspace;
 
 typedef union {
 	int i;
@@ -65,6 +68,14 @@ typedef struct {
 } Key;
 
 typedef struct {
+	Workspace *selws;
+	unsigned int sx, sy, sw, sh; /* screen dimensions */
+	unsigned int bx, by, bw, bh; /* status bar dimensions */
+	unsigned int wx, wy, ww, wh; /* workspace dimensions */
+	Window barwin;               /* status bar window */
+} Monitor;
+
+struct Workspace {
 	Client **clients, **stack;
 	Client *selcli;
 	Window wsdbox;
@@ -73,7 +84,7 @@ typedef struct {
 	float mfact;
 	char name[256];
 	int x, y;
-} Workspace;
+};
 
 typedef struct {
 	Workspace *target;
@@ -101,6 +112,7 @@ static void configurenotify(XEvent *);
 static void createnotify(XEvent *);
 static void destroynotify(XEvent *);
 static void detach(Client *);
+static void detachmon(Monitor *);
 static void detachws(Workspace *);
 static void enternotify(XEvent *);
 static void expose(XEvent *);
@@ -109,13 +121,16 @@ static void grabkeys(void);
 static void hide(Client *);
 static void hidews(Workspace *);
 static Client *initclient(Window, bool);
+static Monitor *initmon(void);
+static void updatemons(void);
 static Workspace *initws(int, int);
 static Window initwsdbox(void);
 static void keypress(XEvent *);
 static void keyrelease(XEvent *);
 static void killclient(Arg const *);
-static bool locate(Workspace **, Client **, unsigned int *, Window);
-static bool locatews(Workspace **, unsigned int *, int, int, char const *, unsigned int);
+static bool locate(Workspace **, Client **, unsigned int *, Window const);
+static bool locatemon(Monitor **, unsigned int *, Workspace const *);
+static bool locatews(Workspace **, unsigned int *, int, int, char const *);
 static void mappingnotify(XEvent *);
 static void maprequest(XEvent *);
 static void motionnotify(XEvent *);
@@ -150,6 +165,7 @@ static void stepwsdbox(Arg const *arg);
 static unsigned int textwidth(char const *, unsigned int);
 static void tile(void);
 static void togglewsd(Arg const *);
+static size_t unifyscreens(XineramaScreenInfo **, size_t);
 static void unmapnotify(XEvent *);
 static void updatebar(void);
 static void updatefocus(void);
@@ -184,17 +200,15 @@ static void (*handle[LASTEvent])(XEvent *) = {
 static bool running, restarting;    /* application state */
 static Display *dpy;                /* X display */
 static int screen;                  /* screen */
-static unsigned int sw, sh;         /* screen dimensions */
-static Window barwin;               /* status bar window */
-static unsigned int bx, by, bw, bh; /* status bar dimensions */
 static Window root;                 /* root window */
-static unsigned int nws;            /* number of workspaces */
 static Workspace **workspaces;      /* list of workspaces */
-static Workspace *selws;            /* selected workspace */
-static unsigned int wx, wy, ww, wh; /* workspace dimensions */
+static unsigned int nws;            /* number of workspaces */
 static DC dc;                       /* drawing context */
 static Cursor cursor[CURSOR_LAST];  /* cursors */
 static WorkspaceDialog wsd;         /* workspace dialog */
+static Monitor **monitors;          /* list of monitors */
+static Monitor *selmon;             /* selected monitor */
+static unsigned int nmon;           /* number of monitors */
 
 /* configuration */
 #include "config.h"
@@ -203,13 +217,13 @@ void
 arrange(void)
 {
 	unsigned int i;
-	for (i = 0; i < selws->nc; i++) {
-		XSelectInput(dpy, selws->clients[i]->win, 0);
+	for (i = 0; i < selmon->selws->nc; i++) {
+		XSelectInput(dpy, selmon->selws->clients[i]->win, 0);
 	}
 	/* TODO use array of layouts */
 	tile();
-	for (i = 0; i < selws->nc; i++) {
-		XSelectInput(dpy, selws->clients[i]->win, CLIENTMASK);
+	for (i = 0; i < selmon->selws->nc; i++) {
+		XSelectInput(dpy, selmon->selws->clients[i]->win, CLIENTMASK);
 	}
 }
 
@@ -221,7 +235,7 @@ attach(Workspace *ws, Client *c)
 	/* add to list */
 	ws->clients = realloc(ws->clients, ++ws->nc*sizeof(Client *));
 	if (!ws->clients) {
-		die("could not allocate %d bytes for client list",
+		die("could not allocate %u bytes for client list",
 				ws->nc*sizeof(Client *));
 	}
 	pos = 0;
@@ -243,11 +257,21 @@ attach(Workspace *ws, Client *c)
 }
 
 void
+attachmon(Monitor *mon)
+{
+	monitors = realloc(monitors, ++nmon*sizeof(Monitor *));
+	if (!monitors) {
+		die("could not allocate %u bytes for monitor list", sizeof(Monitor));
+	}
+	monitors[nmon-1] = mon;
+}
+
+void
 attachws(Workspace *ws)
 {
 	workspaces = realloc(workspaces, ++nws*sizeof(Workspace *));
 	if (!workspaces) {
-		die("could not allocate %d bytes for workspace list",
+		die("could not allocate %u bytes for workspace list",
 				nws*sizeof(Workspace *));
 	}
 	workspaces[nws-1] = ws;
@@ -272,23 +296,30 @@ void
 cleanup(void)
 {
 	unsigned int i, j;
-	bool selfound = false;
 
+	/* workspaces and their clients */
 	for (i = 0; i < nws; i++) {
 		for (j = 0; j < workspaces[i]->nc; j++) {
 			free(workspaces[i]->clients[j]);
 		}
 		free(workspaces[i]->clients);
-		if (workspaces[i] == selws) {
-			selfound = true;
-		}
 		free(workspaces[i]);
 	}
 	free(workspaces);
-	XDestroyWindow(dpy, barwin);
+
+	/* monitors */
+	for (i = 0; i < nmon; i++) {
+		free(monitors[i]);
+	}
+	free(monitors);
+
+	/* special windows */
+	XDestroyWindow(dpy, selmon->barwin);
 	XDestroyWindow(dpy, wsd.barwin);
 	XDestroyWindow(dpy, wsd.target->wsdbox);
 	free(wsd.target);
+
+	/* graphic context */
 	XFreeGC(dpy, dc.gc);
 }
 
@@ -383,9 +414,24 @@ detach(Client *c)
 	}
 
 	/* remove workspace if not selected and last client was removed */
-	if (ws != selws && !ws->nc) {
+	if (ws != selmon->selws && !ws->nc) {
 		detachws(ws);
 	}
+}
+
+void
+detachmon(Monitor *mon)
+{
+	unsigned int i;
+
+	if (!locatemon(&mon, &i, mon->selws)) {
+		warn("attempt to detach non-existing monitor");
+		return;
+	}
+	for (nmon--; i < nmon; i++) {
+		monitors[i] = monitors[i+1];
+	}
+	monitors = realloc(monitors, nmon*sizeof(Monitor *));
 }
 
 void
@@ -393,7 +439,7 @@ detachws(Workspace *ws)
 {
 	unsigned int i;
 
-	if (!locatews(&ws, &i, ws->x, ws->y, NULL, 0)) {
+	if (!locatews(&ws, &i, ws->x, ws->y, NULL)) {
 		warn("attempt to detach non-existing workspace");
 		return;
 	}
@@ -404,7 +450,7 @@ detachws(Workspace *ws)
 	}
 	workspaces = realloc(workspaces, nws*sizeof(Workspace *));
 	if (!workspaces && nws) {
-		die("could not allocate %d bytes for workspaces",
+		die("could not allocate %u bytes for workspace list",
 				nws*sizeof(Workspace *));
 	}
 
@@ -423,13 +469,13 @@ enternotify(XEvent *e)
 	Workspace *ws;
 	Client *c;
 
-	if (!locate(&ws, &c, &pos, e->xcrossing.window) || ws != selws) {
+	if (!locate(&ws, &c, &pos, e->xcrossing.window) || ws != selmon->selws) {
 		warn("attempt to enter unhandled/invisible window %d",
 				e->xcrossing.window);
 		return;
 	}
 
-	push(selws, c);
+	push(selmon->selws, c);
 	updatefocus();
 }
 
@@ -440,7 +486,7 @@ expose(XEvent *e)
 
 	unsigned int i;
 
-	if (e->xexpose.window == barwin) {
+	if (e->xexpose.window == selmon->barwin) {
 		renderbar();
 	}
 	for (i = 0; i < nws; i++) {
@@ -509,12 +555,12 @@ initclient(Window win, bool viewable)
 	/* create client */
 	c = malloc(sizeof(Client));
 	if (!c) {
-		die("could not allocate new client (%d bytes)", sizeof(Client));
+		die("could not allocate %u bytes for client", sizeof(Client));
 	}
 	c->win = win;
 
 	/* common actions (maprequest() and scan()) */
-	attach(selws, c);
+	attach(selmon->selws, c);
 	arrange();
 	XSetWindowBorderWidth(dpy, c->win, BORDERWIDTH);
 	XSelectInput(dpy, c->win, CLIENTMASK);
@@ -522,12 +568,38 @@ initclient(Window win, bool viewable)
 	return c;
 }
 
+Monitor *
+initmon(void)
+{
+	unsigned int x;
+	Monitor *mon;
+	Workspace *ws;
+
+	mon = malloc(sizeof(Monitor));
+	if (!mon) {
+		die("could not allocate %u bytes for monitor", sizeof(Monitor));
+	}
+
+	/* assign workspace */
+	for (x = 0;; x++) {
+		if (!locatews(&ws, NULL, x, 0, NULL)) {
+			mon->selws = initws(x, 0);
+			attachws(mon->selws);
+			break;
+		} else if (!locatemon(NULL, NULL, ws)) {
+			mon->selws = ws;
+			break;
+		}
+	}
+	return mon;
+}
+
 Workspace *
 initws(int x, int y)
 {
 	Workspace *ws = malloc(sizeof(Workspace));
 	if (!ws) {
-		die("could not allocate %d bytes for workspace", sizeof(Workspace));
+		die("could not allocate %u bytes for workspace", sizeof(Workspace));
 	}
 	ws->clients = ws->stack = NULL;
 	ws->nc = ws->ns = 0;
@@ -599,14 +671,14 @@ killclient(Arg const *arg)
 	XClientMessageEvent cmev;
 
 	/* nothing to kill */
-	if (!selws->nc) {
+	if (!selmon->selws->nc) {
 		return;
 	}
 
 	/* check if we may communicate to the client via atoms */
 	protocol = XInternAtom(dpy, "WM_PROTOCOLS", false);
 	request = XInternAtom(dpy, "WM_DELETE_WINDOW", false);
-	c = selws->selcli;
+	c = selmon->selws->selcli;
 	if (XGetWMProtocols(dpy, c->win, &supported, &n)) {
 		while (!match && n--) {
 			match = supported[n] == request;
@@ -629,7 +701,7 @@ killclient(Arg const *arg)
 	/* fallback if the client does not speak our language */
 	XGrabServer(dpy);
 	XSetCloseDownMode(dpy, DestroyAll);
-	XKillClient(dpy, selws->selcli->win);
+	XKillClient(dpy, selmon->selws->selcli->win);
 	XSync(dpy, false);
 	XUngrabServer(dpy);
 }
@@ -640,10 +712,10 @@ locate(Workspace **ws, Client **c, unsigned int *pos, Window w)
 	unsigned int i, j;
 
 	/* search current workspace */
-	for (i = 0; i < selws->nc; i++) {
-		if (selws->clients[i]->win == w) {
-			if (ws) *ws = selws;
-			if (c) *c = selws->clients[i];
+	for (i = 0; i < selmon->selws->nc; i++) {
+		if (selmon->selws->clients[i]->win == w) {
+			if (ws) *ws = selmon->selws;
+			if (c) *c = selmon->selws->clients[i];
 			if (pos) *pos = i;
 			return true;
 		}
@@ -663,13 +735,27 @@ locate(Workspace **ws, Client **c, unsigned int *pos, Window w)
 }
 
 bool
-locatews(Workspace **ws, unsigned int *pos, int x, int y, char const *name,
-		unsigned int namelen)
+locatemon(Monitor **mon, unsigned int *pos, Workspace const *ws)
+{
+	unsigned int i;
+
+	for (i = 0; i < nmon; i++) {
+		if (monitors[i]->selws == ws) {
+			if (mon) *mon = monitors[i];
+			if (pos) *pos = i;
+			return true;;
+		}
+	}
+	return false;
+}
+
+bool
+locatews(Workspace **ws, unsigned int *pos, int x, int y, char const *name)
 {
 	unsigned int i;
 	for (i = 0; i < nws; i++) {
 		if (name) {
-			if (!strncmp(name, workspaces[i]->name, namelen)) {
+			if (!strncmp(name, workspaces[i]->name, strlen(name))) {
 				if (ws) *ws = workspaces[i];
 				if (pos) *pos = i;
 				return true;
@@ -714,10 +800,10 @@ motionnotify(XEvent *e)
 void
 move(Arg const *arg)
 {
-	Client *c = selws->selcli;
+	Client *c = selmon->selws->selcli;
 	detach(c);
 	stepws(arg);
-	attach(selws, c);
+	attach(selmon->selws, c);
 	arrange();
 	updatefocus();
 	updatebar();
@@ -736,8 +822,8 @@ movews(Arg const *arg)
 		case DOWN:  y++; break;
 	}
 
-	locatews(&src, NULL, wsd.target->x, wsd.target->y, NULL, 0);
-	locatews(&dst, NULL, x, y, NULL, 0);
+	locatews(&src, NULL, wsd.target->x, wsd.target->y, NULL);
+	locatews(&dst, NULL, x, y, NULL);
 	if (src) {
 		src->x = x;
 		src->y = y;
@@ -774,7 +860,7 @@ pop(Workspace *ws, Client *c)
 			}
 			ws->stack = realloc(ws->stack, ws->ns*sizeof(Client *));
 			if (ws->ns && !ws->stack) {
-				die("could not allocate %d bytes for stack",
+				die("could not allocate %u bytes for stack",
 						ws->ns*sizeof(Client*));
 			}
 			break;
@@ -799,7 +885,7 @@ push(Workspace *ws, Client *c)
 	pop(ws, c);
 	ws->stack = realloc(ws->stack, ++ws->ns*sizeof(Client *));
 	if (!ws->stack) {
-		die("could not allocated %d bytes for stack", ws->ns*sizeof(Client *));
+		die("could not allocated %u bytes for stack", ws->ns*sizeof(Client *));
 	}
 	ws->stack[ws->ns-1] = c;
 }
@@ -845,14 +931,11 @@ renamews(Workspace *ws, char const *name)
 void
 renderbar(void)
 {
-	char *empty = "<empty>";
-	unsigned int len = strlen(selws->name);
-
 	XSetForeground(dpy, dc.gc, CBORDERNORM);
-	XFillRectangle(dpy, barwin, dc.gc, 0, 0, bw, bh);
+	XFillRectangle(dpy, selmon->barwin, dc.gc, 0, 0, selmon->bw, selmon->bh);
 	XSetForeground(dpy, dc.gc, 0x888888);
-	XDrawString(dpy, barwin, dc.gc, 0, dc.font.ascent+1,
-			len ? selws->name : empty, strlen(len ? selws->name : empty));
+	XDrawString(dpy, selmon->barwin, dc.gc, 0, dc.font.ascent+1,
+			selmon->selws->name, strlen(selmon->selws->name));
 	XSync(dpy, false);
 }
 
@@ -863,7 +946,7 @@ renderwsdbar(void)
 
 	/* text */
 	XSetForeground(dpy, dc.gc, CBGSEL);
-	XFillRectangle(dpy, wsd.barwin, dc.gc, 0, 0, bw, bh);
+	XFillRectangle(dpy, wsd.barwin, dc.gc, 0, 0, selmon->bw, selmon->bh);
 	XSetForeground(dpy, dc.gc, CSEL);
 	Xutf8DrawString(dpy, wsd.barwin, dc.font.xfontset, dc.gc, 6,
 			dc.font.ascent+1, wsd.barbuf, strlen(wsd.barbuf));
@@ -879,16 +962,16 @@ renderwsdbox(Workspace *ws)
 {
 	/* border */
 	XSetWindowBorderWidth(dpy, ws->wsdbox, WSDBORDERWIDTH);
-	XSetWindowBorder(dpy, ws->wsdbox, ws == selws ? WSDCBORDERSEL
+	XSetWindowBorder(dpy, ws->wsdbox, ws == selmon->selws ? WSDCBORDERSEL
 			: ws == wsd.target ? WSDCBORDERTARGET : WSDCBORDERNORM);
 
 	/* background */
-	XSetForeground(dpy, dc.gc, ws == selws ? WSDCBGSEL
+	XSetForeground(dpy, dc.gc, ws == selmon->selws ? WSDCBGSEL
 			: ws == wsd.target ? WSDCBGTARGET : WSDCBGNORM);
 	XFillRectangle(dpy, ws->wsdbox, dc.gc, 0, 0, wsd.w, wsd.h);
 
 	/* text */
-	XSetForeground(dpy, dc.gc, ws == selws ? WSDCSEL
+	XSetForeground(dpy, dc.gc, ws == selmon->selws ? WSDCSEL
 			: ws == wsd.target ? WSDCTARGET : WSDCNORM);
 	Xutf8DrawString(dpy, ws->wsdbox, dc.font.xfontset, dc.gc, 2,
 			dc.font.ascent+1, ws->name, strlen(ws->name));
@@ -937,7 +1020,7 @@ scan(void)
 void
 setmfact(Arg const *arg)
 {
-	selws->mfact = MAX(0.1, MIN(0.9, selws->mfact+arg->f));
+	selmon->selws->mfact = MAX(0.1, MIN(0.9, selmon->selws->mfact+arg->f));
 	arrange();
 }
 
@@ -954,39 +1037,55 @@ setup(void)
 		die("could not set locale");
 	}
 
-	/* X */
+	/* monitors */
+	debug("1");
 	screen = DefaultScreen(dpy);
+	debug("2");
 	root = RootWindow(dpy, screen);
-	sw = DisplayWidth(dpy, screen);
-	sh = DisplayHeight(dpy, screen);
+	debug("3");
+	updatemons();
+	debug("4");
+	selmon->sw = DisplayWidth(dpy, screen);
+	debug("5");
+	selmon->sh = DisplayHeight(dpy, screen);
+	debug("6");
 	xerrorxlib = XSetErrorHandler(xerror);
+	debug("7");
 	dc.gc = XCreateGC(dpy, root, 0, NULL);
 
 	/* input (cursor/keys) */
+	debug("8");
 	cursor[CURSOR_NORMAL] = XCreateFontCursor(dpy, XC_left_ptr);
+	debug("9");
 	cursor[CURSOR_RESIZE] = XCreateFontCursor(dpy, XC_sizing);
+	debug("10");
 	cursor[CURSOR_MOVE] = XCreateFontCursor(dpy, XC_fleur);
+	debug("11");
 	wa.cursor = cursor[CURSOR_NORMAL];
+	debug("12");
 	XChangeWindowAttributes(dpy, root, CWCursor, &wa);
+	debug("13");
 	grabbuttons();
+	debug("14");
 	grabkeys();
 
 	/* event mask */
+	debug("15");
 	wa.event_mask = SubstructureNotifyMask|SubstructureRedirectMask|
 			KeyPressMask;
+	debug("16");
 	XChangeWindowAttributes(dpy, root, CWEventMask, &wa);
 
-	/* initial workspace */
-	selws = initws(0, 0);
-	attachws(selws);
-
 	/* font */
+	debug("17");
 	setupfont();
 
 	/* status bar */
+	debug("18");
 	setupbar();
 
 	/* workspace dialog */
+	debug("19");
 	setupwsd();
 }
 
@@ -995,23 +1094,23 @@ setupbar(void)
 {
 	XSetWindowAttributes wa;
 
-	bx = 0;
-	by = 0; /* TODO allow bar to be at bottom */
-	bh = dc.font.height + 2;
-	bw = sw;
-	wx = 0;
-	wy = bh;
-	ww = sw;
-	wh = sh-bh;
+	selmon->bx = 0;
+	selmon->by = 0; /* TODO allow bar to be at bottom */
+	selmon->bh = dc.font.height + 2;
+	selmon->bw = selmon->sw;
+	selmon->wx = 0;
+	selmon->wy = selmon->bh;
+	selmon->ww = selmon->sw;
+	selmon->wh = selmon->sh-selmon->bh;
 
 	wa.override_redirect = true;
 	wa.background_pixmap = ParentRelative;
 	wa.event_mask = ExposureMask;
-	barwin = XCreateWindow(dpy, root, bx, by, bw, bh, 0,
-			DefaultDepth(dpy, screen), CopyFromParent,
+	selmon->barwin = XCreateWindow(dpy, root, selmon->bx, selmon->by, selmon->bw,
+			selmon->bh, 0, DefaultDepth(dpy, screen), CopyFromParent,
 			DefaultVisual(dpy, screen),
 			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
-	XMapRaised(dpy, barwin);
+	XMapRaised(dpy, selmon->barwin);
 	updatebar();
 }
 
@@ -1023,13 +1122,20 @@ setupfont(void)
 	char *def, **missing;
 	int n;
 
+	debug("17.1");
 	dc.font.xfontset = XCreateFontSet(dpy, FONTSTR, &missing, &n, &def);
+	debug("17.2");
 	if (missing) {
+		debug("17.3");
 		while (n--) {
+			debug("17.4");
 			warn("missing fontset: %s", missing[n]);
 		}
+		debug("17.5");
 		XFreeStringList(missing);
+		debug("17.6");
 	}
+	debug("17.7");
 
 	/* if fontset load is successful, get information; otherwise dummy font */
 	if (dc.font.xfontset) {
@@ -1057,8 +1163,8 @@ setupwsd(void)
 	wsd.rad = WSDRADIUS;
 	wsd.rows = 2*wsd.rad+1;
 	wsd.cols = 2*wsd.rad+1;
-	wsd.w = ww/wsd.cols;
-	wsd.h = wh/wsd.rows;
+	wsd.w = selmon->ww/wsd.cols;
+	wsd.h = selmon->wh/wsd.rows;
 	wsd.shown = false;
 
 	/* WSD window informations */
@@ -1073,8 +1179,8 @@ setupwsd(void)
 	XMapRaised(dpy, wsd.target->wsdbox);
 
 	/* bar */
-	wsd.barwin = XCreateWindow(dpy, root, -bw, -bh, bw, bh, 0,
-			DefaultDepth(dpy, screen), CopyFromParent,
+	wsd.barwin = XCreateWindow(dpy, root, -selmon->bw, -selmon->bh, selmon->bw,
+			selmon->bh, 0, DefaultDepth(dpy, screen), CopyFromParent,
 			DefaultVisual(dpy, screen),
 			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wsd.wa);
 	XMapWindow(dpy, wsd.barwin);
@@ -1098,19 +1204,19 @@ setws(int x, int y)
 	Workspace *next;
 
 	/* current workspace */
-	if (selws->nc) {
-		hidews(selws);
+	if (selmon->selws->nc) {
+		hidews(selmon->selws);
 	} else {
-		detachws(selws);
-		free(selws);
+		detachws(selmon->selws);
+		free(selmon->selws);
 	}
 
 	/* next workspace */
-	if (locatews(&next, NULL, x, y, NULL, 0)) {
-		selws = next;
+	if (locatews(&next, NULL, x, y, NULL)) {
+		selmon->selws = next;
 	} else {
-		selws = initws(x, y);
-		attachws(selws);
+		selmon->selws = initws(x, y);
+		attachws(selmon->selws);
 	}
 	arrange();
 	updatebar();
@@ -1120,10 +1226,10 @@ setws(int x, int y)
 void
 setnmaster(Arg const *arg)
 {
-	if (!selws->nmaster && arg->i < 0) {
+	if (!selmon->selws->nmaster && arg->i < 0) {
 		return;
 	}
-	selws->nmaster = selws->nmaster+arg->i;
+	selmon->selws->nmaster = selmon->selws->nmaster+arg->i;
 	arrange();
 }
 
@@ -1132,14 +1238,17 @@ shift(Arg const *arg)
 {
 	unsigned int pos;
 
-	if (selws->ns < 2) {
+	if (selmon->selws->ns < 2) {
 		return;
 	}
-	if (!locate(NULL, NULL, &pos, selws->selcli->win)) {
-		warn("attempt to shift non-existent window %d", selws->selcli->win);
+	if (!locate(NULL, NULL, &pos, selmon->selws->selcli->win)) {
+		warn("attempt to shift non-existent window %d",
+				selmon->selws->selcli->win);
 	}
-	selws->clients[pos] = selws->clients[(pos+selws->nc+arg->i)%selws->nc];
-	selws->clients[(pos+selws->nc+arg->i)%selws->nc] = selws->selcli;
+	selmon->selws->clients[pos] = selmon->selws->clients[
+			(pos+selmon->selws->nc+arg->i)%selmon->selws->nc];
+	selmon->selws->clients[(pos+selmon->selws->nc+arg->i)%selmon->selws->nc] =
+			selmon->selws->selcli;
 
 	arrange();
 }
@@ -1194,11 +1303,12 @@ stepfocus(Arg const *arg)
 {
 	unsigned int pos;
 
-	if (!selws->nc) {
+	if (!selmon->selws->nc) {
 		return;
 	}
-	locate(NULL, NULL, &pos, selws->selcli->win);
-	push(selws, selws->clients[(pos+selws->nc+arg->i)%selws->nc]);
+	locate(NULL, NULL, &pos, selmon->selws->selcli->win);
+	push(selmon->selws, selmon->selws->clients[
+			(pos+selmon->selws->nc+arg->i)%selmon->selws->nc]);
 	updatefocus();
 }
 
@@ -1214,7 +1324,7 @@ stepwsdbox(Arg const *arg)
 		case DOWN:  wsd.target->y++; break;
 		default: /* NO_DIRECTION */  break;
 	}
-	if (locatews(&ws, NULL, wsd.target->x, wsd.target->y, NULL, 0)) {
+	if (locatews(&ws, NULL, wsd.target->x, wsd.target->y, NULL)) {
 		strcpy(wsd.target->name, ws->name);
 	} else {
 		wsd.target->name[0] = 0;
@@ -1225,13 +1335,13 @@ stepwsdbox(Arg const *arg)
 void
 stepws(Arg const *arg)
 {
-	int x=selws->x, y=selws->y;
+	int x=selmon->selws->x, y=selmon->selws->y;
 
 	switch (arg->i) {
-		case LEFT:  x = selws->x-1; break;
-		case RIGHT: x = selws->x+1; break;
-		case UP:    y = selws->y-1; break;
-		case DOWN:  y = selws->y+1; break;
+		case LEFT:  x = selmon->selws->x-1; break;
+		case RIGHT: x = selmon->selws->x+1; break;
+		case UP:    y = selmon->selws->y-1; break;
+		case DOWN:  y = selmon->selws->y+1; break;
 		default: /* NO_DIRECTION */ break;
 	}
 	setws(x, y);
@@ -1255,32 +1365,33 @@ tile(void)
 	unsigned int ncm, i, w, h;
 	int x;
 
-	if (!selws->nc) {
+	if (!selmon->selws->nc) {
 		return;
 	}
 
 	/* draw master area */
-	ncm = MIN(selws->nmaster, selws->nc);
+	ncm = MIN(selmon->selws->nmaster, selmon->selws->nc);
 	if (ncm) {
-		x = wx;
-		w = selws->nmaster >= selws->nc ? ww : selws->mfact*ww;
-		h = wh/ncm;
+		x = selmon->wx;
+		w = selmon->selws->nmaster >= selmon->selws->nc ?
+				selmon->ww : selmon->selws->mfact*selmon->ww;
+		h = selmon->wh/ncm;
 		for (i = 0; i < ncm; i++) {
-			place(selws->clients[i], x, wy+i*h, w-2*BORDERWIDTH,
+			place(selmon->selws->clients[i], x, selmon->wy+i*h, w-2*BORDERWIDTH,
 					h-2*BORDERWIDTH);
 		}
 	}
-	if (ncm == selws->nc) {
+	if (ncm == selmon->selws->nc) {
 		return;
 	}
 
 	/* draw stack area */
-	x = ncm ? selws->mfact*ww : 0;
-	w = ncm ? ww-x : ww;
-	h = wh/(selws->nc-ncm);
-	for (i = ncm; i < selws->nc; i++) {
-		place(selws->clients[i], x, wy+(i-ncm)*h, w-2*BORDERWIDTH,
-				h-2*BORDERWIDTH);
+	x = ncm ? selmon->selws->mfact*selmon->ww : 0;
+	w = ncm ? selmon->ww-x : selmon->ww;
+	h = selmon->wh/(selmon->selws->nc-ncm);
+	for (i = ncm; i < selmon->selws->nc; i++) {
+		place(selmon->selws->clients[i], x, selmon->wy+(i-ncm)*h,
+				w-2*BORDERWIDTH, h-2*BORDERWIDTH);
 	}
 }
 
@@ -1299,9 +1410,9 @@ togglewsd(Arg const *arg)
 		}
 		/* hide target box and input bar */
 		XMoveWindow(dpy, wsd.target->wsdbox, -wsd.w, -wsd.h);
-		XMoveWindow(dpy, wsd.barwin, -bh, -bw);
+		XMoveWindow(dpy, wsd.barwin, -selmon->bh, -selmon->bw);
 		wsd.shown = false;
-		XUngrabKeyboard(dpy, selws->wsdbox);
+		XUngrabKeyboard(dpy, selmon->selws->wsdbox);
 		grabkeys();
 		updatefocus();
 		return;
@@ -1314,21 +1425,55 @@ togglewsd(Arg const *arg)
 	}
 
 	/* show input bar */
-	XMoveWindow(dpy, wsd.barwin, bx, by);
+	XMoveWindow(dpy, wsd.barwin, selmon->bx, selmon->by);
 	XRaiseWindow(dpy, wsd.barwin);
 
 	/* initial target is the current workspace (make a "0-step") */
-	wsd.target->x = selws->x;
-	wsd.target->y = selws->y;
+	wsd.target->x = selmon->selws->x;
+	wsd.target->y = selmon->selws->y;
 	stepwsdbox(&((Arg const) { .i = NO_DIRECTION })); /* updates input bar */
 
 	/* grab keyboard, now we're in WSD mode */
-	XGrabKeyboard(dpy, selws->wsdbox, false, GrabModeAsync, GrabModeAsync,
-			CurrentTime);
+	XGrabKeyboard(dpy, selmon->selws->wsdbox, false, GrabModeAsync,
+			GrabModeAsync, CurrentTime);
 	wsd.shown = true;
 
 	/* initial update for map */
 	updatewsdmap();
+}
+
+size_t
+unifyscreens(XineramaScreenInfo **list, size_t len)
+{
+	unsigned int i, j, n;
+	bool dub;
+
+	/* reserve enough space */
+	XineramaScreenInfo *unique = calloc(len, sizeof(XineramaScreenInfo));
+
+	for (i = 0, n = 0; i < len; i++) {
+		dub = false;
+		for (j = 0; j < i; j++) {
+			if (list[j]->x_org == list[i]->x_org
+					&& list[j]->y_org == list[i]->y_org
+					&& list[j]->width == list[i]->width
+					&& list[j]->height == list[i]->height) {
+				dub = true;
+				break;
+			}
+		}
+		if (!dub) {
+			unique[n].x_org = list[i]->x_org;
+			unique[n].y_org = list[i]->y_org;
+			unique[n].width = list[i]->width;
+			unique[n].height = list[i]->height;
+			n++;
+		}
+	}
+	XFree(*list);
+	*list = unique;
+	*list = realloc(*list, n*sizeof(XineramaScreenInfo)); /* fix size */
+	return n;
 }
 
 void
@@ -1342,7 +1487,7 @@ unmapnotify(XEvent *e)
 	if (locate(&ws, &c, NULL, e->xunmap.window)) {
 		detach(c);
 		free(c);
-		if (ws == selws) {
+		if (ws == selmon->selws) {
 			arrange();
 			updatefocus();
 		}
@@ -1360,16 +1505,65 @@ updatefocus(void)
 {
 	unsigned int i;
 
-	if (!selws->ns) {
+	if (!selmon->selws->ns) {
 		return;
 	}
 
-	selws->selcli = selws->stack[selws->ns-1];
-	for (i = 0; i < selws->ns-1; i++) {
-		XSetWindowBorder(dpy, selws->stack[i]->win, CBORDERNORM);
+	selmon->selws->selcli = selmon->selws->stack[selmon->selws->ns-1];
+	for (i = 0; i < selmon->selws->ns-1; i++) {
+		XSetWindowBorder(dpy, selmon->selws->stack[i]->win, CBORDERNORM);
 	}
-	XSetWindowBorder(dpy, selws->selcli->win, CBORDERSEL);
-	XSetInputFocus(dpy, selws->selcli->win, RevertToPointerRoot, CurrentTime);
+	XSetWindowBorder(dpy, selmon->selws->selcli->win, CBORDERSEL);
+	XSetInputFocus(dpy, selmon->selws->selcli->win, RevertToPointerRoot,
+			CurrentTime);
+}
+
+void
+updatemons(void)
+{
+	int i, n;
+	XineramaScreenInfo *info;
+	Monitor *mon;
+
+	if (!XineramaIsActive(dpy)) {
+		warn("Xinerama is not active");
+		selmon = initmon();
+		selmon->sx = selmon->sy = 0;
+		selmon->sw = DisplayWidth(dpy, screen);
+		selmon->sh = DisplayHeight(dpy, screen);
+		attachmon(selmon);
+		return;
+	}
+
+	info = XineramaQueryScreens(dpy, &n);
+	debug("%u elements in the info array", n);
+	for (i = 0; i < n; i++) {
+		debug("info[%d]: %ux%u%+d%+d", i, info[i].x_org, info[i].y_org,
+				info[i].width, info[i].height);
+	}
+	n = unifyscreens(&info, n);
+	debug("%u elemenŧs in the unified info array", n);
+	for (i = 0; i < n; i++) {
+		debug("info[%d]: %ux%u%+d%+d", i, info[i].x_org, info[i].y_org,
+				info[i].width, info[i].height);
+	}
+
+	if (n < nmon) { /* screen detached */
+		for (i = nmon-1; i >= n; i--) {
+			detachmon(monitors[i]);
+			free(monitors[i]); /* <<== segfault! */
+		}
+	}
+	for (i = 0; i < n; i++) {
+		if (i >= nmon) { /* screen attached */
+			mon = initmon();
+			attachmon(mon);
+		}
+	}
+
+	/* TODO */
+
+	XFree(info);
 }
 
 void
@@ -1403,8 +1597,8 @@ updatewsdbox(Workspace *ws)
 	/* show box */
 	c = ws->x + wsd.rad - wsd.target->x;
 	r = ws->y + wsd.rad - wsd.target->y;
-	x = ww/2 - wsd.w*wsd.rad - wsd.w/2 + c*wsd.w + wx;
-	y = wh/2 - wsd.h*wsd.rad - wsd.h/2 + r*wsd.h + wy;
+	x = selmon->ww/2 - wsd.w*wsd.rad - wsd.w/2 + c*wsd.w + selmon->wx;
+	y = selmon->wh/2 - wsd.h*wsd.rad - wsd.h/2 + r*wsd.h + selmon->wy;
 	XMoveWindow(dpy, ws->wsdbox, x, y);
 	XRaiseWindow(dpy, ws->wsdbox);
 
@@ -1441,13 +1635,12 @@ updatewsdbar(XEvent *e, char const *name)
 		togglewsd(NULL);
 		if (e->xkey.state&ControlMask && keysym != XK_j) {
 			if (strlen(wsd.barbuf) && locatews(&ws, NULL, wsd.target->x,
-					wsd.target->y, NULL, 0)) {
+					wsd.target->y, NULL)) {
 				strncpy(ws->name, wsd.barbuf, 255);
 				ws->name[255] = 0;
 			}
 		} else {
-			if (strlen(wsd.barbuf) && locatews(&ws, NULL, 0, 0, wsd.barbuf,
-					strlen(wsd.barbuf))) {
+			if (strlen(wsd.barbuf) && locatews(&ws, NULL, 0, 0, wsd.barbuf)) {
 				setws(ws->x, ws->y);
 			} else {
 				setws(wsd.target->x, wsd.target->y);
@@ -1527,21 +1720,22 @@ zoom(Arg const *arg)
 	unsigned int i, pos;
 	Client *c;
 
-	if (!selws->nc) {
+	if (!selmon->selws->nc) {
 		return;
 	}
 
-	if (!locate(NULL, &c, &pos, selws->selcli->win)) {
-		warn("attempt to zoom non-existing window %d", selws->selcli->win);
+	if (!locate(NULL, &c, &pos, selmon->selws->selcli->win)) {
+		warn("attempt to zoom non-existing window %d",
+				selmon->selws->selcli->win);
 		return;
 	}
 
 	if (!pos) {
 		/* window is at the top */
-		if (selws->nc > 1) {
-			selws->clients[0] = selws->clients[1];
-			selws->clients[1] = c;
-			push(selws, selws->clients[0]);
+		if (selmon->selws->nc > 1) {
+			selmon->selws->clients[0] = selmon->selws->clients[1];
+			selmon->selws->clients[1] = c;
+			push(selmon->selws, selmon->selws->clients[0]);
 			updatefocus();
 		} else {
 			return;
@@ -1549,9 +1743,9 @@ zoom(Arg const *arg)
 	} else {
 		/* window is somewhere else */
 		for (i = pos; i > 0; i--) {
-			selws->clients[i] = selws->clients[i-1];
+			selmon->selws->clients[i] = selmon->selws->clients[i-1];
 		}
-		selws->clients[0] = c;
+		selmon->selws->clients[0] = c;
 	}
 	arrange();
 }

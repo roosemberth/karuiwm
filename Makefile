@@ -1,5 +1,5 @@
 CC?=gcc
-LFLAGS=-lX11
+LFLAGS=-lX11 -lXinerama
 CFLAGS=-Wall -Wpedantic -std=c99
 
 build:
