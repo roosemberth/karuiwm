@@ -43,11 +43,7 @@ configure
 that one doesn't exist yet. This protects your configuration from being
 overwritten by the default upon checking out the git repository.
 
-
-keys (default configuration)
-----------------------------
-
-The <code>Mod</code> key is set to Mod1 (<code>Alt</code>):
+These are the default settings defined by the <code>keys</code> array:
 
 **Applications**
 
@@ -92,25 +88,16 @@ The <code>Mod</code> key is set to Mod1 (<code>Alt</code>):
 * <code>Mod</code>+<code>Shift</code>+<code>q</code>
   quit stwm
 
-
-workspaces
-----------
-
-Workspaces in stwm are arranged in a two-dimensional grid, and they are created
-and destroyed dynamically. A workspace may be considered either *persistent*
-(it remains if left) or *temporary* (leaving it destroys it), depending on
-whether there is a client on the workspace.
-
-The change from persistent to temporary (or vice versa) happens automatically
-upon removing the last client (or placing the first client).
+The <code>Mod</code> key is set to Mod1 (<code>Alt</code>):
 
 
-workspace dialog (default configuration)
-----------------------------------------
+workspace dialog
+----------------
 
 The workspace dialog is a view that comes with a separately configured set of
 keys, and it allows you to change the workspace either by name or by selection
-on a "map":
+on a "map". By default, the <code>wsdkeys</code> array defines the following
+setting:
 
 * <code>Mod</code>+<code>Space</code> or <code>Esc</code>
   close workspace dialog
@@ -128,4 +115,28 @@ the name of the specified string. In case the name matches multiple workspaces,
 the bahaviour is unspecified (should get fixed in the future).
 
 ![screenshot](http://ayekat.ch/img/host/github.com/screen_stwm.png)
+
+
+appendix A: workspaces
+----------------------
+
+Workspaces in stwm are arranged in a two-dimensional grid, and they are created
+and destroyed dynamically. A workspace may be considered either *persistent*
+(it remains if left) or *temporary* (leaving it destroys it).
+
+Whether a workspaces is temporary or persistent depends on the number of clients
+on that workspace; an empty workspace is considered temporary, whereas it
+becomes persistent as soon as a client is added.
+
+
+appendix B: multi-monitor
+-------------------------
+
+stwm comes with Xinerama support and is thus capable of handling a multi-monitor
+setup. Unlike its parent dwm however (which assigns a separate tag set to each
+monitor), stwm uses a unified workspace set for all monitors.
+
+Once a monitor is added, it will attempt to display the next undisplayed
+workspace; if there is none, it will create a new workspace nearby and move its
+view there.
 

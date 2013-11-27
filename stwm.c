@@ -311,6 +311,7 @@ buttonrelease(XEvent *e)
 void
 cleanup(void)
 {
+	unsigned int i;
 	Monitor *mon;
 	Workspace *ws;
 	Client *c;
@@ -320,7 +321,13 @@ cleanup(void)
 		togglewsd(NULL);
 	}
 
-	/* workspaces and their clients */
+	/* make monitors point nowhere (so all workspaces are removed) */
+	for (i = 0; i < nmon; i++) {
+		monitors[i]->selws = NULL;
+	}
+	staticmon->selws = NULL;
+
+	/* remove workspaces and their clients */
 	while (nws) {
 		ws = workspaces[0];
 		while (ws->nc) {
@@ -328,17 +335,20 @@ cleanup(void)
 			detachclient(c);
 			termclient(c);
 		}
-		detachws(ws);
-		termws(ws);
+		if (ws == workspaces[0]) { /* workspace is still here */
+			detachws(ws);
+			termws(ws);
+		}
 	}
 	termws(wsd.target);
 
-	/* monitors */
+	/* remove monitors */
 	while (nmon) {
 		mon = monitors[0];
 		detachmon(mon);
 		termmon(mon);
 	}
+	termmon(staticmon);
 
 	/* graphic context */
 	XFreeGC(dpy, dc.gc);
@@ -486,6 +496,7 @@ detachws(Workspace *ws)
 
 	if (ws->wsdbox) {
 		XDestroyWindow(dpy, ws->wsdbox);
+		ws->wsdbox = 0;
 		updatewsdmap();
 	}
 }
@@ -1212,7 +1223,6 @@ setupwsd(void)
 void
 setws(int x, int y)
 {
-	debug("setting workspace to %d, %d", x, y);
 	Workspace *next;
 
 	/* current workspace */
@@ -1379,10 +1389,6 @@ termws(Workspace *ws)
 	if (ws->nc) {
 		warn("destroying non-empty workspace");
 	}
-	if (wsd.active) {
-		XDestroyWindow(dpy, ws->wsdbox);
-		updatewsdmap();
-	}
 	free(ws);
 }
 
@@ -1444,9 +1450,13 @@ togglewsd(Arg const *arg)
 	if (!wsd.active) {
 		XUngrabKeyboard(dpy, selmon->selws->wsdbox);
 		for (i = 0; i < nws; i++) {
-			XDestroyWindow(dpy, workspaces[i]->wsdbox);
+			if (workspaces[i]->wsdbox) {
+				XDestroyWindow(dpy, workspaces[i]->wsdbox);
+				workspaces[i]->wsdbox = 0;
+			}
 		}
 		XDestroyWindow(dpy, wsd.target->wsdbox);
+		wsd.target->wsdbox = 0;
 		updatebar(selmon);
 		grabkeys();
 		return;
@@ -1470,6 +1480,8 @@ togglewsd(Arg const *arg)
 			GrabModeAsync, CurrentTime);
 
 	/* initial update */
+	selmon->bar.buffer[0] = 0;
+	selmon->bar.cursor = 0;
 	updatebar(selmon);
 	updatewsdmap();
 }
@@ -1602,8 +1614,6 @@ updategeom(void)
 void
 updatemon(Monitor *mon, int x, int y, unsigned int w, unsigned int h)
 {
-	debug("\033[1mupdating %smonitor to %ux%u%+d%+d\033[0m",
-			mon==staticmon ? "static " : "", w, h, x, y);
 	mon->x = x;
 	mon->y = y;
 	mon->w = w;
@@ -1659,7 +1669,6 @@ updatewsdbar(XEvent *e, char const *name)
 	ansi = keytoansi(&keysym);
 	n = Xutf8LookupString(wsd.ic, (XKeyPressedEvent *) e, code, 20,
 			NULL, &status);
-	debug("keysym=%X, ansi=%X, n=%d, code[0]=%X", keysym, ansi, n, code[0]);
 
 	if (!ansi) {
 		if (!n) {
@@ -1684,51 +1693,47 @@ updatewsdbar(XEvent *e, char const *name)
 
 	/* ANSI escape codes */
 	switch (ansi) {
-		case 0x01: /* ^A home */
+		case 0x01: /* ^A | Home */
 			selmon->bar.cursor = 0;
 			break;
-		case 0x02: /* ^B left */
+		case 0x02: /* ^B | Left */
 			selmon->bar.cursor = MAX(selmon->bar.cursor-1, 0);
 			break;
-		case 0x03: /* ^C        */
-		case 0x1B: /*    escape */
+		case 0x03: /* ^C |        */
+		case 0x1B: /*      Escape */
 			togglewsd(NULL);
 			break;
-		case 0x04: /* ^D delete */
+		case 0x04: /* ^D | Delete */
 			for (i = selmon->bar.cursor; i < strlen(selmon->bar.buffer); i++) {
 				selmon->bar.buffer[i] = selmon->bar.buffer[i+1];
 			}
 			break;
-		case 0x05: /* ^E end */
+		case 0x05: /* ^E | End */
 			selmon->bar.cursor = strlen(selmon->bar.buffer);
 			break;
-		case 0x06: /* ^F right */
+		case 0x06: /* ^F | Right */
 			selmon->bar.cursor = MIN(selmon->bar.cursor+1, strlen(selmon->bar.buffer));
 			break;
-		case 0x08: /* ^H backspace */
+		case 0x08: /* ^H | Backspace */
 			if (selmon->bar.cursor) {
 				for (i = --selmon->bar.cursor; i < strlen(selmon->bar.buffer); i++) {
 					selmon->bar.buffer[i] = selmon->bar.buffer[i+1];
 				}
 			}
 			break;
-		case 0x0A: /* ^J        */
-		case 0x0D: /* ^M return */
+		case 0x0A: /* ^J          */
+		case 0x0D: /* ^M | Return */
 			if (e->xkey.state&ControlMask && keysym != XK_j) {
-				debug("... with Ctrl: renaming");
 				if (strlen(selmon->bar.buffer) && locatews(&ws, NULL,
 						wsd.target->x, wsd.target->y, NULL)) {
 					strncpy(ws->name, selmon->bar.buffer, 255);
 					ws->name[255] = 0;
 				}
 			} else {
-				debug("... without Ctrl: switching");
 				if (strlen(selmon->bar.buffer) && locatews(&ws, NULL,
 						0, 0, selmon->bar.buffer)) {
-					debug("workspace %s found", selmon->bar.buffer);
 					setws(ws->x, ws->y);
 				} else {
-					debug("workspace %s not found", selmon->bar.buffer);
 					setws(wsd.target->x, wsd.target->y);
 				}
 			}
