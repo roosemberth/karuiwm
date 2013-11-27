@@ -130,7 +130,7 @@ static void keypress(XEvent *);
 static void keyrelease(XEvent *);
 static char keytoansi(KeySym *);
 static void killclient(Arg const *);
-static bool locate(Workspace **, Client **, unsigned int *, Window const);
+static bool locateclient(Workspace **, Client **, unsigned int *, Window const);
 static bool locatemon(Monitor **, unsigned int *, Workspace const *);
 static bool locatews(Workspace **, unsigned int *, int, int, char const *);
 static void mappingnotify(XEvent *);
@@ -212,7 +212,7 @@ static DC dc;                       /* drawing context */
 static Cursor cursor[CURSOR_LAST];  /* cursors */
 static WorkspaceDialog wsd;         /* workspace dialog */
 static Monitor **monitors;          /* list of monitors */
-static Monitor *selmon, *staticmon; /* selected monitor */
+static Monitor *selmon;             /* selected monitor */
 static unsigned int nmon;           /* number of monitors */
 
 /* configuration */
@@ -238,6 +238,7 @@ attachclient(Workspace *ws, Client *c)
 	unsigned int i, pos;
 
 	/* add to list */
+	debug("attachclient: realloc(%u)", (ws->nc+1)*sizeof(Client *));
 	ws->clients = realloc(ws->clients, ++ws->nc*sizeof(Client *));
 	if (!ws->clients) {
 		die("could not allocate %u bytes for client list",
@@ -267,14 +268,12 @@ attachclient(Workspace *ws, Client *c)
 			break;
 		}
 	}
-	if (staticmon->selws == ws) {
-		arrange(staticmon);
-	}
 }
 
 void
 attachmon(Monitor *mon)
 {
+	debug("attachmon: realloc(%u)", (nmon+1)*sizeof(Monitor *));
 	monitors = realloc(monitors, ++nmon*sizeof(Monitor *));
 	if (!monitors) {
 		die("could not allocate %u bytes for monitor list", sizeof(Monitor));
@@ -285,6 +284,7 @@ attachmon(Monitor *mon)
 void
 attachws(Workspace *ws)
 {
+	debug("attachws: realloc(%u)", (nws+1)*sizeof(Workspace *));
 	workspaces = realloc(workspaces, ++nws*sizeof(Workspace *));
 	if (!workspaces) {
 		die("could not allocate %u bytes for workspace list",
@@ -311,47 +311,64 @@ buttonrelease(XEvent *e)
 void
 cleanup(void)
 {
+	debug("\033[1mcleanup()\033[0m");
+
 	unsigned int i;
 	Monitor *mon;
 	Workspace *ws;
 	Client *c;
 
 	/* disable WSD */
+	debug("\033[1mcleanup()::disablewsd\033[0m");
 	if (wsd.active) {
 		togglewsd(NULL);
 	}
 
 	/* make monitors point nowhere (so all workspaces are removed) */
+	debug("\033[1mcleanup()::disablemon\033[0m");
 	for (i = 0; i < nmon; i++) {
 		monitors[i]->selws = NULL;
 	}
-	staticmon->selws = NULL;
 
 	/* remove workspaces and their clients */
+	debug("\033[1mcleanup()::removews\033[0m");
 	while (nws) {
+		debug("1");
 		ws = workspaces[0];
+		debug("2");
 		while (ws->nc) {
+			debug("3 (nc=%d)", ws->nc);
 			c = ws->clients[0];
+			debug("4");
 			detachclient(c);
+			debug("5");
 			termclient(c);
+			debug("6");
 		}
-		if (ws == workspaces[0]) { /* workspace is still here */
+		debug("7");
+		if (nws && ws == workspaces[0]) { /* workspace is still here */
+			debug("8");
 			detachws(ws);
+			debug("9");
 			termws(ws);
+			debug("10");
 		}
+		debug("11");
 	}
+	debug("12");
 	termws(wsd.target);
 
 	/* remove monitors */
+	debug("\033[1mcleanup()::removemon\033[0m");
 	while (nmon) {
 		mon = monitors[0];
 		detachmon(mon);
 		termmon(mon);
 	}
-	termmon(staticmon);
 
 	/* graphic context */
 	XFreeGC(dpy, dc.gc);
+	debug("\033[1mcleanup()::end\033[0m");
 }
 
 void
@@ -364,8 +381,11 @@ clientmessage(XEvent *e)
 void
 configurenotify(XEvent *e)
 {
-	debug("configurenotify(%d)", e->xconfigure.window);
-	/* TODO root window notifications */
+	//debug("configurenotify(%d)", e->xconfigure.window);
+	if (e->xconfigure.window == root) {
+		debug("configurenotify() for root");
+		updategeom();
+	}
 }
 
 void
@@ -379,7 +399,7 @@ configurerequest(XEvent *e)
 	XConfigureRequestEvent *ev = &e->xconfigurerequest;
 
 	/* forward configuration if not managed (or if we don't force the size) */
-	if (!FORCESIZE || !locate(NULL, &c, NULL, ev->window)) {
+	if (!FORCESIZE || !locateclient(NULL, &c, NULL, ev->window)) {
 		wc = (XWindowChanges) {
 			.x = ev->x,
 			.y = ev->y,
@@ -430,33 +450,49 @@ detachclient(Client *c)
 	unsigned int i;
 	Workspace *ws;
 
-	if (!locate(&ws, &c, &i, c->win)) {
+	debug("4.1");
+	if (!locateclient(&ws, &c, &i, c->win)) {
 		warn("attempt to detach an unhandled window %d", c->win);
 		return;
 	}
 
 	/* remove from stack */
+	debug("4.2");
 	pop(ws, c);
 
 	/* remove from list */
+	debug("4.3");
 	ws->nc--;
+	debug("4.4");
 	for (; i < ws->nc; i++) {
+		debug("4.5");
 		ws->clients[i] = ws->clients[i+1];
 	}
 
 	/* update layout if on selected workspace */
+	debug("4.6");
 	for (i = 0; i < nmon; i++) {
+		debug("4.7");
 		if (monitors[i]->selws == ws) {
+			debug("4.8");
 			arrange(monitors[i]);
+			debug("4.9");
 			updatefocus();
+			debug("4.10");
 		}
+		debug("4.11");
 	}
 
 	/* remove workspace if not selected and this was last the client */
+	debug("4.12");
 	if (ws != selmon->selws && !ws->nc) {
+		debug("4.13");
 		detachws(ws);
+		debug("4.14");
 		termws(ws);
+		debug("4.15");
 	}
+	debug("4.16");
 }
 
 void
@@ -471,6 +507,7 @@ detachmon(Monitor *mon)
 	for (nmon--; i < nmon; i++) {
 		monitors[i] = monitors[i+1];
 	}
+	debug("detachmon: realloc(%u)", nmon*sizeof(Monitor *));
 	monitors = realloc(monitors, nmon*sizeof(Monitor *));
 }
 
@@ -488,6 +525,7 @@ detachws(Workspace *ws)
 	for (; i < nws; i++) {
 		workspaces[i] = workspaces[i+1];
 	}
+	debug("detachws: realloc(%u)", nws*sizeof(Workspace *));
 	workspaces = realloc(workspaces, nws*sizeof(Workspace *));
 	if (!workspaces && nws) {
 		die("could not allocate %u bytes for workspace list",
@@ -510,7 +548,7 @@ enternotify(XEvent *e)
 	Workspace *ws;
 	Client *c;
 
-	if (!locate(&ws, &c, &pos, e->xcrossing.window) || ws != selmon->selws) {
+	if (!locateclient(&ws, &c, &pos, e->xcrossing.window) || ws != selmon->selws) {
 		warn("attempt to enter unhandled/invisible window %d",
 				e->xcrossing.window);
 		return;
@@ -532,9 +570,6 @@ expose(XEvent *e)
 		if (e->xexpose.window == monitors[i]->bar.win) {
 			renderbar(monitors[i]);
 		}
-	}
-	if (e->xexpose.window == staticmon->bar.win) {
-		renderbar(staticmon);
 	}
 
 	/* WSD boxes */
@@ -597,7 +632,7 @@ initbar(Monitor *mon)
 			DefaultDepth(dpy, screen), CopyFromParent,
 			DefaultVisual(dpy, screen),
 			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
-	XMapRaised(dpy, mon->bar.win);
+	XMapWindow(dpy, mon->bar.win);
 }
 
 Client *
@@ -621,6 +656,7 @@ initclient(Window win, bool viewable)
 	}
 
 	/* create client */
+	debug("initclient: malloc(%u)", sizeof(Client));
 	c = malloc(sizeof(Client));
 	if (!c) {
 		die("could not allocate %u bytes for client", sizeof(Client));
@@ -638,6 +674,7 @@ initmon(void)
 	Monitor *mon;
 	Workspace *ws;
 
+	debug("initmon: malloc(%u)", sizeof(Monitor));
 	mon = malloc(sizeof(Monitor));
 	if (!mon) {
 		die("could not allocate %u bytes for monitor", sizeof(Monitor));
@@ -646,10 +683,12 @@ initmon(void)
 	/* assign workspace */
 	for (wsx = 0;; wsx++) {
 		if (!locatews(&ws, NULL, wsx, 0, NULL)) {
+			debug("initmon: free workspace does not exist; creating");
 			mon->selws = initws(wsx, 0);
 			attachws(mon->selws);
 			break;
 		} else if (!locatemon(NULL, NULL, ws)) {
+			debug("initmon: found free workspace");
 			mon->selws = ws;
 			break;
 		}
@@ -664,6 +703,7 @@ initmon(void)
 Workspace *
 initws(int x, int y)
 {
+	debug("initws: malloc(%u)", sizeof(Workspace));
 	Workspace *ws = malloc(sizeof(Workspace));
 	if (!ws) {
 		die("could not allocate %u bytes for workspace", sizeof(Workspace));
@@ -694,7 +734,7 @@ initwsdbox(void)
 void
 keypress(XEvent *e)
 {
-	debug("keypress()");
+	//debug("keypress()");
 
 	unsigned int i;
 	KeySym keysym = XLookupKeysym(&e->xkey, 0);
@@ -727,7 +767,7 @@ keypress(XEvent *e)
 void
 keyrelease(XEvent *e)
 {
-	debug("keyrelease()");
+	//debug("keyrelease()");
 }
 
 char
@@ -796,20 +836,10 @@ killclient(Arg const *arg)
 }
 
 bool
-locate(Workspace **ws, Client **c, unsigned int *pos, Window w)
+locateclient(Workspace **ws, Client **c, unsigned int *pos, Window w)
 {
 	unsigned int i, j;
 
-	/* search current workspace */
-	for (i = 0; i < selmon->selws->nc; i++) {
-		if (selmon->selws->clients[i]->win == w) {
-			if (ws) *ws = selmon->selws;
-			if (c) *c = selmon->selws->clients[i];
-			if (pos) *pos = i;
-			return true;
-		}
-	}
-	/* search all the other workspaces */
 	for (j = 0; j < nws; j++) {
 		for (i = 0; i < workspaces[j]->nc; i++) {
 			if (workspaces[j]->clients[i]->win == w) {
@@ -945,6 +975,7 @@ pop(Workspace *ws, Client *c)
 			for (; i < ws->ns; i++) {
 				ws->stack[i] = ws->stack[i+1];
 			}
+			debug("pop: realloc(%u)", ws->ns*sizeof(Client *));
 			ws->stack = realloc(ws->stack, ws->ns*sizeof(Client *));
 			if (ws->ns && !ws->stack) {
 				die("could not allocate %u bytes for stack",
@@ -970,6 +1001,7 @@ push(Workspace *ws, Client *c)
 		return;
 	}
 	pop(ws, c);
+	debug("push: realloc(%u)", (ws->ns+1)*sizeof(Client *));
 	ws->stack = realloc(ws->stack, ++ws->ns*sizeof(Client *));
 	if (!ws->stack) {
 		die("could not allocated %u bytes for stack", ws->ns*sizeof(Client *));
@@ -1143,8 +1175,6 @@ setup(void)
 
 	/* monitors */
 	debug("setting up monitors");
-	nmon = 0;
-	staticmon = initmon(); /* static monitor (fallback if no Xinerama) */
 	updategeom();
 
 	/* workspace dialog */
@@ -1264,7 +1294,7 @@ shift(Arg const *arg)
 	if (selmon->selws->ns < 2) {
 		return;
 	}
-	if (!locate(NULL, NULL, &pos, selmon->selws->selcli->win)) {
+	if (!locateclient(NULL, NULL, &pos, selmon->selws->selcli->win)) {
 		warn("attempt to shift non-existent window %d",
 				selmon->selws->selcli->win);
 	}
@@ -1329,7 +1359,9 @@ stepfocus(Arg const *arg)
 	if (!selmon->selws->nc) {
 		return;
 	}
-	locate(NULL, NULL, &pos, selmon->selws->selcli->win);
+	if (!locateclient(NULL, NULL, &pos, selmon->selws->selcli->win)) {
+
+	}
 	push(selmon->selws, selmon->selws->clients[
 			(pos+selmon->selws->nc+arg->i)%selmon->selws->nc]);
 	updatefocus();
@@ -1449,6 +1481,7 @@ togglewsd(Arg const *arg)
 
 	if (!wsd.active) {
 		XUngrabKeyboard(dpy, selmon->selws->wsdbox);
+		XLowerWindow(dpy, selmon->bar.win);
 		for (i = 0; i < nws; i++) {
 			if (workspaces[i]->wsdbox) {
 				XDestroyWindow(dpy, workspaces[i]->wsdbox);
@@ -1475,9 +1508,10 @@ togglewsd(Arg const *arg)
 	wsd.target->y = selmon->selws->y;
 	stepwsdbox(&((Arg const) { .i = NO_DIRECTION })); /* updates input bar */
 
-	/* grab keyboard, now we're in WSD mode */
+	/* grab keyboard, raise bar, we're in WSD mode now! */
 	XGrabKeyboard(dpy, selmon->selws->wsdbox, false, GrabModeAsync,
 			GrabModeAsync, CurrentTime);
+	XRaiseWindow(dpy, selmon->bar.win);
 
 	/* initial update */
 	selmon->bar.buffer[0] = 0;
@@ -1490,33 +1524,54 @@ size_t
 unifyscreens(XineramaScreenInfo **list, size_t len)
 {
 	unsigned int i, j, n;
-	bool dub;
+	bool dup;
 
 	/* reserve enough space */
+	debug("unifyscreens: calloc(%u)", len*sizeof(XineramaScreenInfo));
 	XineramaScreenInfo *unique = calloc(len, sizeof(XineramaScreenInfo));
+	if (!unique && len) {
+		die("could not allocate %d bytes for screen info list",
+				len*sizeof(XineramaScreenInfo));
+	}
 
 	for (i = 0, n = 0; i < len; i++) {
-		dub = false;
+		debug("u1");
+		dup = false;
 		for (j = 0; j < i; j++) {
+			debug("u2");
 			if ((*list)[j].x_org == (*list)[i].x_org
 					&& (*list)[j].y_org == (*list)[i].y_org
 					&& (*list)[j].width == (*list)[i].width
 					&& (*list)[j].height == (*list)[i].height) {
-				dub = true;
+				debug("u3");
+				dup = true;
 				break;
 			}
+			debug("u4");
 		}
-		if (!dub) {
-			unique[n].x_org = list[i]->x_org;
-			unique[n].y_org = list[i]->y_org;
-			unique[n].width = list[i]->width;
-			unique[n].height = list[i]->height;
+		debug("u5");
+		if (!dup) {
+			debug("u6, n=%d, i=%d", n, i);
+			unique[n].x_org = (*list)[i].x_org;
+			debug("u7");
+			unique[n].y_org = (*list)[i].y_org;
+			debug("u8");
+			unique[n].width = (*list)[i].width;
+			debug("u9");
+			unique[n].height = (*list)[i].height;
+			debug("u10");
 			n++;
+			debug("u11");
 		}
+		debug("u12");
 	}
+	debug("u13");
 	XFree(*list);
+	debug("u14");
 	*list = unique;
+	debug("unifyscreens: realloc(%u)", n*sizeof(XineramaScreenInfo));
 	*list = realloc(*list, n*sizeof(XineramaScreenInfo)); /* fix size */
+	debug("u15");
 	return n;
 }
 
@@ -1527,23 +1582,30 @@ unmapnotify(XEvent *e)
 
 	Client *c;
 	Workspace *ws;
+	Monitor *mon;
 
-	if (locate(&ws, &c, NULL, e->xunmap.window)) {
+	if (locateclient(&ws, &c, NULL, e->xunmap.window)) {
 		detachclient(c);
 		termclient(c);
+		if (locatemon(&mon, NULL, ws)) {
+			updatefocus();
+			arrange(mon);
+		}
 	}
 }
 
 void
 updatebar(Monitor *mon)
 {
-	mon->bx = mon->x;
-	mon->by = mon->y;
-	mon->bw = mon->w;
+	if (mon->bx != mon->x || mon->by != mon->y || mon->bw != mon->w) {
+		mon->bx = mon->x;
+		mon->by = mon->y;
+		mon->bw = mon->w;
+		XMoveResizeWindow(dpy, mon->bar.win, mon->bx, mon->by, mon->bw,mon->bh);
+	}
 	if (!wsd.active) {
 		strcpy(mon->bar.buffer, mon->selws->name);
 	}
-	XMoveResizeWindow(dpy, mon->bar.win, mon->bx, mon->by, mon->bw, mon->bh);
 	renderbar(mon);
 }
 
@@ -1568,28 +1630,39 @@ updatefocus(void)
 void
 updategeom(void)
 {
+	debug("\033[1;31mupdategeom()\033[0m");
+
 	int i, n;
 	XineramaScreenInfo *info;
 	Monitor *mon;
 
 	if (!XineramaIsActive(dpy)) {
-		selmon = staticmon;
+		while (nmon > 1) {
+			mon = monitors[1];
+			detachmon(mon);
+			termmon(mon);
+		}
+		if (!nmon) {
+			selmon = initmon();
+			attachmon(selmon);
+		}
 		updatemon(selmon, 0, 0, DisplayWidth(dpy, screen),
 				DisplayHeight(dpy, screen));
 		return;
 	}
+	debug("Xinerama is active");
 
 	info = XineramaQueryScreens(dpy, &n);
 	debug("%u elements in the info array", n);
 	for (i = 0; i < n; i++) {
-		debug("info[%d]: %ux%u%+d%+d", i, info[i].x_org, info[i].y_org,
-				info[i].width, info[i].height);
+		debug("info[%d]: %ux%u%+d%+d", i, info[i].width, info[i].height,
+				info[i].x_org, info[i].y_org);
 	}
 	n = unifyscreens(&info, n);
 	debug("%u elemenŧs in the unified info array", n);
 	for (i = 0; i < n; i++) {
-		debug("info[%d]: %ux%u%+d%+d", i, info[i].x_org, info[i].y_org,
-				info[i].width, info[i].height);
+		debug("info[%d]: %ux%u%+d%+d", i, info[i].width, info[i].height,
+				info[i].x_org, info[i].y_org);
 	}
 
 	if (n < nmon) { /* screen detached */
@@ -1607,8 +1680,7 @@ updategeom(void)
 		selmon = monitors[i];
 		updatemon(selmon, info[i].x_org, info[i].y_org, info[i].width, info[i].height);
 	}
-
-	XFree(info);
+	free(info);
 }
 
 void
@@ -1649,13 +1721,13 @@ updatewsdbar(XEvent *e, char const *name)
 	unsigned int i, n;
 	KeySym keysym;
 	Workspace *ws;
-	bool special = false;
+	XKeyPressedEvent *ev = &e->xkey;
 
 	/* if name is set, replace current buffer by name */
 	if (name) {
 		strncpy(selmon->bar.buffer, name, 256);
 		selmon->bar.cursor = strlen(selmon->bar.buffer);
-		renderbar(selmon);
+		updatebar(selmon);
 		return;
 	}
 
@@ -1665,12 +1737,10 @@ updatewsdbar(XEvent *e, char const *name)
 	}
 
 	/* catch special keys */
-	keysym = XLookupKeysym(&e->xkey, 0);
+	keysym = XLookupKeysym(ev, 0);
 	ansi = keytoansi(&keysym);
-	n = Xutf8LookupString(wsd.ic, (XKeyPressedEvent *) e, code, 20,
-			NULL, &status);
-
 	if (!ansi) {
+		n = Xutf8LookupString(wsd.ic, ev, code, 20, NULL, &status);
 		if (!n) {
 			return;
 		} else if (n == 1 && (code[0] < 0x20 || code[0] == 0x7F)) {
@@ -1683,7 +1753,7 @@ updatewsdbar(XEvent *e, char const *name)
 				}
 				strncpy(selmon->bar.buffer+selmon->bar.cursor, code, n);
 				selmon->bar.cursor += n;
-				renderbar(selmon);
+				updatebar(selmon);
 			} else {
 				warn("WSD bar: buffer is full");
 			}
@@ -1704,6 +1774,7 @@ updatewsdbar(XEvent *e, char const *name)
 			togglewsd(NULL);
 			break;
 		case 0x04: /* ^D | Delete */
+		case 0x7F: /*    | Delete (soft) */
 			for (i = selmon->bar.cursor; i < strlen(selmon->bar.buffer); i++) {
 				selmon->bar.buffer[i] = selmon->bar.buffer[i+1];
 			}
@@ -1739,10 +1810,23 @@ updatewsdbar(XEvent *e, char const *name)
 			}
 			togglewsd(NULL);
 			break;
+		case 0x0B: /* ^K */
+			selmon->bar.buffer[selmon->bar.cursor] = 0;
+			break;
+		case 0x0E: /* ^N | Down */
+			/* TODO */
+			break;
+		case 0x10: /* ^P | Up */
+			/* TODO */
+			break;
+		case 0x15: /* ^U */
+			strcpy(selmon->bar.buffer, selmon->bar.buffer+selmon->bar.cursor);
+			selmon->bar.cursor = 0;
+			break;
 		default:
 			warn("unknown keycode: %X", code[0]);
 	}
-	renderbar(selmon);
+	updatebar(selmon);
 }
 
 void
@@ -1794,7 +1878,7 @@ zoom(Arg const *arg)
 		return;
 	}
 
-	if (!locate(NULL, &c, &pos, selmon->selws->selcli->win)) {
+	if (!locateclient(NULL, &c, &pos, selmon->selws->selcli->win)) {
 		warn("attempt to zoom non-existing window %d",
 				selmon->selws->selcli->win);
 		return;
