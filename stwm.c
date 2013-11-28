@@ -136,7 +136,7 @@ static bool locatews(Workspace **, unsigned int *, int, int, char const *);
 static void mappingnotify(XEvent *);
 static void maprequest(XEvent *);
 static void motionnotify(XEvent *);
-static void move(Arg const *);
+static void moveclient(Arg const *);
 static void movews(Arg const *);
 static void place(Client *, int, int, unsigned int, unsigned int);
 static void pop(Workspace *, Client *);
@@ -171,7 +171,7 @@ static void togglewsd(Arg const *);
 static size_t unifyscreens(XineramaScreenInfo **, size_t);
 static void unmapnotify(XEvent *);
 static void updatebar(Monitor *);
-static void updatefocus(void);
+static void updatefocus(Monitor *);
 static void updategeom(void);
 static void updatemon(Monitor *, int, int, unsigned int, unsigned int);
 static void updatewsdmap(void);
@@ -238,7 +238,6 @@ attachclient(Workspace *ws, Client *c)
 	unsigned int i, pos;
 
 	/* add to list */
-	debug("attachclient: realloc(%u)", (ws->nc+1)*sizeof(Client *));
 	ws->clients = realloc(ws->clients, ++ws->nc*sizeof(Client *));
 	if (!ws->clients) {
 		die("could not allocate %u bytes for client list",
@@ -273,7 +272,6 @@ attachclient(Workspace *ws, Client *c)
 void
 attachmon(Monitor *mon)
 {
-	debug("attachmon: realloc(%u)", (nmon+1)*sizeof(Monitor *));
 	monitors = realloc(monitors, ++nmon*sizeof(Monitor *));
 	if (!monitors) {
 		die("could not allocate %u bytes for monitor list", sizeof(Monitor));
@@ -284,7 +282,6 @@ attachmon(Monitor *mon)
 void
 attachws(Workspace *ws)
 {
-	debug("attachws: realloc(%u)", (nws+1)*sizeof(Workspace *));
 	workspaces = realloc(workspaces, ++nws*sizeof(Workspace *));
 	if (!workspaces) {
 		die("could not allocate %u bytes for workspace list",
@@ -311,55 +308,37 @@ buttonrelease(XEvent *e)
 void
 cleanup(void)
 {
-	debug("\033[1mcleanup()\033[0m");
-
 	unsigned int i;
 	Monitor *mon;
 	Workspace *ws;
 	Client *c;
 
 	/* disable WSD */
-	debug("\033[1mcleanup()::disablewsd\033[0m");
 	if (wsd.active) {
 		togglewsd(NULL);
 	}
 
 	/* make monitors point nowhere (so all workspaces are removed) */
-	debug("\033[1mcleanup()::disablemon\033[0m");
 	for (i = 0; i < nmon; i++) {
 		monitors[i]->selws = NULL;
 	}
 
 	/* remove workspaces and their clients */
-	debug("\033[1mcleanup()::removews\033[0m");
 	while (nws) {
-		debug("1");
 		ws = workspaces[0];
-		debug("2");
 		while (ws->nc) {
-			debug("3 (nc=%d)", ws->nc);
 			c = ws->clients[0];
-			debug("4");
 			detachclient(c);
-			debug("5");
 			termclient(c);
-			debug("6");
 		}
-		debug("7");
 		if (nws && ws == workspaces[0]) { /* workspace is still here */
-			debug("8");
 			detachws(ws);
-			debug("9");
 			termws(ws);
-			debug("10");
 		}
-		debug("11");
 	}
-	debug("12");
 	termws(wsd.target);
 
 	/* remove monitors */
-	debug("\033[1mcleanup()::removemon\033[0m");
 	while (nmon) {
 		mon = monitors[0];
 		detachmon(mon);
@@ -368,7 +347,6 @@ cleanup(void)
 
 	/* graphic context */
 	XFreeGC(dpy, dc.gc);
-	debug("\033[1mcleanup()::end\033[0m");
 }
 
 void
@@ -383,7 +361,6 @@ configurenotify(XEvent *e)
 {
 	//debug("configurenotify(%d)", e->xconfigure.window);
 	if (e->xconfigure.window == root) {
-		debug("configurenotify() for root");
 		updategeom();
 	}
 }
@@ -449,50 +426,35 @@ detachclient(Client *c)
 {
 	unsigned int i;
 	Workspace *ws;
+	Monitor *mon;
 
-	debug("4.1");
 	if (!locateclient(&ws, &c, &i, c->win)) {
 		warn("attempt to detach an unhandled window %d", c->win);
 		return;
 	}
 
 	/* remove from stack */
-	debug("4.2");
 	pop(ws, c);
 
 	/* remove from list */
-	debug("4.3");
 	ws->nc--;
-	debug("4.4");
 	for (; i < ws->nc; i++) {
-		debug("4.5");
 		ws->clients[i] = ws->clients[i+1];
 	}
-
-	/* update layout if on selected workspace */
-	debug("4.6");
-	for (i = 0; i < nmon; i++) {
-		debug("4.7");
-		if (monitors[i]->selws == ws) {
-			debug("4.8");
-			arrange(monitors[i]);
-			debug("4.9");
-			updatefocus();
-			debug("4.10");
-		}
-		debug("4.11");
+	ws->clients = realloc(ws->clients, ws->nc*sizeof(Client *));
+	if (!ws->clients && ws->nc) {
+		die ("could not allocate %u bytes for client list",
+				ws->nc*sizeof(Client *));
 	}
 
-	/* remove workspace if not selected and this was last the client */
-	debug("4.12");
-	if (ws != selmon->selws && !ws->nc) {
-		debug("4.13");
+	/* update layout if selected workspace; otherwise remove if last client  */
+	if (locatemon(&mon, NULL, ws)) {
+		arrange(mon);
+		updatefocus(mon);
+	} else if (!ws->nc) {
 		detachws(ws);
-		debug("4.14");
 		termws(ws);
-		debug("4.15");
 	}
-	debug("4.16");
 }
 
 void
@@ -507,7 +469,6 @@ detachmon(Monitor *mon)
 	for (nmon--; i < nmon; i++) {
 		monitors[i] = monitors[i+1];
 	}
-	debug("detachmon: realloc(%u)", nmon*sizeof(Monitor *));
 	monitors = realloc(monitors, nmon*sizeof(Monitor *));
 }
 
@@ -525,7 +486,6 @@ detachws(Workspace *ws)
 	for (; i < nws; i++) {
 		workspaces[i] = workspaces[i+1];
 	}
-	debug("detachws: realloc(%u)", nws*sizeof(Workspace *));
 	workspaces = realloc(workspaces, nws*sizeof(Workspace *));
 	if (!workspaces && nws) {
 		die("could not allocate %u bytes for workspace list",
@@ -555,7 +515,7 @@ enternotify(XEvent *e)
 	}
 
 	push(selmon->selws, c);
-	updatefocus();
+	updatefocus(selmon);
 }
 
 void
@@ -656,7 +616,6 @@ initclient(Window win, bool viewable)
 	}
 
 	/* create client */
-	debug("initclient: malloc(%u)", sizeof(Client));
 	c = malloc(sizeof(Client));
 	if (!c) {
 		die("could not allocate %u bytes for client", sizeof(Client));
@@ -674,7 +633,6 @@ initmon(void)
 	Monitor *mon;
 	Workspace *ws;
 
-	debug("initmon: malloc(%u)", sizeof(Monitor));
 	mon = malloc(sizeof(Monitor));
 	if (!mon) {
 		die("could not allocate %u bytes for monitor", sizeof(Monitor));
@@ -683,12 +641,10 @@ initmon(void)
 	/* assign workspace */
 	for (wsx = 0;; wsx++) {
 		if (!locatews(&ws, NULL, wsx, 0, NULL)) {
-			debug("initmon: free workspace does not exist; creating");
 			mon->selws = initws(wsx, 0);
 			attachws(mon->selws);
 			break;
 		} else if (!locatemon(NULL, NULL, ws)) {
-			debug("initmon: found free workspace");
 			mon->selws = ws;
 			break;
 		}
@@ -703,7 +659,6 @@ initmon(void)
 Workspace *
 initws(int x, int y)
 {
-	debug("initws: malloc(%u)", sizeof(Workspace));
 	Workspace *ws = malloc(sizeof(Workspace));
 	if (!ws) {
 		die("could not allocate %u bytes for workspace", sizeof(Workspace));
@@ -899,7 +854,7 @@ maprequest(XEvent *e)
 	if (c) {
 		attachclient(selmon->selws, c);
 		XMapWindow(dpy, c->win);
-		updatefocus();
+		updatefocus(selmon);
 	}
 }
 
@@ -918,12 +873,13 @@ motionnotify(XEvent *e)
 }
 
 void
-move(Arg const *arg)
+moveclient(Arg const *arg)
 {
 	Client *c = selmon->selws->selcli;
 	detachclient(c);
 	stepws(arg);
 	attachclient(selmon->selws, c);
+	updatefocus(selmon);
 }
 
 void
@@ -975,7 +931,6 @@ pop(Workspace *ws, Client *c)
 			for (; i < ws->ns; i++) {
 				ws->stack[i] = ws->stack[i+1];
 			}
-			debug("pop: realloc(%u)", ws->ns*sizeof(Client *));
 			ws->stack = realloc(ws->stack, ws->ns*sizeof(Client *));
 			if (ws->ns && !ws->stack) {
 				die("could not allocate %u bytes for stack",
@@ -1001,7 +956,6 @@ push(Workspace *ws, Client *c)
 		return;
 	}
 	pop(ws, c);
-	debug("push: realloc(%u)", (ws->ns+1)*sizeof(Client *));
 	ws->stack = realloc(ws->stack, ++ws->ns*sizeof(Client *));
 	if (!ws->stack) {
 		die("could not allocated %u bytes for stack", ws->ns*sizeof(Client *));
@@ -1126,7 +1080,7 @@ scan(void)
 		c = initclient(wins[i], true);
 		if (c) {
 			attachclient(selmon->selws, c);
-			updatefocus();
+			updatefocus(selmon);
 		}
 	}
 }
@@ -1170,18 +1124,13 @@ setup(void)
 	XChangeWindowAttributes(dpy, root, CWEventMask, &wa);
 
 	/* font */
-	debug("setting up font");
 	setupfont();
 
 	/* monitors */
-	debug("setting up monitors");
 	updategeom();
 
 	/* workspace dialog */
-	debug("setting up WSD");
 	setupwsd();
-
-	debug("finished setup");
 }
 
 void
@@ -1273,7 +1222,7 @@ setws(int x, int y)
 
 	arrange(selmon);
 	updatebar(selmon);
-	updatefocus();
+	updatefocus(selmon);
 }
 
 void
@@ -1364,7 +1313,7 @@ stepfocus(Arg const *arg)
 	}
 	push(selmon->selws, selmon->selws->clients[
 			(pos+selmon->selws->nc+arg->i)%selmon->selws->nc]);
-	updatefocus();
+	updatefocus(selmon);
 }
 
 void
@@ -1527,7 +1476,6 @@ unifyscreens(XineramaScreenInfo **list, size_t len)
 	bool dup;
 
 	/* reserve enough space */
-	debug("unifyscreens: calloc(%u)", len*sizeof(XineramaScreenInfo));
 	XineramaScreenInfo *unique = calloc(len, sizeof(XineramaScreenInfo));
 	if (!unique && len) {
 		die("could not allocate %d bytes for screen info list",
@@ -1535,43 +1483,27 @@ unifyscreens(XineramaScreenInfo **list, size_t len)
 	}
 
 	for (i = 0, n = 0; i < len; i++) {
-		debug("u1");
 		dup = false;
 		for (j = 0; j < i; j++) {
-			debug("u2");
 			if ((*list)[j].x_org == (*list)[i].x_org
 					&& (*list)[j].y_org == (*list)[i].y_org
 					&& (*list)[j].width == (*list)[i].width
 					&& (*list)[j].height == (*list)[i].height) {
-				debug("u3");
 				dup = true;
 				break;
 			}
-			debug("u4");
 		}
-		debug("u5");
 		if (!dup) {
-			debug("u6, n=%d, i=%d", n, i);
 			unique[n].x_org = (*list)[i].x_org;
-			debug("u7");
 			unique[n].y_org = (*list)[i].y_org;
-			debug("u8");
 			unique[n].width = (*list)[i].width;
-			debug("u9");
 			unique[n].height = (*list)[i].height;
-			debug("u10");
 			n++;
-			debug("u11");
 		}
-		debug("u12");
 	}
-	debug("u13");
 	XFree(*list);
-	debug("u14");
 	*list = unique;
-	debug("unifyscreens: realloc(%u)", n*sizeof(XineramaScreenInfo));
 	*list = realloc(*list, n*sizeof(XineramaScreenInfo)); /* fix size */
-	debug("u15");
 	return n;
 }
 
@@ -1588,7 +1520,7 @@ unmapnotify(XEvent *e)
 		detachclient(c);
 		termclient(c);
 		if (locatemon(&mon, NULL, ws)) {
-			updatefocus();
+			updatefocus(mon);
 			arrange(mon);
 		}
 	}
@@ -1610,33 +1542,34 @@ updatebar(Monitor *mon)
 }
 
 void
-updatefocus(void)
+updatefocus(Monitor *mon)
 {
 	unsigned int i;
 
-	if (!selmon->selws->ns) {
+	if (!mon->selws->ns) {
 		return;
 	}
 
-	selmon->selws->selcli = selmon->selws->stack[selmon->selws->ns-1];
-	for (i = 0; i < selmon->selws->ns-1; i++) {
-		XSetWindowBorder(dpy, selmon->selws->stack[i]->win, CBORDERNORM);
+	mon->selws->selcli = mon->selws->stack[mon->selws->ns-1];
+	for (i = 0; i < mon->selws->ns-1; i++) {
+		XSetWindowBorder(dpy, mon->selws->stack[i]->win, CBORDERNORM);
 	}
-	XSetWindowBorder(dpy, selmon->selws->selcli->win, CBORDERSEL);
-	XSetInputFocus(dpy, selmon->selws->selcli->win, RevertToPointerRoot,
+	XSetWindowBorder(dpy, mon->selws->selcli->win, CBORDERSEL);
+	XSetInputFocus(dpy, mon->selws->selcli->win, RevertToPointerRoot,
 			CurrentTime);
 }
 
 void
 updategeom(void)
 {
-	debug("\033[1;31mupdategeom()\033[0m");
+	debug("\033[1;32mupdategeom()\033[0m");
 
 	int i, n;
 	XineramaScreenInfo *info;
 	Monitor *mon;
 
 	if (!XineramaIsActive(dpy)) {
+		debug("Xinerama not active, using single-monitor setup");
 		while (nmon > 1) {
 			mon = monitors[1];
 			detachmon(mon);
@@ -1650,7 +1583,7 @@ updategeom(void)
 				DisplayHeight(dpy, screen));
 		return;
 	}
-	debug("Xinerama is active");
+	debug("Xinerama active, scanning monitors");
 
 	info = XineramaQueryScreens(dpy, &n);
 	debug("%u elements in the info array", n);
@@ -1890,7 +1823,7 @@ zoom(Arg const *arg)
 			selmon->selws->clients[0] = selmon->selws->clients[1];
 			selmon->selws->clients[1] = c;
 			push(selmon->selws, selmon->selws->clients[0]);
-			updatefocus();
+			updatefocus(selmon);
 		} else {
 			return;
 		}

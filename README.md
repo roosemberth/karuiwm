@@ -1,7 +1,7 @@
 stwm
 ====
 
-An attempt to build a minimalistic dynamically tiling window manager with Xlib;
+An attempt to build a dynamically tiling window manager with Xlib. It is
 inspired by [xmonad](http://xmonad.org/) and based on
 [dwm](http://dwm.suckless.org/).
 
@@ -20,8 +20,17 @@ you may run:
 	make dev
 
 
+install
+-------
+
+Currently there is no automated way to install stwm on the system.
+
+
 run
 ---
+
+Given that stwm is not yet ready to be installed on any system, it allows a way
+to invoke it from within the project directory.
 
 This will launch a new X session on display **:1** (modify the Makefile to
 change) with stwm as the window manager:
@@ -95,20 +104,37 @@ workspace dialog
 ----------------
 
 The workspace dialog is a view that comes with a separately configured set of
-keys, and it allows you to change the workspace either by name or by selection
-on a "map". By default, the <code>wsdkeys</code> array defines the following
-setting:
+keys. It consists of an input bar to change the workspace by entering its name,
+and of a "map" to visually select a workspace.
 
-* <code>Mod</code>+<code>Space</code> or <code>Esc</code>
+The <code>wsdkeys</code> array defines keys for using the visual selection:
+
+* <code>Mod</code>+<code>Space</code>
   close workspace dialog
 * <code>Mod</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
   set selection to left/below/above/right workspace
 * <code>Mod</code>+<code>Shift</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
   swap selected workspace with left/below/above/right workspace
 * <code>Return</code>
-  switch to workspace by name, or to selected workspace if name is not matched
+  switch to the selected workspace (see below)
 * <code>Ctrl</code>+<code>Return</code>
   rename current workspace
+
+The input bar allows you to type a name and perform one of the following
+actions:
+
+* <code>Return</code>
+  change to the workspace matching the specified name
+* <code>Ctrl</code>+<code>Return</code>
+  rename the *current* (!) workspace to the specified name
+* <code>Esc</code>
+  close workspace dialog
+
+Besides this, some ANSI control sequences are supported: <code>^A</code> (home),
+<code>^B</code> (left), <code>^C</code> (cancel), <code>^D</code> (delete),
+<code>^E</code> (end), <code>^F</code> (right), <code>^H</code> (backspace),
+<code>^J</code> (return), <code>^K</code> (clear right), <code>^M</code>
+(return), <code>^U</code> (clear left).
 
 Note that the name matching will compare the first [n] characters, where [n] is
 the name of the specified string. In case the name matches multiple workspaces,
@@ -138,5 +164,17 @@ monitor), stwm uses a unified workspace set for all monitors.
 
 Once a monitor is added, it will attempt to display the next undisplayed
 workspace; if there is none, it will create a new workspace nearby and move its
-view there.
+view there. If a monitor moves its view to a workspace that is already displayed
+on another monitor, the behaviour is unspecified (should get fixed in the
+future).
+
+
+todo
+----
+
+* Complete multi-monitor (switching monitors, avoiding focus collisions, sending
+  clients from one monitor to the other, ...)
+* Add session restore upon <code>restart()</code> (savefile?).
+* Add scratchpad.
+* Add mouse support.
 
