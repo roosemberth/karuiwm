@@ -74,7 +74,7 @@ These are the default settings defined by the <code>keys</code> array:
 
 * <code>Mod</code>+<code>l</code>|<code>h</code>
   increase/decrease master area size
-* <code>Mod</code>+<code>j</code>|<code>k</code>
+* <code>Mod</code>+<code>Shift</code>+<code>j</code>|<code>k</code>
   swap client with next/previous client in the layout
 * <code>Mod</code>+<code>,</code>|<code>.</code>
   increase/decrease number of clients in the master area

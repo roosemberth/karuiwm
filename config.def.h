@@ -90,6 +90,9 @@ static Key const keys[] = {
 	{ MODKEY|ControlMask|ShiftMask, XK_j,      moveclient, { .i=DOWN } },
 	{ MODKEY|ControlMask|ShiftMask, XK_k,      moveclient, { .i=UP } },
 
+	/* monitors */
+	{ MODKEY,                       XK_m,      stepmon,    { 0 } },
+
 	/* session */
 	{ MODKEY,                       XK_q,      restart,    { 0 } },
 	{ MODKEY|ShiftMask,             XK_q,      quit,       { 0 } },

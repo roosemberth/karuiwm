@@ -108,6 +108,7 @@ static void buttonpress(XEvent *);
 static void buttonrelease(XEvent *);
 static void cleanup(void);
 static void clientmessage(XEvent *);
+static bool collision(Workspace *);
 static void configurerequest(XEvent *);
 static void configurenotify(XEvent *);
 static void createnotify(XEvent *);
@@ -143,6 +144,7 @@ static void pop(Workspace *, Client *);
 static void propertynotify(XEvent *);
 static void push(Workspace *, Client *);
 static void quit(Arg const *);
+static void reltoxy(int *, int *, int);
 static void renamews(Workspace *, char const *);
 static void renderbar(Monitor *);
 static void renderwsdbox(Workspace *);
@@ -160,6 +162,7 @@ static void sigchld(int);
 static void spawn(Arg const *);
 static void stdlog(FILE *, char const *, ...);
 static void stepfocus(Arg const *);
+static void stepmon(Arg const *);
 static void stepws(Arg const *);
 static void stepwsdbox(Arg const *arg);
 static void termclient(Client *);
@@ -356,10 +359,17 @@ clientmessage(XEvent *e)
 	/* TODO */
 }
 
+bool
+collision(Workspace *ws)
+{
+	Monitor *mon;
+	return (locatemon(&mon, NULL, ws) && mon != selmon);
+}
+
 void
 configurenotify(XEvent *e)
 {
-	//debug("configurenotify(%d)", e->xconfigure.window);
+	debug("configurenotify(%d)", e->xconfigure.window);
 	if (e->xconfigure.window == root) {
 		updategeom();
 	}
@@ -886,7 +896,8 @@ void
 movews(Arg const *arg)
 {
 	Workspace *src=NULL, *dst=NULL;
-	int x=wsd.target->x, y=wsd.target->y;
+	int x = wsd.active ? wsd.target->x : selmon->selws->x;
+	int y = wsd.active ? wsd.target->y : selmon->selws->y;
 
 	switch (arg->i) {
 		case LEFT:  x--; break;
@@ -968,6 +979,19 @@ quit(Arg const *arg)
 {
 	restarting = false;
 	running = false;
+}
+
+void
+reltoxy(int *x, int *y, int direction)
+{
+	if (x) *x = selmon->selws->x;
+	if (y) *y = selmon->selws->y;
+	switch (direction) {
+		case LEFT:  if (x) (*x)--; break;
+		case RIGHT: if (x) (*x)++; break;
+		case UP:    if (y) (*y)--; break;
+		case DOWN:  if (y) (*y)++; break;
+	}
 }
 
 void
@@ -1120,7 +1144,7 @@ setup(void)
 
 	/* event mask */
 	wa.event_mask = SubstructureNotifyMask|SubstructureRedirectMask|
-			KeyPressMask;
+			KeyPressMask|StructureNotifyMask;
 	XChangeWindowAttributes(dpy, root, CWEventMask, &wa);
 
 	/* font */
@@ -1202,7 +1226,11 @@ setupwsd(void)
 void
 setws(int x, int y)
 {
-	Workspace *next;
+	Workspace *next=NULL;
+
+	if (locatews(&next, NULL, x, y, NULL) && collision(next)) {
+		return;
+	}
 
 	/* current workspace */
 	if (selmon->selws->nc) {
@@ -1213,7 +1241,7 @@ setws(int x, int y)
 	}
 
 	/* next workspace */
-	if (locatews(&next, NULL, x, y, NULL)) {
+	if (next) {
 		selmon->selws = next;
 	} else {
 		selmon->selws = initws(x, y);
@@ -1309,7 +1337,8 @@ stepfocus(Arg const *arg)
 		return;
 	}
 	if (!locateclient(NULL, NULL, &pos, selmon->selws->selcli->win)) {
-
+		warn("attempt to step from non-existing client");
+		return;
 	}
 	push(selmon->selws, selmon->selws->clients[
 			(pos+selmon->selws->nc+arg->i)%selmon->selws->nc]);
@@ -1317,17 +1346,25 @@ stepfocus(Arg const *arg)
 }
 
 void
+stepmon(Arg const *arg)
+{
+	Monitor *mon;
+	unsigned int pos;
+
+	if (!locatemon(&mon, &pos, selmon->selws)) {
+		warn("attempt to step from non-existing monitor");
+		return;
+	}
+	selmon = monitors[(pos+nmon+1)%nmon];
+	updatefocus(mon);
+	updatefocus(selmon);
+}
+
+void
 stepws(Arg const *arg)
 {
-	int x=selmon->selws->x, y=selmon->selws->y;
-
-	switch (arg->i) {
-		case LEFT:  x = selmon->selws->x-1; break;
-		case RIGHT: x = selmon->selws->x+1; break;
-		case UP:    y = selmon->selws->y-1; break;
-		case DOWN:  y = selmon->selws->y+1; break;
-		default: /* NO_DIRECTION */ break;
-	}
+	int x, y;
+	reltoxy(&x, &y, arg->i);
 	setws(x, y);
 }
 
@@ -1551,19 +1588,19 @@ updatefocus(Monitor *mon)
 	}
 
 	mon->selws->selcli = mon->selws->stack[mon->selws->ns-1];
-	for (i = 0; i < mon->selws->ns-1; i++) {
+	for (i = 0; i < (mon == selmon ? mon->selws->ns-1 : mon->selws->nc); i++) {
 		XSetWindowBorder(dpy, mon->selws->stack[i]->win, CBORDERNORM);
 	}
-	XSetWindowBorder(dpy, mon->selws->selcli->win, CBORDERSEL);
-	XSetInputFocus(dpy, mon->selws->selcli->win, RevertToPointerRoot,
-			CurrentTime);
+	if (mon == selmon) {
+		XSetWindowBorder(dpy, mon->selws->selcli->win, CBORDERSEL);
+		XSetInputFocus(dpy, mon->selws->selcli->win, RevertToPointerRoot,
+				CurrentTime);
+	}
 }
 
 void
 updategeom(void)
 {
-	debug("\033[1;32mupdategeom()\033[0m");
-
 	int i, n;
 	XineramaScreenInfo *info;
 	Monitor *mon;
@@ -1599,6 +1636,7 @@ updategeom(void)
 	}
 
 	if (n < nmon) { /* screen detached */
+		debug("monitors detached");
 		for (i = nmon-1; i >= n; i--) {
 			mon = monitors[i];
 			detachmon(mon);
@@ -1607,6 +1645,7 @@ updategeom(void)
 	}
 	for (i = 0; i < n; i++) {
 		if (i >= nmon) { /* screen attached */
+			debug("monitors attached");
 			mon = initmon();
 			attachmon(mon);
 		}
@@ -1624,10 +1663,12 @@ updatemon(Monitor *mon, int x, int y, unsigned int w, unsigned int h)
 	mon->w = w;
 	mon->h = h;
 	updatebar(mon);
+
 	mon->wx = mon->x;
 	mon->wy = mon->y+mon->bh;
 	mon->ww = mon->w;
 	mon->wh = mon->h-mon->bh;
+	arrange(mon);
 }
 
 void
