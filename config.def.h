@@ -85,10 +85,13 @@ static Key const keys[] = {
 	{ MODKEY|ControlMask,           XK_l,      stepws,     { .i=RIGHT } },
 	{ MODKEY|ControlMask,           XK_j,      stepws,     { .i=DOWN } },
 	{ MODKEY|ControlMask,           XK_k,      stepws,     { .i=UP } },
-	{ MODKEY|ControlMask|ShiftMask, XK_h,      move,       { .i=LEFT } },
-	{ MODKEY|ControlMask|ShiftMask, XK_l,      move,       { .i=RIGHT } },
-	{ MODKEY|ControlMask|ShiftMask, XK_j,      move,       { .i=DOWN } },
-	{ MODKEY|ControlMask|ShiftMask, XK_k,      move,       { .i=UP } },
+	{ MODKEY|ControlMask|ShiftMask, XK_h,      moveclient, { .i=LEFT } },
+	{ MODKEY|ControlMask|ShiftMask, XK_l,      moveclient, { .i=RIGHT } },
+	{ MODKEY|ControlMask|ShiftMask, XK_j,      moveclient, { .i=DOWN } },
+	{ MODKEY|ControlMask|ShiftMask, XK_k,      moveclient, { .i=UP } },
+
+	/* monitors */
+	{ MODKEY,                       XK_m,      stepmon,    { 0 } },
 
 	/* session */
 	{ MODKEY,                       XK_q,      restart,    { 0 } },
@@ -98,7 +101,6 @@ static Key const keys[] = {
 /* WSD keys */
 static Key const wsdkeys[] = {
 	{ 0,                            XK_Print,  spawn,      { .v=scrotcmd } },
-	{ 0,                            XK_Escape, togglewsd,  { 0 } },
 	{ MODKEY,                       XK_space,  togglewsd,  { 0 } },
 
 	/* move view */
