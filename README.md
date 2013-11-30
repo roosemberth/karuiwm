@@ -5,6 +5,20 @@ An attempt to build a dynamically tiling window manager with Xlib. It is
 inspired by [xmonad](http://xmonad.org/) and based on
 [dwm](http://dwm.suckless.org/).
 
+Currently these are the features of stwm:
+
+* workspaces arranged in two dimensions, with dynamic creation and destruction
+* Xinerama support for multi-monitor setup, with shared workspaces
+
+These are the features that will get added:
+
+* complete multi-monitor support (moving clients to other monitors, swapping
+  monitors upon collision, indicator for focused monitor, ...)
+* scratchpad
+* mouse support
+* savestate for restoring the session after a restart
+* intelligent workspace name matching for WSD; propositions à la dmenu
+
 
 build
 -----
@@ -23,7 +37,8 @@ you may run:
 install
 -------
 
-Currently there is no automated way to install stwm on the system.
+As the project is still in early development, there is currently no automated
+way to install stwm on the system.
 
 
 run
@@ -90,6 +105,11 @@ These are the default settings defined by the <code>keys</code> array:
 * <code>Mod</code>+<code>Space</code>
   open workspace dialog (see below)
 
+**Monitors**
+
+* <code>Mod</code>+<code>m</code>
+  set focus to next monitor
+
 **Session**
 
 * <code>Mod</code>+<code>q</code>
@@ -106,6 +126,8 @@ workspace dialog
 The workspace dialog is a view that comes with a separately configured set of
 keys. It consists of an input bar to change the workspace by entering its name,
 and of a "map" to visually select a workspace.
+
+![screenshot](http://ayekat.ch/img/host/github.com/screen_stwm.png)
 
 The <code>wsdkeys</code> array defines keys for using the visual selection:
 
@@ -136,11 +158,10 @@ Besides this, some ANSI control sequences are supported: <code>^A</code> (home),
 <code>^J</code> (return), <code>^K</code> (clear right), <code>^M</code>
 (return), <code>^U</code> (clear left).
 
-Note that the name matching will compare the first [n] characters, where [n] is
-the name of the specified string. In case the name matches multiple workspaces,
-the bahaviour is unspecified (should get fixed in the future).
-
-![screenshot](http://ayekat.ch/img/host/github.com/screen_stwm.png)
+Note that the name matching is still quite dumb, as it will simply compare the
+first [n] characters, where [n] is the length of the input string. In case the
+string matches multiple workspaces, the bahaviour is unspecified (should get
+fixed in the future).
 
 
 appendix A: workspaces
@@ -167,14 +188,4 @@ workspace; if there is none, it will create a new workspace nearby and move its
 view there. If a monitor moves its view to a workspace that is already displayed
 on another monitor, the behaviour is unspecified (should get fixed in the
 future).
-
-
-todo
-----
-
-* Complete multi-monitor (switching monitors, avoiding focus collisions, sending
-  clients from one monitor to the other, ...)
-* Add session restore upon <code>restart()</code> (savefile?).
-* Add scratchpad.
-* Add mouse support.
 
