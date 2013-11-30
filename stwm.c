@@ -516,16 +516,21 @@ enternotify(XEvent *e)
 
 	unsigned int pos;
 	Workspace *ws;
+	Monitor *mon, *oldmon=selmon;
 	Client *c;
 
-	if (!locateclient(&ws, &c, &pos, e->xcrossing.window) || ws != selmon->selws) {
+	if (!locateclient(&ws, &c, &pos, e->xcrossing.window)) {
 		warn("attempt to enter unhandled/invisible window %d",
 				e->xcrossing.window);
 		return;
 	}
-
+	if (locatemon(&mon, NULL, ws) && mon != selmon) {
+		selmon = mon;
+		updatefocus(oldmon);
+	}
 	push(selmon->selws, c);
 	updatefocus(selmon);
+
 }
 
 void
@@ -1099,7 +1104,6 @@ scan(void)
 		warn("XQueryTree() failed");
 		return;
 	}
-	note("found %d clients from last session", nwins);
 	for (i = 0; i < nwins; i++) {
 		c = initclient(wins[i], true);
 		if (c) {
@@ -1584,6 +1588,7 @@ updatefocus(Monitor *mon)
 	unsigned int i;
 
 	if (!mon->selws->ns) {
+		XSetInputFocus(dpy, root, RevertToPointerRoot, CurrentTime);
 		return;
 	}
 
@@ -1606,7 +1611,6 @@ updategeom(void)
 	Monitor *mon;
 
 	if (!XineramaIsActive(dpy)) {
-		debug("Xinerama not active, using single-monitor setup");
 		while (nmon > 1) {
 			mon = monitors[1];
 			detachmon(mon);
@@ -1620,32 +1624,20 @@ updategeom(void)
 				DisplayHeight(dpy, screen));
 		return;
 	}
-	debug("Xinerama active, scanning monitors");
 
 	info = XineramaQueryScreens(dpy, &n);
-	debug("%u elements in the info array", n);
-	for (i = 0; i < n; i++) {
-		debug("info[%d]: %ux%u%+d%+d", i, info[i].width, info[i].height,
-				info[i].x_org, info[i].y_org);
-	}
 	n = unifyscreens(&info, n);
-	debug("%u elemenŧs in the unified info array", n);
-	for (i = 0; i < n; i++) {
-		debug("info[%d]: %ux%u%+d%+d", i, info[i].width, info[i].height,
-				info[i].x_org, info[i].y_org);
-	}
 
 	if (n < nmon) { /* screen detached */
-		debug("monitors detached");
 		for (i = nmon-1; i >= n; i--) {
 			mon = monitors[i];
+			hidews(mon->selws);
 			detachmon(mon);
 			termmon(mon);
 		}
 	}
 	for (i = 0; i < n; i++) {
 		if (i >= nmon) { /* screen attached */
-			debug("monitors attached");
 			mon = initmon();
 			attachmon(mon);
 		}
