@@ -16,10 +16,12 @@
 
 /* macros */
 #define APPNAME "stwm"
-#define CLIENTMASK EnterWindowMask
+#define BUTTONMASK (ButtonPressMask|ButtonReleaseMask)
+#define CLIENTMASK (EnterWindowMask)
 #define LENGTH(ARR) (sizeof(ARR)/sizeof(ARR[0]))
 #define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
+#define MOUSEMASK (BUTTONMASK|PointerMotionMask)
 
 /* log macros */
 #define warn(...) stdlog(stderr, "\033[33mWRN\033[0m "__VA_ARGS__)
@@ -42,6 +44,13 @@ typedef union {
 	float f;
 	const void *v;
 } Arg;
+
+typedef struct {
+	unsigned int mod;
+	unsigned int button;
+	void (*func)(Arg const *);
+	Arg const arg;
+} Button;
 
 typedef struct {
 	int x, y;
@@ -105,20 +114,17 @@ static void arrange(Monitor *);
 static void attachclient(Workspace *, Client *);
 static void attachws(Workspace *);
 static void buttonpress(XEvent *);
-static void buttonrelease(XEvent *);
 static void cleanup(void);
 static void clientmessage(XEvent *);
 static bool collision(Workspace *);
 static void configurerequest(XEvent *);
 static void configurenotify(XEvent *);
-static void createnotify(XEvent *);
-static void destroynotify(XEvent *);
 static void detachclient(Client *);
 static void detachmon(Monitor *);
 static void detachws(Workspace *);
 static void enternotify(XEvent *);
 static void expose(XEvent *);
-static void grabbuttons(void);
+static void grabbuttons(Client *, bool);
 static void grabkeys(void);
 static void hide(Client *);
 static void hidews(Workspace *);
@@ -136,8 +142,8 @@ static bool locatemon(Monitor **, unsigned int *, Workspace const *);
 static bool locatews(Workspace **, unsigned int *, int, int, char const *);
 static void mappingnotify(XEvent *);
 static void maprequest(XEvent *);
-static void motionnotify(XEvent *);
 static void moveclient(Arg const *);
+static void movemouse(Arg const *);
 static void movews(Arg const *);
 static void place(Client *, int, int, unsigned int, unsigned int);
 static void pop(Workspace *, Client *);
@@ -187,19 +193,15 @@ static void zoom(Arg const *);
 /* event handlers, as array to allow O(1) access; codes in X.h */
 static void (*handle[LASTEvent])(XEvent *) = {
 	[ButtonPress]      = buttonpress,      /* 4*/
-	[ButtonRelease]    = buttonrelease,    /* 5*/
 	[ClientMessage]    = clientmessage,    /*33*/
 	[ConfigureNotify]  = configurenotify,  /*22*/
 	[ConfigureRequest] = configurerequest, /*23*/
-	[CreateNotify]     = createnotify,     /*16*/
-	[DestroyNotify]    = destroynotify,    /*17*/
 	[EnterNotify]      = enternotify,      /* 7*/
 	[Expose]           = expose,           /*12*/
 	[KeyPress]         = keypress,         /* 2*/
 	[KeyRelease]       = keyrelease,       /* 3*/
 	[MapRequest]       = maprequest,       /*20*/
 	[MappingNotify]    = mappingnotify,    /*34*/
-	[MotionNotify]     = motionnotify,     /* 6*/
 	[PropertyNotify]   = propertynotify,   /*28*/
 	[UnmapNotify]      = unmapnotify       /*18*/
 };
@@ -298,14 +300,26 @@ void
 buttonpress(XEvent *e)
 {
 	debug("buttonpress(%d)", e->xbutton.window);
-	/* TODO */
-}
 
-void
-buttonrelease(XEvent *e)
-{
-	debug("buttonrelease(%d)", e->xbutton.window);
-	/* TODO */
+	unsigned int i;
+	Client *c;
+	Workspace *ws;
+	Monitor *mon;
+
+	if (!locateclient(&ws, &c, NULL, e->xbutton.window) ||
+			!locatemon(&mon, NULL, ws)) {
+		debug("unhandled window");
+		return;
+	}
+	push(ws, c);
+	updatefocus(mon);
+
+	for (i = 0; i < LENGTH(buttons); i++) {
+		if (buttons[i].mod == e->xbutton.state &&
+				buttons[i].button == e->xbutton.button && buttons[i].func) {
+			buttons[i].func(&buttons[i].arg);
+		}
+	}
 }
 
 void
@@ -415,20 +429,6 @@ configurerequest(XEvent *e)
 		.override_redirect = False,
 	};
 	XSendEvent(dpy, c->win, false, StructureNotifyMask, (XEvent *) &cev);
-}
-
-void
-createnotify(XEvent *e)
-{
-	debug("createnotify(%d)", e->xcreatewindow.window);
-	/* TODO */
-}
-
-void
-destroynotify(XEvent *e)
-{
-	debug("destroynotify(%d)", e->xdestroywindow.window);
-	/* TODO */
 }
 
 void
@@ -559,15 +559,26 @@ expose(XEvent *e)
 }
 
 void
-grabbuttons(void)
+grabbuttons(Client *c, bool focused)
 {
-	/* TODO */
+	unsigned int i;
+
+	XUngrabButton(dpy, AnyButton, AnyModifier, c->win);
+	if (focused) {
+		for (i = 0; i < LENGTH(buttons); i++) {
+			XGrabButton(dpy, buttons[i].button, buttons[i].mod, c->win, false,
+					BUTTONMASK, GrabModeAsync, GrabModeAsync, None, None);
+		}
+	} else {
+		XGrabButton(dpy, AnyButton, AnyModifier, c->win, false, BUTTONMASK,
+				GrabModeAsync, GrabModeAsync, None, None);
+	}
 }
 
 void
 grabkeys(void)
 {
-	int i;
+	unsigned int i;
 
 	XUngrabKey(dpy, AnyKey, AnyModifier, root);
 	for (i = 0; i < LENGTH(keys); i++) {
@@ -637,6 +648,7 @@ initclient(Window win, bool viewable)
 	}
 	c->win = win;
 	XSetWindowBorderWidth(dpy, c->win, BORDERWIDTH);
+	grabbuttons(c, false);
 	XSelectInput(dpy, c->win, CLIENTMASK);
 	return c;
 }
@@ -704,8 +716,6 @@ initwsdbox(void)
 void
 keypress(XEvent *e)
 {
-	//debug("keypress()");
-
 	unsigned int i;
 	KeySym keysym = XLookupKeysym(&e->xkey, 0);
 
@@ -881,13 +891,6 @@ mappingnotify(XEvent *e)
 }
 
 void
-motionnotify(XEvent *e)
-{
-	debug("motionnotify(%d)", e->xmotion.window);
-	/* TODO */
-}
-
-void
 moveclient(Arg const *arg)
 {
 	Client *c = selmon->selws->selcli;
@@ -895,6 +898,50 @@ moveclient(Arg const *arg)
 	stepws(arg);
 	attachclient(selmon->selws, c);
 	updatefocus(selmon);
+}
+
+void
+movemouse(Arg const *arg)
+{
+	XEvent ev;
+	Window dummy;
+	Client *c = selmon->selws->selcli;
+	int cx=c->x, cy=c->y, x, y, i;
+	unsigned int ui;
+
+	/* grab the pointer and change its appearance */
+	if (XGrabPointer(dpy, root, true, MOUSEMASK, GrabModeAsync, GrabModeAsync,
+			None, cursor[CURSOR_MOVE], CurrentTime) != GrabSuccess) {
+		warn("XGrabPointer() failed");
+		return;
+	}
+
+	/* get initial pointer position */
+	if (!XQueryPointer(dpy, root, &dummy, &dummy, &x, &y, &i, &i, &ui)) {
+		warn("XQueryPointer() failed");
+		return;
+	}
+
+	/* handle motions */
+	do {
+		XMaskEvent(dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
+		switch (ev.type) {
+			case ConfigureRequest:
+			case Expose:
+				handle[ev.type](&ev);
+				break;
+			case MotionNotify:
+				cx = cx+(ev.xmotion.x-x);
+				cy = cy+(ev.xmotion.y-y);
+				x = ev.xmotion.x;
+				y = ev.xmotion.y;
+				place(c, cx, cy, c->w, c->h);
+				XMoveWindow(dpy, ev.xmotion.window, cx, cy);
+				break;
+		}
+	} while (ev.type != ButtonRelease);
+
+	XUngrabPointer(dpy, CurrentTime);
 }
 
 void
@@ -1143,12 +1190,11 @@ setup(void)
 	cursor[CURSOR_MOVE] = XCreateFontCursor(dpy, XC_fleur);
 	wa.cursor = cursor[CURSOR_NORMAL];
 	XChangeWindowAttributes(dpy, root, CWCursor, &wa);
-	grabbuttons();
 	grabkeys();
 
 	/* event mask */
 	wa.event_mask = SubstructureNotifyMask|SubstructureRedirectMask|
-			KeyPressMask|StructureNotifyMask;
+			KeyPressMask|StructureNotifyMask|ButtonPressMask|PointerMotionMask;
 	XChangeWindowAttributes(dpy, root, CWEventMask, &wa);
 
 	/* font */
@@ -1376,14 +1422,7 @@ void
 stepwsdbox(Arg const *arg)
 {
 	Workspace *ws;
-
-	switch (arg->i) {
-		case LEFT:  wsd.target->x--; break;
-		case RIGHT: wsd.target->x++; break;
-		case UP:    wsd.target->y--; break;
-		case DOWN:  wsd.target->y++; break;
-		default: /* NO_DIRECTION */  break;
-	}
+	reltoxy(&wsd.target->x, &wsd.target->y, arg->i);
 	if (locatews(&ws, NULL, wsd.target->x, wsd.target->y, NULL)) {
 		strcpy(wsd.target->name, ws->name);
 	} else {
@@ -1595,11 +1634,13 @@ updatefocus(Monitor *mon)
 	mon->selws->selcli = mon->selws->stack[mon->selws->ns-1];
 	for (i = 0; i < (mon == selmon ? mon->selws->ns-1 : mon->selws->nc); i++) {
 		XSetWindowBorder(dpy, mon->selws->stack[i]->win, CBORDERNORM);
+		grabbuttons(mon->selws->stack[i], false);
 	}
 	if (mon == selmon) {
 		XSetWindowBorder(dpy, mon->selws->selcli->win, CBORDERSEL);
 		XSetInputFocus(dpy, mon->selws->selcli->win, RevertToPointerRoot,
 				CurrentTime);
+		grabbuttons(mon->selws->stack[i], true);
 	}
 }
 
