@@ -150,7 +150,7 @@ static void pop(Workspace *, Client *);
 static void propertynotify(XEvent *);
 static void push(Workspace *, Client *);
 static void quit(Arg const *);
-static void reltoxy(int *, int *, int);
+static void reltoxy(int *, int *, Workspace *, int);
 static void renamews(Workspace *, char const *);
 static void renderbar(Monitor *);
 static void renderwsdbox(Workspace *);
@@ -909,7 +909,7 @@ movemouse(Arg const *arg)
 	int cx=c->x, cy=c->y, x, y, i;
 	unsigned int ui;
 
-	/* grab the pointer and change its appearance */
+	/* grab the pointer and change the cursor appearance */
 	if (XGrabPointer(dpy, root, true, MOUSEMASK, GrabModeAsync, GrabModeAsync,
 			None, cursor[CURSOR_MOVE], CurrentTime) != GrabSuccess) {
 		warn("XGrabPointer() failed");
@@ -948,28 +948,25 @@ void
 movews(Arg const *arg)
 {
 	Workspace *src=NULL, *dst=NULL;
-	int x = wsd.active ? wsd.target->x : selmon->selws->x;
-	int y = wsd.active ? wsd.target->y : selmon->selws->y;
+	Workspace *ref = wsd.active ? wsd.target : selmon->selws;
+	int dx, dy;
 
-	switch (arg->i) {
-		case LEFT:  x--; break;
-		case RIGHT: x++; break;
-		case UP:    y--; break;
-		case DOWN:  y++; break;
-	}
+	reltoxy(&dx, &dy, ref, arg->i);
+	locatews(&src, NULL, ref->x, ref->y, NULL);
+	locatews(&dst, NULL, dx, dy, NULL);
 
-	locatews(&src, NULL, wsd.target->x, wsd.target->y, NULL);
-	locatews(&dst, NULL, x, y, NULL);
-	if (src) {
-		src->x = x;
-		src->y = y;
-	}
 	if (dst) {
-		dst->x = wsd.target->x;
-		dst->y = wsd.target->y;
+		dst->x = ref->x;
+		dst->y = ref->y;
 	}
-	wsd.target->x = x;
-	wsd.target->y = y;
+	if (src) {
+		src->x = dx;
+		src->y = dy;
+	}
+	if (wsd.active) {
+		wsd.target->x = dx;
+		wsd.target->y = dy;
+	}
 }
 
 void
@@ -1034,10 +1031,10 @@ quit(Arg const *arg)
 }
 
 void
-reltoxy(int *x, int *y, int direction)
+reltoxy(int *x, int *y, Workspace *ws, int direction)
 {
-	if (x) *x = selmon->selws->x;
-	if (y) *y = selmon->selws->y;
+	if (x) *x = ws->x;
+	if (y) *y = ws->y;
 	switch (direction) {
 		case LEFT:  if (x) (*x)--; break;
 		case RIGHT: if (x) (*x)++; break;
@@ -1414,7 +1411,7 @@ void
 stepws(Arg const *arg)
 {
 	int x, y;
-	reltoxy(&x, &y, arg->i);
+	reltoxy(&x, &y, selmon->selws, arg->i);
 	setws(x, y);
 }
 
@@ -1422,7 +1419,7 @@ void
 stepwsdbox(Arg const *arg)
 {
 	Workspace *ws;
-	reltoxy(&wsd.target->x, &wsd.target->y, arg->i);
+	reltoxy(&wsd.target->x, &wsd.target->y, wsd.target, arg->i);
 	if (locatews(&ws, NULL, wsd.target->x, wsd.target->y, NULL)) {
 		strcpy(wsd.target->name, ws->name);
 	} else {
