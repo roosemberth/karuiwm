@@ -116,3 +116,8 @@ static Key const wsdkeys[] = {
 	{ MODKEY|ShiftMask,             XK_k,      movews,     { .i=UP } },
 };
 
+/* mouse buttons */
+static Button const buttons[] = {
+	{ MODKEY,                       Button1,   movemouse,  { 0 } },
+};
+
