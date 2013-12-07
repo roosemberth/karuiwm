@@ -14,10 +14,14 @@ These are the features that will get added:
 
 * complete multi-monitor support (moving clients to other monitors, swapping
   monitors upon collision, indicator for focused monitor, ...)
+* dmenu integration for workspace selection
+* mouse support, floating windows (+ rules)
 * scratchpad
-* mouse support
+* more layouts
+
+These are features that *might* get added in the future:
+
 * savestate for restoring the session after a restart
-* intelligent workspace name matching for WSD; propositions à la dmenu
 
 
 build

@@ -154,6 +154,7 @@ static void reltoxy(int *, int *, Workspace *, int);
 static void renamews(Workspace *, char const *);
 static void renderbar(Monitor *);
 static void renderwsdbox(Workspace *);
+static void resizemouse(Arg const *);
 static void restart(Arg const *);
 static void run(void);
 static void scan(void);
@@ -176,11 +177,12 @@ static void termmon(Monitor *);
 static void termws(Workspace *);
 static unsigned int textwidth(char const *, unsigned int);
 static void tile(Monitor *);
+static void togglefloat(Arg const *);
 static void togglewsd(Arg const *);
 static size_t unifyscreens(XineramaScreenInfo **, size_t);
 static void unmapnotify(XEvent *);
 static void updatebar(Monitor *);
-static void updatefocus(Monitor *);
+static void updatefocus(void);
 static void updategeom(void);
 static void updatemon(Monitor *, int, int, unsigned int, unsigned int);
 static void updatewsdmap(void);
@@ -299,20 +301,15 @@ attachws(Workspace *ws)
 void
 buttonpress(XEvent *e)
 {
-	debug("buttonpress(%d)", e->xbutton.window);
-
 	unsigned int i;
 	Client *c;
 	Workspace *ws;
-	Monitor *mon;
 
-	if (!locateclient(&ws, &c, NULL, e->xbutton.window) ||
-			!locatemon(&mon, NULL, ws)) {
-		debug("unhandled window");
+	if (!locateclient(&ws, &c, NULL, e->xbutton.window)) {
 		return;
 	}
 	push(ws, c);
-	updatefocus(mon);
+	updatefocus();
 
 	for (i = 0; i < LENGTH(buttons); i++) {
 		if (buttons[i].mod == e->xbutton.state &&
@@ -400,7 +397,13 @@ configurerequest(XEvent *e)
 	XConfigureRequestEvent *ev = &e->xconfigurerequest;
 
 	/* forward configuration if not managed (or if we don't force the size) */
-	if (!FORCESIZE || !locateclient(NULL, &c, NULL, ev->window)) {
+	if (!FORCESIZE || !locateclient(NULL, &c, NULL, ev->window) || c->floating) {
+		if (c && c->floating) {
+			c->x = ev->x;
+			c->y = ev->y;
+			c->w = ev->width;
+			c->h = ev->height;
+		}
 		wc = (XWindowChanges) {
 			.x = ev->x,
 			.y = ev->y,
@@ -460,7 +463,7 @@ detachclient(Client *c)
 	/* update layout if selected workspace; otherwise remove if last client  */
 	if (locatemon(&mon, NULL, ws)) {
 		arrange(mon);
-		updatefocus(mon);
+		updatefocus();
 	} else if (!ws->nc) {
 		detachws(ws);
 		termws(ws);
@@ -516,7 +519,7 @@ enternotify(XEvent *e)
 
 	unsigned int pos;
 	Workspace *ws;
-	Monitor *mon, *oldmon=selmon;
+	Monitor *mon;
 	Client *c;
 
 	if (!locateclient(&ws, &c, &pos, e->xcrossing.window)) {
@@ -526,11 +529,9 @@ enternotify(XEvent *e)
 	}
 	if (locatemon(&mon, NULL, ws) && mon != selmon) {
 		selmon = mon;
-		updatefocus(oldmon);
 	}
 	push(selmon->selws, c);
-	updatefocus(selmon);
-
+	updatefocus();
 }
 
 void
@@ -647,6 +648,13 @@ initclient(Window win, bool viewable)
 		die("could not allocate %u bytes for client", sizeof(Client));
 	}
 	c->win = win;
+	c->floating = true; /* TODO apply rules */
+	if (c->floating) {
+		c->x = wa.x;
+		c->y = wa.y;
+		c->w = wa.width;
+		c->h = wa.height;
+	}
 	XSetWindowBorderWidth(dpy, c->win, BORDERWIDTH);
 	grabbuttons(c, false);
 	XSelectInput(dpy, c->win, CLIENTMASK);
@@ -878,8 +886,12 @@ maprequest(XEvent *e)
 	Client *c = initclient(e->xmap.window, false);
 	if (c) {
 		attachclient(selmon->selws, c);
-		XMapWindow(dpy, c->win);
-		updatefocus(selmon);
+		if (c->floating) {
+			XMapRaised(dpy, c->win);
+		} else {
+			XMapWindow(dpy, c->win);
+		}
+		updatefocus();
 	}
 }
 
@@ -897,7 +909,7 @@ moveclient(Arg const *arg)
 	detachclient(c);
 	stepws(arg);
 	attachclient(selmon->selws, c);
-	updatefocus(selmon);
+	updatefocus();
 }
 
 void
@@ -931,12 +943,17 @@ movemouse(Arg const *arg)
 				handle[ev.type](&ev);
 				break;
 			case MotionNotify:
+				if (!c->floating) {
+					c->floating = true;
+					XRaiseWindow(dpy, c->win);
+					arrange(selmon);
+					updatefocus();
+				}
 				cx = cx+(ev.xmotion.x-x);
 				cy = cy+(ev.xmotion.y-y);
 				x = ev.xmotion.x;
 				y = ev.xmotion.y;
 				place(c, cx, cy, c->w, c->h);
-				XMoveWindow(dpy, ev.xmotion.window, cx, cy);
 				break;
 		}
 	} while (ev.type != ButtonRelease);
@@ -1118,6 +1135,53 @@ renderwsdbox(Workspace *ws)
 }
 
 void
+resizemouse(Arg const *arg)
+{
+	XEvent ev;
+	Client *c = selmon->selws->selcli;
+	int cw=c->w, ch=c->h, x, y;
+
+	/* grab the pointer and change the cursor appearance */
+	if (XGrabPointer(dpy, root, true, MOUSEMASK, GrabModeAsync, GrabModeAsync,
+			None, cursor[CURSOR_RESIZE], CurrentTime) != GrabSuccess) {
+		warn("XGrabPointer() failed");
+		return;
+	}
+
+	/* set initial pointer position to lower right */
+	XWarpPointer(dpy, None, c->win, 0, 0, 0, 0,
+			c->w+2*BORDERWIDTH-1, c->h+2*BORDERWIDTH-1);
+	x = c->x+c->w+2*BORDERWIDTH-1;
+	y = c->y+c->h+2*BORDERWIDTH-1;
+
+	/* handle motions */
+	do {
+		XMaskEvent(dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
+		switch (ev.type) {
+			case ConfigureRequest:
+			case Expose:
+				handle[ev.type](&ev);
+				break;
+			case MotionNotify:
+				if (!c->floating) {
+					c->floating = true;
+					XRaiseWindow(dpy, c->win);
+					arrange(selmon);
+					updatefocus();
+				}
+				cw = cw+(ev.xmotion.x-x);
+				ch = ch+(ev.xmotion.y-y);
+				x = ev.xmotion.x;
+				y = ev.xmotion.y;
+				place(c, c->x, c->y, cw, ch);
+				break;
+		}
+	} while (ev.type != ButtonRelease);
+
+	XUngrabPointer(dpy, CurrentTime);
+}
+
+void
 restart(Arg const *arg)
 {
 	restarting = true;
@@ -1152,7 +1216,7 @@ scan(void)
 		c = initclient(wins[i], true);
 		if (c) {
 			attachclient(selmon->selws, c);
-			updatefocus(selmon);
+			updatefocus();
 		}
 	}
 }
@@ -1297,7 +1361,7 @@ setws(int x, int y)
 
 	arrange(selmon);
 	updatebar(selmon);
-	updatefocus(selmon);
+	updatefocus();
 }
 
 void
@@ -1389,7 +1453,8 @@ stepfocus(Arg const *arg)
 	}
 	push(selmon->selws, selmon->selws->clients[
 			(pos+selmon->selws->nc+arg->i)%selmon->selws->nc]);
-	updatefocus(selmon);
+	updatefocus();
+	XRaiseWindow(dpy, selmon->selws->selcli->win);
 }
 
 void
@@ -1403,8 +1468,7 @@ stepmon(Arg const *arg)
 		return;
 	}
 	selmon = monitors[(pos+nmon+1)%nmon];
-	updatefocus(mon);
-	updatefocus(selmon);
+	updatefocus();
 }
 
 void
@@ -1465,37 +1529,69 @@ textwidth(char const *str, unsigned int len)
 void
 tile(Monitor *mon)
 {
-	unsigned int ncm, i, w, h;
+	Client **tiled;
+	unsigned int ncm, i, ntiled, w, h;
 	int x;
 
 	if (!mon->selws->nc) {
 		return;
 	}
 
-	/* draw master area */
-	ncm = MIN(mon->selws->nmaster, mon->selws->nc);
-	if (ncm) {
-		x = mon->wx;
-		w = mon->selws->nmaster >= mon->selws->nc ?
-				mon->ww : mon->selws->mfact*mon->ww;
-		h = mon->wh/ncm;
-		for (i = 0; i < ncm; i++) {
-			place(mon->selws->clients[i], x, mon->wy+i*h, w-2*BORDERWIDTH,
-					h-2*BORDERWIDTH);
+	/* get non-floating clients (TODO move to separate function) */
+	tiled = calloc(mon->selws->nc, sizeof(Client *));
+	if (!tiled) {
+		die("could not allocate %u bytes for client list", mon->selws->nc);
+	}
+	for (ntiled = 0, i = 0; i < mon->selws->nc; i++) {
+		if (!mon->selws->clients[i]->floating) {
+			tiled[ntiled++] = mon->selws->clients[i];
 		}
 	}
-	if (ncm == mon->selws->nc) {
+	tiled = realloc(tiled, ntiled*sizeof(Client *));
+	if (!tiled && ntiled) {
+		die("could not allocate %u bytes for client list",
+				ntiled*sizeof(Client *));
+	}
+
+	/* draw master area */
+	ncm = MIN(mon->selws->nmaster, ntiled);
+	if (ncm) {
+		x = mon->wx;
+		w = mon->selws->nmaster >= ntiled ? mon->ww : mon->selws->mfact*mon->ww;
+		h = mon->wh/ncm;
+		for (i = 0; i < ncm; i++) {
+			place(tiled[i], x, mon->wy+i*h, w-2*BORDERWIDTH, h-2*BORDERWIDTH);
+		}
+	}
+	if (ncm == ntiled) {
 		return;
 	}
 
 	/* draw stack area */
 	x = mon->wx+(ncm ? mon->selws->mfact*mon->ww : 0);
 	w = ncm ? mon->ww-x : mon->ww;
-	h = mon->wh/(mon->selws->nc-ncm);
-	for (i = ncm; i < mon->selws->nc; i++) {
-		place(mon->selws->clients[i], x, mon->wy+(i-ncm)*h,
-				w-2*BORDERWIDTH, h-2*BORDERWIDTH);
+	h = mon->wh/(ntiled-ncm);
+	for (i = ncm; i < ntiled; i++) {
+		place(tiled[i], x, mon->wy+(i-ncm)*h, w-2*BORDERWIDTH, h-2*BORDERWIDTH);
 	}
+}
+
+void
+togglefloat(Arg const *arg)
+{
+	Client *c;
+
+	if (!selmon->selws->nc) {
+		return;
+	}
+	c = selmon->selws->selcli;
+	if ((c->floating = !c->floating)) {
+		XRaiseWindow(dpy, c->win);
+	} else {
+		XLowerWindow(dpy, c->win);
+	}
+	arrange(selmon);
+	updatefocus();
 }
 
 void
@@ -1597,8 +1693,8 @@ unmapnotify(XEvent *e)
 		detachclient(c);
 		termclient(c);
 		if (locatemon(&mon, NULL, ws)) {
-			updatefocus(mon);
 			arrange(mon);
+			updatefocus();
 		}
 	}
 }
@@ -1619,25 +1715,36 @@ updatebar(Monitor *mon)
 }
 
 void
-updatefocus(Monitor *mon)
+updatefocus(void)
 {
-	unsigned int i;
+	unsigned int i, j;
+	bool sel;
+	Monitor *mon;
 
-	if (!mon->selws->ns) {
-		XSetInputFocus(dpy, root, RevertToPointerRoot, CurrentTime);
-		return;
-	}
+	for (i = 0; i < nmon; i++) {
+		mon = monitors[i];
+		sel = mon == selmon;
 
-	mon->selws->selcli = mon->selws->stack[mon->selws->ns-1];
-	for (i = 0; i < (mon == selmon ? mon->selws->ns-1 : mon->selws->nc); i++) {
-		XSetWindowBorder(dpy, mon->selws->stack[i]->win, CBORDERNORM);
-		grabbuttons(mon->selws->stack[i], false);
-	}
-	if (mon == selmon) {
-		XSetWindowBorder(dpy, mon->selws->selcli->win, CBORDERSEL);
-		XSetInputFocus(dpy, mon->selws->selcli->win, RevertToPointerRoot,
-				CurrentTime);
-		grabbuttons(mon->selws->stack[i], true);
+		/* empty monitor: don't focus anything */
+		if (!mon->selws->ns) {
+			XSetInputFocus(dpy, root, RevertToPointerRoot, CurrentTime);
+			continue;
+		}
+
+		/* update selected client */
+		mon->selws->selcli = mon->selws->stack[mon->selws->ns-1];
+
+		/* draw borders and restack */
+		for (j = 0; j < (sel ? mon->selws->ns-1 : mon->selws->ns); j++) {
+			XSetWindowBorder(dpy, mon->selws->stack[j]->win, CBORDERNORM);
+			grabbuttons(mon->selws->stack[j], false);
+		}
+		if (sel) {
+			XSetWindowBorder(dpy, mon->selws->selcli->win, CBORDERSEL);
+			XSetInputFocus(dpy, mon->selws->selcli->win, RevertToPointerRoot,
+					CurrentTime);
+			grabbuttons(mon->selws->stack[j], true);
+		}
 	}
 }
 
@@ -1894,7 +2001,7 @@ zoom(Arg const *arg)
 			selmon->selws->clients[0] = selmon->selws->clients[1];
 			selmon->selws->clients[1] = c;
 			push(selmon->selws, selmon->selws->clients[0]);
-			updatefocus(selmon);
+			updatefocus();
 		} else {
 			return;
 		}
