@@ -70,6 +70,7 @@ static Key const keys[] = {
 	{ MODKEY,                       XK_k,      stepfocus,  { .i=-1 } },
 	{ MODKEY,                       XK_l,      setmfact,   { .f=+0.02 } },
 	{ MODKEY,                       XK_h,      setmfact,   { .f=-0.02 } },
+	{ MODKEY,                       XK_t,      togglefloat, { 0 } },
 	{ MODKEY|ShiftMask,             XK_c,      killclient, { 0 } },
 
 	/* layout */
@@ -114,5 +115,11 @@ static Key const wsdkeys[] = {
 	{ MODKEY|ShiftMask,             XK_l,      movews,     { .i=RIGHT } },
 	{ MODKEY|ShiftMask,             XK_j,      movews,     { .i=DOWN } },
 	{ MODKEY|ShiftMask,             XK_k,      movews,     { .i=UP } },
+};
+
+/* mouse buttons */
+static Button const buttons[] = {
+	{ MODKEY,                       Button1,   movemouse,  { 0 } },
+	{ MODKEY,                       Button3,   resizemouse, { 0 } },
 };
 
