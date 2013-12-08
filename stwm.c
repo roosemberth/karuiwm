@@ -9,6 +9,7 @@
 #include <sys/wait.h>
 #include <string.h>
 #include <X11/Xlib.h>
+#include <X11/Xutil.h>
 #include <X11/keysym.h>
 #include <X11/Xproto.h>
 #include <X11/cursorfont.h>
@@ -58,6 +59,7 @@ typedef struct {
 	char name[256];
 	Window win;
 	bool floating;
+	int basew, baseh, incw, inch;
 } Client;
 
 typedef struct {
@@ -114,6 +116,7 @@ static void arrange(Monitor *);
 static void attachclient(Workspace *, Client *);
 static void attachws(Workspace *);
 static void buttonpress(XEvent *);
+static bool checksizehints(Client *, int, int, unsigned int *, unsigned int *);
 static void cleanup(void);
 static void clientmessage(XEvent *);
 static bool collision(Workspace *);
@@ -144,8 +147,8 @@ static void mappingnotify(XEvent *);
 static void maprequest(XEvent *);
 static void moveclient(Arg const *);
 static void movemouse(Arg const *);
+static void moveresize(Client *, int, int, unsigned int, unsigned int);
 static void movews(Arg const *);
-static void place(Client *, int, int, unsigned int, unsigned int);
 static void pop(Workspace *, Client *);
 static void propertynotify(XEvent *);
 static void push(Workspace *, Client *);
@@ -185,6 +188,7 @@ static void updatebar(Monitor *);
 static void updatefocus(void);
 static void updategeom(void);
 static void updatemon(Monitor *, int, int, unsigned int, unsigned int);
+static void updatesizehints(Client *);
 static void updatewsdmap(void);
 static void updatewsdbar(XEvent *, char const *);
 static void updatewsdbox(Workspace *);
@@ -319,6 +323,33 @@ buttonpress(XEvent *e)
 	}
 }
 
+bool
+checksizehints(Client *c, int x, int y, unsigned int *w, unsigned int *h)
+{
+	unsigned int u;
+	bool change = false;;
+
+	if ((!c->floating && FORCESIZE) || (!c->basew && !c->baseh)) {
+		return true;
+	}
+
+	if (*w != c->w) {
+		u = (*w-c->basew)/c->incw;
+		*w = c->basew+u*c->incw;
+		if (*w != c->w) {
+			change = true;
+		}
+	}
+	if (*h != c->h) {
+		u = (*h-c->baseh)/c->inch;
+		*h = c->baseh+u*c->inch;
+		if (*h != c->h) {
+			change = true;
+		}
+	}
+	return change || c->x != x || c->y != y;
+}
+
 void
 cleanup(void)
 {
@@ -398,12 +429,6 @@ configurerequest(XEvent *e)
 
 	/* forward configuration if not managed (or if we don't force the size) */
 	if (!FORCESIZE || !locateclient(NULL, &c, NULL, ev->window) || c->floating) {
-		if (c && c->floating) {
-			c->x = ev->x;
-			c->y = ev->y;
-			c->w = ev->width;
-			c->h = ev->height;
-		}
 		wc = (XWindowChanges) {
 			.x = ev->x,
 			.y = ev->y,
@@ -648,7 +673,7 @@ initclient(Window win, bool viewable)
 		die("could not allocate %u bytes for client", sizeof(Client));
 	}
 	c->win = win;
-	c->floating = true; /* TODO apply rules */
+	c->floating = false; /* TODO apply rules */
 	if (c->floating) {
 		c->x = wa.x;
 		c->y = wa.y;
@@ -656,6 +681,7 @@ initclient(Window win, bool viewable)
 		c->h = wa.height;
 	}
 	XSetWindowBorderWidth(dpy, c->win, BORDERWIDTH);
+	updatesizehints(c);
 	grabbuttons(c, false);
 	XSelectInput(dpy, c->win, CLIENTMASK);
 	return c;
@@ -940,25 +966,32 @@ movemouse(Arg const *arg)
 		switch (ev.type) {
 			case ConfigureRequest:
 			case Expose:
+			case MapRequest:
 				handle[ev.type](&ev);
 				break;
 			case MotionNotify:
 				if (!c->floating) {
-					c->floating = true;
-					XRaiseWindow(dpy, c->win);
-					arrange(selmon);
-					updatefocus();
+					togglefloat(NULL);
 				}
 				cx = cx+(ev.xmotion.x-x);
 				cy = cy+(ev.xmotion.y-y);
 				x = ev.xmotion.x;
 				y = ev.xmotion.y;
-				place(c, cx, cy, c->w, c->h);
+				moveresize(c, cx, cy, c->w, c->h);
 				break;
 		}
 	} while (ev.type != ButtonRelease);
 
 	XUngrabPointer(dpy, CurrentTime);
+}
+
+void
+moveresize(Client *c, int x, int y, unsigned int w, unsigned int h)
+{
+	if (checksizehints(c, x, y, &w, &h)) {
+		XMoveResizeWindow(dpy, c->win, c->x = x, c->y = y,
+				c->w = MAX(w, 1), c->h = MAX(h, 1));
+	}
 }
 
 void
@@ -984,12 +1017,6 @@ movews(Arg const *arg)
 		wsd.target->x = dx;
 		wsd.target->y = dy;
 	}
-}
-
-void
-place(Client *c, int x, int y, unsigned int w, unsigned int h)
-{
-	XMoveResizeWindow(dpy, c->win, c->x=x, c->y=y, c->w=w, c->h=h);
 }
 
 void
@@ -1139,10 +1166,11 @@ resizemouse(Arg const *arg)
 {
 	XEvent ev;
 	Client *c = selmon->selws->selcli;
-	int cw=c->w, ch=c->h, x, y;
+	int x, y;
+	unsigned int cw=c->w, ch=c->h;
 
 	/* grab the pointer and change the cursor appearance */
-	if (XGrabPointer(dpy, root, true, MOUSEMASK, GrabModeAsync, GrabModeAsync,
+	if (XGrabPointer(dpy, root, false, MOUSEMASK, GrabModeAsync, GrabModeAsync,
 			None, cursor[CURSOR_RESIZE], CurrentTime) != GrabSuccess) {
 		warn("XGrabPointer() failed");
 		return;
@@ -1151,8 +1179,8 @@ resizemouse(Arg const *arg)
 	/* set initial pointer position to lower right */
 	XWarpPointer(dpy, None, c->win, 0, 0, 0, 0,
 			c->w+2*BORDERWIDTH-1, c->h+2*BORDERWIDTH-1);
-	x = c->x+c->w+2*BORDERWIDTH-1;
-	y = c->y+c->h+2*BORDERWIDTH-1;
+	x = c->w+2*BORDERWIDTH-1;
+	y = c->h+2*BORDERWIDTH-1;
 
 	/* handle motions */
 	do {
@@ -1160,20 +1188,18 @@ resizemouse(Arg const *arg)
 		switch (ev.type) {
 			case ConfigureRequest:
 			case Expose:
+			case MapRequest:
 				handle[ev.type](&ev);
 				break;
 			case MotionNotify:
 				if (!c->floating) {
-					c->floating = true;
-					XRaiseWindow(dpy, c->win);
-					arrange(selmon);
-					updatefocus();
+					togglefloat(NULL);
 				}
-				cw = cw+(ev.xmotion.x-x);
-				ch = ch+(ev.xmotion.y-y);
-				x = ev.xmotion.x;
-				y = ev.xmotion.y;
-				place(c, c->x, c->y, cw, ch);
+				cw = cw+(ev.xmotion.x_root-x);
+				ch = ch+(ev.xmotion.y_root-y);
+				x = ev.xmotion.x_root;
+				y = ev.xmotion.y_root;
+				moveresize(c, c->x, c->y, cw, ch);
 				break;
 		}
 	} while (ev.type != ButtonRelease);
@@ -1560,7 +1586,8 @@ tile(Monitor *mon)
 		w = mon->selws->nmaster >= ntiled ? mon->ww : mon->selws->mfact*mon->ww;
 		h = mon->wh/ncm;
 		for (i = 0; i < ncm; i++) {
-			place(tiled[i], x, mon->wy+i*h, w-2*BORDERWIDTH, h-2*BORDERWIDTH);
+			moveresize(tiled[i], x, mon->wy + i*h,
+					w - 2*BORDERWIDTH, h - 2*BORDERWIDTH);
 		}
 	}
 	if (ncm == ntiled) {
@@ -1572,7 +1599,8 @@ tile(Monitor *mon)
 	w = ncm ? mon->ww-x : mon->ww;
 	h = mon->wh/(ntiled-ncm);
 	for (i = ncm; i < ntiled; i++) {
-		place(tiled[i], x, mon->wy+(i-ncm)*h, w-2*BORDERWIDTH, h-2*BORDERWIDTH);
+		moveresize(tiled[i], x, mon->wy + (i-ncm)*h,
+				w - 2*BORDERWIDTH, h - 2*BORDERWIDTH);
 	}
 }
 
@@ -1806,6 +1834,30 @@ updatemon(Monitor *mon, int x, int y, unsigned int w, unsigned int h)
 	mon->ww = mon->w;
 	mon->wh = mon->h-mon->bh;
 	arrange(mon);
+}
+
+void
+updatesizehints(Client *c)
+{
+	long size;
+	XSizeHints hints;
+
+	if (!XGetWMNormalHints(dpy, c->win, &hints, &size)) {
+		warn("XGetWMNormalHints() failed");
+		return;
+	}
+	if (hints.flags & PBaseSize) {
+		c->basew = hints.base_width;
+		c->baseh = hints.base_height;
+	} else {
+		c->basew = c->baseh = 0;
+	}
+	if (hints.flags & PResizeInc) {
+		c->incw = hints.width_inc;
+		c->inch = hints.height_inc;
+	} else {
+		c->incw = c->inch = 0;
+	}
 }
 
 void
