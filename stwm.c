@@ -1176,7 +1176,7 @@ resizemouse(Arg const *arg)
 		return;
 	}
 
-	/* set initial pointer position to lower right */
+	/* set initial pointer position to lower right (TODO this is still buggy) */
 	XWarpPointer(dpy, None, c->win, 0, 0, 0, 0,
 			c->w+2*BORDERWIDTH-1, c->h+2*BORDERWIDTH-1);
 	x = c->w+2*BORDERWIDTH-1;

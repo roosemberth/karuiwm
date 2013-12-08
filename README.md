@@ -14,8 +14,8 @@ These are the features that will get added:
 
 * complete multi-monitor support (moving clients to other monitors, swapping
   monitors upon collision, indicator for focused monitor, ...)
+* add client rules (+ fix initial resize bug)
 * dmenu integration for workspace selection
-* mouse support, floating windows (+ rules)
 * scratchpad
 * more layouts
 
@@ -86,6 +86,8 @@ These are the default settings defined by the <code>keys</code> array:
 
 * <code>Mod</code>+<code>j</code>|<code>k</code>
   set focus to next/previous client
+* <code>Mod</code>+<code>t</code>
+  toggle floating for selected client
 * <code>Mod</code>+<code>Shift</code>+<code>c</code>
   close selected client
 
@@ -122,6 +124,11 @@ These are the default settings defined by the <code>keys</code> array:
   quit stwm
 
 The <code>Mod</code> key is set to Mod1 (<code>Alt</code>):
+
+Mouse support is currently limited to resizing and moving clients.
+<code>Mod</code>+<code>Button1</code> will move the window (and enable its
+floating mode if necessary); <code>Mod</code>+<code>Button3</code> will resize
+the window.
 
 
 workspace dialog
