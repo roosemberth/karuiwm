@@ -38,7 +38,7 @@
 /* enums */
 enum { CURSOR_NORMAL, CURSOR_RESIZE, CURSOR_MOVE, CURSOR_LAST };
 enum { LEFT, RIGHT, UP, DOWN, NO_DIRECTION };
-enum DMenuState { DMENU_SPAWN, DMENU_RENAME, DMENU_CHANGE, DMENU_INACTIVE };
+enum DMenuState { DMENU_SPAWN, DMENU_RENAME, DMENU_VIEW, DMENU_INACTIVE };
 
 typedef struct Workspace Workspace;
 
@@ -117,7 +117,6 @@ static void arrange(Monitor *);
 static void attachclient(Workspace *, Client *);
 static void attachws(Workspace *);
 static void buttonpress(XEvent *);
-static void changews(Arg const *);
 static bool checksizehints(Client *, int, int, unsigned int *, unsigned int *);
 static void cleanup(void);
 static void clientmessage(XEvent *);
@@ -157,7 +156,6 @@ static void propertynotify(XEvent *);
 static void push(Workspace *, Client *);
 static void quit(Arg const *);
 static void reltoxy(int *, int *, Workspace *, int);
-static void renamews(Arg const *);
 static void renderbar(Monitor *);
 static void renderwsmbox(Workspace *);
 static void resizemouse(Arg const *);
@@ -169,7 +167,7 @@ static void setup(void);
 static void setupfont(void);
 static void setupwsm(void);
 static void setnmaster(Arg const *);
-static void setws(int, int, char const *);
+static void setws(int, int);
 static void shift(Arg const *);
 static void sigchld(int);
 static void spawn(Arg const *);
@@ -193,6 +191,7 @@ static void updatemon(Monitor *, int, int, unsigned int, unsigned int);
 static void updatesizehints(Client *);
 static void updatewsm(void);
 static void updatewsmbox(Workspace *);
+static void viewws(Arg const *);
 static int xerror(Display *, XErrorEvent *);
 static int (*xerrorxlib)(Display *, XErrorEvent *);
 static void zoom(Arg const *);
@@ -321,12 +320,6 @@ buttonpress(XEvent *e)
 			buttons[i].func(&buttons[i].arg);
 		}
 	}
-}
-
-void
-changews(Arg const *arg)
-{
-	dmenu(&((Arg const) { .i=DMENU_CHANGE }));
 }
 
 bool
@@ -556,7 +549,7 @@ dmenu(Arg const *arg)
 	}
 	cmd[i] = "-p";
 	switch (arg->i) {
-		case DMENU_CHANGE: cmd[i+1] = PROMPT_CHANGE; break;
+		case DMENU_VIEW:   cmd[i+1] = PROMPT_CHANGE; break;
 		case DMENU_RENAME: cmd[i+1] = PROMPT_RENAME; break;
 		case DMENU_SPAWN:  cmd[i+1] = PROMPT_SPAWN;  break;
 	}
@@ -587,7 +580,7 @@ dmenu(Arg const *arg)
 	}
 	close(in[0]);
 	close(out[1]);
-	if (arg->i == DMENU_CHANGE) {
+	if (arg->i == DMENU_VIEW) {
 		for (i = 0; i < nws; i++) {
 			len = strlen(workspaces[i]->name);
 			write(in[1], len ? workspaces[i]->name : DEFAULT_WSNAME,
@@ -605,6 +598,7 @@ dmenueval(void)
 {
 	int ret;
 	char buf[256];
+	Workspace *ws;
 
 	ret = read(dmenu_out, buf, 256);
 	if (ret < 0) {
@@ -615,8 +609,10 @@ dmenueval(void)
 		if (dmenu_state == DMENU_RENAME) {
 			strcpy(selmon->selws->name, buf);
 			updatebar(selmon);
-		} else if (dmenu_state == DMENU_CHANGE) {
-			setws(0, 0, buf);
+		} else if (dmenu_state == DMENU_VIEW) {
+			if (locatews(&ws, NULL, 0, 0, buf)) {
+				setws(0, 0);
+			}
 		}
 	}
 	close(dmenu_out);
@@ -838,23 +834,23 @@ keypress(XEvent *e)
 	unsigned int i;
 	KeySym keysym = XLookupKeysym(&e->xkey, 0);
 
-	/* catch normal keys */
-	if (!wsm.active) {
-		for (i = 0; i < LENGTH(keys); i++) {
-			if (e->xkey.state == keys[i].mod && keysym == keys[i].key &&
-					keys[i].func) {
-				keys[i].func(&keys[i].arg);
+	/* catch WSM keys if active */
+	if (wsm.active) {
+		for (i = 0; i < LENGTH(wsmkeys); i++) {
+			if (e->xkey.state == wsmkeys[i].mod && keysym == wsmkeys[i].key &&
+					wsmkeys[i].func) {
+				wsmkeys[i].func(&wsmkeys[i].arg);
+				updatewsm();
 				return;
 			}
 		}
 	}
 
-	/* catch WSM keys */
-	for (i = 0; i < LENGTH(wsmkeys); i++) {
-		if (e->xkey.state == wsmkeys[i].mod && keysym == wsmkeys[i].key &&
-				wsmkeys[i].func) {
-			wsmkeys[i].func(&wsmkeys[i].arg);
-			updatewsm();
+	/* catch normal keys */
+	for (i = 0; i < LENGTH(keys); i++) {
+		if (e->xkey.state == keys[i].mod && keysym == keys[i].key &&
+				keys[i].func) {
+			keys[i].func(&keys[i].arg);
 			return;
 		}
 	}
@@ -964,8 +960,6 @@ locatews(Workspace **ws, unsigned int *pos, int x, int y, char const *name)
 			}
 		}
 	}
-	if (name) warn("could not match workspace '%s'", name);
-	else warn("could not match workspace %d|%d", x, y);
 	return false;
 }
 
@@ -1150,12 +1144,6 @@ reltoxy(int *x, int *y, Workspace *ws, int direction)
 		case UP:    if (y) (*y)--; break;
 		case DOWN:  if (y) (*y)++; break;
 	}
-}
-
-void
-renamews(Arg const *arg)
-{
-	dmenu(&((Arg const) { .i=DMENU_RENAME }));
 }
 
 void
@@ -1407,11 +1395,11 @@ setupwsm(void)
 }
 
 void
-setws(int x, int y, char const *name)
+setws(int x, int y)
 {
 	Workspace *next=NULL;
 
-	if (locatews(&next, NULL, x, y, name) && collision(next)) {
+	if (locatews(&next, NULL, x, y, NULL) && collision(next)) {
 		return;
 	}
 
@@ -1548,7 +1536,7 @@ stepws(Arg const *arg)
 {
 	int x, y;
 	reltoxy(&x, &y, selmon->selws, arg->i);
-	setws(x, y, NULL);
+	setws(x, y);
 }
 
 void
@@ -1760,7 +1748,6 @@ updatebar(Monitor *mon)
 		mon->bw = mon->w;
 		XMoveResizeWindow(dpy, mon->bar.win, mon->bx, mon->by, mon->bw,mon->bh);
 	}
-	debug("updating bar with '%s'", mon->selws->name);
 	strcpy(mon->bar.buffer, mon->selws->name);
 	renderbar(mon);
 }
@@ -1920,6 +1907,16 @@ updatewsmbox(Workspace *ws)
 	XRaiseWindow(dpy, ws->wsmbox);
 
 	renderwsmbox(ws);
+}
+
+void
+viewws(Arg const *arg)
+{
+	if (!wsm.active) {
+		return;
+	}
+	setws(wsm.target->x, wsm.target->y);
+	togglewsm(NULL);
 }
 
 int
