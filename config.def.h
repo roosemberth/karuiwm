@@ -6,8 +6,8 @@
 #define MFACT 0.5        /* size of master area */
 #define FORCESIZE true   /* force terminals to fit the layout? */
 #define BORDERWIDTH 1    /* window border width */
-#define WSDBORDERWIDTH 1 /* WSD box border width */
-#define WSDRADIUS 5      /* number of workspaces around WSD centre */
+#define WSMBORDERWIDTH 1 /* WSM box border width */
+#define WSMRADIUS 5      /* number of workspaces around WSM centre */
 
 /* colours */
 #define CBORDERNORM      0x222222   /* normal windows */
@@ -16,20 +16,20 @@
 #define CNORM            0x888888   /* status bar */
 #define CBGNORM          0x222222
 
-#define CSEL             0xCCCCCC   /* input bar (e.g. WSD bar) */
+#define CSEL             0xCCCCCC
 #define CBGSEL           0x444444
 
-#define WSDCNORM         CNORM      /* WSD box of normal workspaces */
-#define WSDCBGNORM       CBGNORM
-#define WSDCBORDERNORM   CBGSEL
+#define WSMCNORM         CNORM      /* WSM box of normal workspaces */
+#define WSMCBGNORM       CBGNORM
+#define WSMCBORDERNORM   CBGSEL
 
-#define WSDCSEL          CSEL       /* WSD box of current workspace */
-#define WSDCBGSEL        CBGSEL
-#define WSDCBORDERSEL    CSEL
+#define WSMCSEL          CSEL       /* WSM box of current workspace */
+#define WSMCBGSEL        CBGSEL
+#define WSMCBORDERSEL    CSEL
 
-#define WSDCTARGET       CBORDERSEL /* WSD box of selected workspace */
-#define WSDCBGTARGET     CBGSEL
-#define WSDCBORDERTARGET CBORDERSEL
+#define WSMCTARGET       CBORDERSEL /* WSM box of selected workspace */
+#define WSMCBGTARGET     CBGSEL
+#define WSMCBORDERTARGET CBORDERSEL
 
 /* commands */
 static char const *termcmd[] = { "xfce4-terminal", NULL };
@@ -84,7 +84,7 @@ static Key const keys[] = {
 	{ MODKEY,                       XK_Return, zoom,        { 0 } },
 
 	/* workspaces */
-	{ MODKEY,                       XK_space,  togglewsd,   { 0 } },
+	{ MODKEY,                       XK_space,  togglewsm,   { 0 } },
 	{ MODKEY|ControlMask,           XK_h,      stepws,      { .i=LEFT } },
 	{ MODKEY|ControlMask,           XK_l,      stepws,      { .i=RIGHT } },
 	{ MODKEY|ControlMask,           XK_j,      stepws,      { .i=DOWN } },
@@ -104,16 +104,16 @@ static Key const keys[] = {
 	{ MODKEY|ShiftMask,             XK_q,      quit,        { 0 } },
 };
 
-/* WSD keys */
-static Key const wsdkeys[] = {
+/* WSM keys */
+static Key const wsmkeys[] = {
 	{ 0,                            XK_Print,  spawn,       { .v=scrotcmd } },
-	{ MODKEY,                       XK_space,  togglewsd,   { 0 } },
+	{ MODKEY,                       XK_space,  togglewsm,   { 0 } },
 
 	/* move view */
-	{ MODKEY,                       XK_h,      stepwsdbox,  { .i=LEFT } },
-	{ MODKEY,                       XK_l,      stepwsdbox,  { .i=RIGHT } },
-	{ MODKEY,                       XK_j,      stepwsdbox,  { .i=DOWN } },
-	{ MODKEY,                       XK_k,      stepwsdbox,  { .i=UP } },
+	{ MODKEY,                       XK_h,      stepwsmbox,  { .i=LEFT } },
+	{ MODKEY,                       XK_l,      stepwsmbox,  { .i=RIGHT } },
+	{ MODKEY,                       XK_j,      stepwsmbox,  { .i=DOWN } },
+	{ MODKEY,                       XK_k,      stepwsmbox,  { .i=UP } },
 
 	/* move workspace */
 	{ MODKEY|ShiftMask,             XK_h,      movews,      { .i=LEFT } },

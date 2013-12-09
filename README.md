@@ -8,15 +8,17 @@ inspired by [xmonad](http://xmonad.org/) and based on
 Currently these are the features of stwm:
 
 * workspaces arranged in two dimensions, with dynamic creation and destruction
-* Xinerama support for multi-monitor setup, with shared workspaces
+* Xinerama support for multi-monitor setup, with shared set of workspaces
 
 These are the features that will get added:
 
 * complete multi-monitor support (moving clients to other monitors, swapping
-  monitors upon collision, indicator for focused monitor, ...)
-* add client rules (+ fix initial resize bug)
+  monitors upon collision, indicator for focused monitor, fix focus issue upon
+  destroying last client on a workspace)
+* complete mouse support (fix initial resize bug)
+* client rules (floating, workspace, ...)
 * scratchpad
-* more layouts
+* multiple layouts + cycling through them
 
 These are features that *might* get added in the future:
 
@@ -129,24 +131,23 @@ These are the default settings defined by the <code>keys</code> array:
 The <code>Mod</code> key is set to Mod1 (<code>Alt</code>):
 
 Mouse support is currently limited to resizing and moving clients.
-<code>Mod</code>+<code>Button1</code> will move the window (and enable its
-floating mode if necessary); <code>Mod</code>+<code>Button3</code> will resize
-the window.
+<code>Mod</code>+<code>Button1</code> moves a window,
+<code>Mod</code>+<code>Button3</code> resizes a window. In both cases the window
+will become floating.
 
 
 workspace map
 ----------------
 
-The workspace map is a view that comes with a separately configured set of keys;
-it allows to perform actions within a visual representation (the "map") of the
-workspaces.
+The workspace map is a visual representation of the workspaces and allows to
+perform actions on them with a separately configured set of keys:
 
 ![screenshot](http://ayekat.ch/img/host/github.com/screen_stwm.png)
 
-The <code>wsdkeys</code> array defines keys for using the visual selection:
+The <code>wsmkeys</code> array defines keys for using the visual selection:
 
 * <code>Mod</code>+<code>Space</code>
-  close workspace dialog
+  close workspace map
 * <code>Mod</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
   set selection to left/below/above/right workspace
 * <code>Mod</code>+<code>Shift</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
