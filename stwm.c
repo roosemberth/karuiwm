@@ -3,11 +3,12 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <stdarg.h>
+#include <string.h>
 #include <time.h>
 #include <locale.h>
 #include <signal.h>
 #include <sys/wait.h>
-#include <string.h>
+#include <sys/select.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
@@ -37,6 +38,7 @@
 /* enums */
 enum { CURSOR_NORMAL, CURSOR_RESIZE, CURSOR_MOVE, CURSOR_LAST };
 enum { LEFT, RIGHT, UP, DOWN, NO_DIRECTION };
+enum DMenuState { DMENU_SPAWN, DMENU_RENAME, DMENU_CHANGE, DMENU_INACTIVE };
 
 typedef struct Workspace Workspace;
 
@@ -125,6 +127,8 @@ static void configurenotify(XEvent *);
 static void detachclient(Client *);
 static void detachmon(Monitor *);
 static void detachws(Workspace *);
+static void dmenu(Arg const *);
+static void dmenueval(void);
 static void enternotify(XEvent *);
 static void expose(XEvent *);
 static void grabbuttons(Client *, bool);
@@ -165,7 +169,7 @@ static void setup(void);
 static void setupfont(void);
 static void setupwsd(void);
 static void setnmaster(Arg const *);
-static void setws(int, int);
+static void setws(int, int, char const *);
 static void shift(Arg const *);
 static void sigchld(int);
 static void spawn(Arg const *);
@@ -222,6 +226,8 @@ static WorkspaceDialog wsd;         /* workspace dialog */
 static Monitor **monitors;          /* list of monitors */
 static Monitor *selmon;             /* selected monitor */
 static unsigned int nmon;           /* number of monitors */
+static int dmenu_out;               /* dmenu's output file descriptor */
+static enum DMenuState dmenu_state; /* dmenu's state */
 
 /* configuration */
 #include "config.h"
@@ -322,7 +328,7 @@ buttonpress(XEvent *e)
 void
 changews(Arg const *arg)
 {
-	/* TODO */
+	dmenu(&((Arg const) { .i=DMENU_CHANGE }));
 }
 
 bool
@@ -537,6 +543,81 @@ detachws(Workspace *ws)
 		ws->wsdbox = 0;
 		updatewsdmap();
 	}
+}
+
+void
+dmenu(Arg const *arg)
+{
+	int in[2], out[2], i, len;
+	char const *cmd[LENGTH(dmenuargs)+3];
+
+	/* assemble dmenu command */
+	cmd[0] = arg->i == DMENU_SPAWN ? "dmenu_run" : "dmenu";
+	for (i = 0; i < LENGTH(dmenuargs); i++) {
+		cmd[i+1] = dmenuargs[i];
+	}
+	cmd[i] = "-p";
+	switch (arg->i) {
+		case DMENU_CHANGE: cmd[i+1] = PROMPT_CHANGE; break;
+		case DMENU_RENAME: cmd[i+1] = PROMPT_RENAME; break;
+		case DMENU_SPAWN:  cmd[i+1] = PROMPT_SPAWN;  break;
+	}
+	cmd[i+2] = NULL;
+
+	/* create pipes */
+	if (arg->i != DMENU_SPAWN && (pipe(in) < 0 || pipe(out) < 0)) {
+		die("could not create pipes for dmenu");
+	}
+
+	/* child */
+	if (fork() == 0) {
+		if (arg->i != DMENU_SPAWN) {
+			close(in[1]);
+			close(out[0]);
+			dup2(in[0], STDIN_FILENO);
+			dup2(out[1], STDOUT_FILENO);
+			close(in[0]);
+			close(out[1]);
+		}
+		execvp(cmd[0], (char *const *) cmd);
+		die("failed to execute %s", cmd[0]);
+	}
+
+	/* parent */
+	if (arg->i == DMENU_SPAWN) {
+		return;
+	}
+	close(in[0]);
+	close(out[1]);
+	for (i = 0; i < nws; i++) {
+		len = strlen(workspaces[i]->name);
+		write(in[1], len ? workspaces[i]->name : DEFAULT_WSNAME,
+				len ? len : strlen(DEFAULT_WSNAME));
+		write(in[1], "\n", 1);
+	}
+	close(in[1]);
+	dmenu_state = arg->i;
+	dmenu_out = out[0];
+}
+
+void
+dmenueval(void)
+{
+	int ret;
+	char buf[256];
+
+	ret = read(dmenu_out, buf, 256);
+	if (ret < 0) {
+		die("failed to read from dmenu file descriptor");
+	}
+	buf[ret-1] = 0;
+	if (dmenu_state == DMENU_RENAME) {
+		strcpy(selmon->selws->name, buf);
+		updatebar(selmon);
+	} else if (dmenu_state == DMENU_CHANGE) {
+		setws(0, 0, buf);
+	}
+	dmenu_state = DMENU_INACTIVE;
 }
 
 void
@@ -1069,7 +1150,7 @@ reltoxy(int *x, int *y, Workspace *ws, int direction)
 void
 renamews(Arg const *arg)
 {
-	/* TODO */
+	dmenu(&((Arg const) { .i=DMENU_RENAME }));
 }
 
 void
@@ -1165,11 +1246,24 @@ void
 run(void)
 {
 	XEvent e;
+	int ret;
+	fd_set fds;
+	struct timeval timeout = { .tv_usec = 0, .tv_sec = 0 };
+	dmenu_out =
+
 	running = true;
 	while (running && !XNextEvent(dpy, &e)) {
 		//debug("run(): e.type=%d", e.type);
 		if (handle[e.type]) {
 			handle[e.type](&e);
+		}
+		if (dmenu_state != DMENU_INACTIVE) {
+			FD_ZERO(&fds);
+			FD_SET(dmenu_out, &fds);
+			ret = select(FD_SETSIZE, &fds, NULL, NULL, &timeout);
+			if (ret > 0) {
+				dmenueval();
+			}
 		}
 	}
 }
@@ -1308,11 +1402,11 @@ setupwsd(void)
 }
 
 void
-setws(int x, int y)
+setws(int x, int y, char const *name)
 {
 	Workspace *next=NULL;
 
-	if (locatews(&next, NULL, x, y, NULL) && collision(next)) {
+	if (locatews(&next, NULL, x, y, name) && collision(next)) {
 		return;
 	}
 
@@ -1449,7 +1543,7 @@ stepws(Arg const *arg)
 {
 	int x, y;
 	reltoxy(&x, &y, selmon->selws, arg->i);
-	setws(x, y);
+	setws(x, y, NULL);
 }
 
 void

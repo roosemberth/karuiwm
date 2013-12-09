@@ -33,11 +33,16 @@
 
 /* commands */
 static char const *termcmd[] = { "xfce4-terminal", NULL };
-static char const *dmenucmd[] = { "dmenu_run", NULL };
 static char const *scrotcmd[] = { "scrot", NULL };
 
+/* default workspace name */
+#define DEFAULT_WSNAME "[no name]"
+
 /* dmenu arguments (see man dmenu) */
-static char const *dmenuargs[] = { "-p", "spawn", "-l", "10",
+#define PROMPT_RENAME "rename"
+#define PROMPT_CHANGE "workspace"
+#define PROMPT_SPAWN  "spawn"
+static char const *dmenuargs[] = { "-b", "-l", "10",
 	                               "-nf", "#888888", "-nb", "#222222",
 	                               "-sf", "#AFD800", "-sb", "#444444", NULL };
 
@@ -60,7 +65,7 @@ custom_shutdown()
 static Key const keys[] = {
 	/* applications */
 	{ MODKEY,                       XK_n,      spawn,       { .v=termcmd } },
-	{ MODKEY,                       XK_p,      spawn,       { .v=dmenucmd } },
+	{ MODKEY,                       XK_p,      dmenu,       { .i=DMENU_SPAWN } },
 	{ 0,                            XK_Print,  spawn,       { .v=scrotcmd } },
 
 	/* windows */

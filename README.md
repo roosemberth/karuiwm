@@ -15,7 +15,6 @@ These are the features that will get added:
 * complete multi-monitor support (moving clients to other monitors, swapping
   monitors upon collision, indicator for focused monitor, ...)
 * add client rules (+ fix initial resize bug)
-* dmenu integration for workspace selection
 * scratchpad
 * more layouts
 
@@ -108,8 +107,12 @@ These are the default settings defined by the <code>keys</code> array:
   set view to left/below/above/right workspace
 * <code>Mod</code>+<code>Ctrl</code>+<code>Shift</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
   move and follow client to left/below/above/right workspace
+* <code>Mod</code>+<code>o</code>
+  switch to a workspace by name using dmenu
+* <code>Mod</code>+<code>r</code>
+  rename current workspace using dmenu
 * <code>Mod</code>+<code>Space</code>
-  open workspace dialog (see below)
+  open workspace map (see below)
 
 **Monitors**
 
@@ -131,12 +134,12 @@ floating mode if necessary); <code>Mod</code>+<code>Button3</code> will resize
 the window.
 
 
-workspace dialog
+workspace map
 ----------------
 
-The workspace dialog is a view that comes with a separately configured set of
-keys. It consists of an input bar to change the workspace by entering its name,
-and of a "map" to visually select a workspace.
+The workspace map is a view that comes with a separately configured set of keys;
+it allows to perform actions within a visual representation (the "map") of the
+workspaces.
 
 ![screenshot](http://ayekat.ch/img/host/github.com/screen_stwm.png)
 
@@ -149,30 +152,7 @@ The <code>wsdkeys</code> array defines keys for using the visual selection:
 * <code>Mod</code>+<code>Shift</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
   swap selected workspace with left/below/above/right workspace
 * <code>Return</code>
-  switch to the selected workspace (see below)
-* <code>Ctrl</code>+<code>Return</code>
-  rename current workspace
-
-The input bar allows you to type a name and perform one of the following
-actions:
-
-* <code>Return</code>
-  change to the workspace matching the specified name
-* <code>Ctrl</code>+<code>Return</code>
-  rename the *current* (!) workspace to the specified name
-* <code>Esc</code>
-  close workspace dialog
-
-Besides this, some ANSI control sequences are supported: <code>^A</code> (home),
-<code>^B</code> (left), <code>^C</code> (cancel), <code>^D</code> (delete),
-<code>^E</code> (end), <code>^F</code> (right), <code>^H</code> (backspace),
-<code>^J</code> (return), <code>^K</code> (clear right), <code>^M</code>
-(return), <code>^U</code> (clear left).
-
-Note that the name matching is still quite dumb, as it will simply compare the
-first [n] characters, where [n] is the length of the input string. In case the
-string matches multiple workspaces, the bahaviour is unspecified (should get
-fixed in the future).
+  switch to the selected workspace
 
 
 appendix A: workspaces
