@@ -86,7 +86,6 @@ typedef struct {
 	struct {
 		Window win;
 		char buffer[256];
-		unsigned int cursor;
 	} bar;
 } Monitor;
 
@@ -116,6 +115,7 @@ static void arrange(Monitor *);
 static void attachclient(Workspace *, Client *);
 static void attachws(Workspace *);
 static void buttonpress(XEvent *);
+static void changews(Arg const *);
 static bool checksizehints(Client *, int, int, unsigned int *, unsigned int *);
 static void cleanup(void);
 static void clientmessage(XEvent *);
@@ -138,7 +138,6 @@ static Workspace *initws(int, int);
 static Window initwsdbox(void);
 static void keypress(XEvent *);
 static void keyrelease(XEvent *);
-static char keytoansi(KeySym *);
 static void killclient(Arg const *);
 static bool locateclient(Workspace **, Client **, unsigned int *, Window const);
 static bool locatemon(Monitor **, unsigned int *, Workspace const *);
@@ -154,7 +153,7 @@ static void propertynotify(XEvent *);
 static void push(Workspace *, Client *);
 static void quit(Arg const *);
 static void reltoxy(int *, int *, Workspace *, int);
-static void renamews(Workspace *, char const *);
+static void renamews(Arg const *);
 static void renderbar(Monitor *);
 static void renderwsdbox(Workspace *);
 static void resizemouse(Arg const *);
@@ -178,7 +177,6 @@ static void stepwsdbox(Arg const *arg);
 static void termclient(Client *);
 static void termmon(Monitor *);
 static void termws(Workspace *);
-static unsigned int textwidth(char const *, unsigned int);
 static void tile(Monitor *);
 static void togglefloat(Arg const *);
 static void togglewsd(Arg const *);
@@ -190,7 +188,6 @@ static void updategeom(void);
 static void updatemon(Monitor *, int, int, unsigned int, unsigned int);
 static void updatesizehints(Client *);
 static void updatewsdmap(void);
-static void updatewsdbar(XEvent *, char const *);
 static void updatewsdbox(Workspace *);
 static int xerror(Display *, XErrorEvent *);
 static int (*xerrorxlib)(Display *, XErrorEvent *);
@@ -299,7 +296,6 @@ attachws(Workspace *ws)
 				nws*sizeof(Workspace *));
 	}
 	workspaces[nws-1] = ws;
-	renamews(ws, NULL);
 }
 
 void
@@ -321,6 +317,12 @@ buttonpress(XEvent *e)
 			buttons[i].func(&buttons[i].arg);
 		}
 	}
+}
+
+void
+changews(Arg const *arg)
+{
+	/* TODO */
 }
 
 bool
@@ -635,7 +637,6 @@ initbar(Monitor *mon)
 
 	mon->bh = dc.font.height + 2;
 	mon->bar.buffer[0] = 0;
-	mon->bar.cursor = 0;
 
 	wa.override_redirect = true;
 	wa.background_pixmap = ParentRelative;
@@ -773,34 +774,12 @@ keypress(XEvent *e)
 			return;
 		}
 	}
-
-	/* pass rest on to input bar */
-	updatewsdbar(e, NULL);
 }
 
 void
 keyrelease(XEvent *e)
 {
 	//debug("keyrelease()");
-}
-
-char
-keytoansi(KeySym *keysym)
-{
-	switch (*keysym) {
-		case XK_Home:      return 0x01; break; /* ^A */
-		case XK_Left:      return 0x02; break; /* ^B */
-		case XK_Delete:    return 0x04; break; /* ^D */
-		case XK_End:       return 0x05; break; /* ^E */
-		case XK_Right:     return 0x06; break; /* ^F */
-		case XK_BackSpace: return 0x08; break; /* ^H */
-		case XK_Tab:       return 0x09; break; /* ^I */
-		case XK_Return:    return 0x0D; break; /* ^M */
-		case XK_Down:      return 0x0E; break; /* ^N */
-		case XK_Up:        return 0x10; break; /* ^P */
-		case XK_Escape:    return 0x1B; break; /* ^[ */
-		default:           return 0;    /* no match */
-	}
 }
 
 void
@@ -1088,34 +1067,9 @@ reltoxy(int *x, int *y, Workspace *ws, int direction)
 }
 
 void
-renamews(Workspace *ws, char const *name)
+renamews(Arg const *arg)
 {
-	unsigned int n, w;
-	bool found;
-
-	/* name specified */
-	if (name) {
-		strncpy(ws->name, name, 255);
-		ws->name[255] = 0;
-		return;
-	}
-
-	/* name not specified, search random name */
-	for (n = 0; n < LENGTH(wsnames); n++) {
-		found = false;
-		for (w = 0; w < nws; w++) {
-			if (!strcmp(wsnames[n], workspaces[w]->name)) {
-				found = true;
-				break;
-			}
-		}
-		if (!found) {
-			strcpy(ws->name, wsnames[n]);
-			return;
-		}
-	}
-	warn("workspace name pool exhausted");
-	strcpy(ws->name, "");
+	/* TODO */
 }
 
 void
@@ -1124,20 +1078,13 @@ renderbar(Monitor *mon)
 	/* TODO X pixel offset */
 
 	/* background */
-	XSetForeground(dpy, dc.gc, wsd.active ? CBGSEL : CBGNORM);
+	XSetForeground(dpy, dc.gc, CBGNORM);
 	XFillRectangle(dpy, mon->bar.win, dc.gc, 0, 0, mon->bw, mon->bh);
 
 	/* foreground */
-	XSetForeground(dpy, dc.gc, wsd.active ? CSEL : CNORM);
+	XSetForeground(dpy, dc.gc, CNORM);
 	Xutf8DrawString(dpy, mon->bar.win, dc.font.xfontset, dc.gc, 6,
 			dc.font.ascent+1, mon->bar.buffer, strlen(mon->bar.buffer));
-
-	/* cursor if WSD */
-	if (wsd.active) {
-		XFillRectangle(dpy, mon->bar.win, dc.gc,
-				textwidth(mon->bar.buffer, mon->bar.cursor)+5, 1,
-				1, dc.font.height);
-	}
 	XSync(dpy, false);
 }
 
@@ -1515,7 +1462,6 @@ stepwsdbox(Arg const *arg)
 	} else {
 		wsd.target->name[0] = 0;
 	}
-	updatewsdbar(NULL, wsd.target->name);
 }
 
 void
@@ -1538,17 +1484,6 @@ termws(Workspace *ws)
 		warn("destroying non-empty workspace");
 	}
 	free(ws);
-}
-
-unsigned int
-textwidth(char const *str, unsigned int len)
-{
-	XRectangle r;
-	if (dc.font.xfontset) {
-		XmbTextExtents(dc.font.xfontset, str, len, NULL, &r);
-		return r.width;
-	}
-	return XTextWidth(dc.font.xfontstruct, str, len);
 }
 
 /* TODO move to layouts.h */
@@ -1664,9 +1599,6 @@ togglewsd(Arg const *arg)
 	XRaiseWindow(dpy, selmon->bar.win);
 
 	/* initial update */
-	selmon->bar.buffer[0] = 0;
-	selmon->bar.cursor = 0;
-	updatebar(selmon);
 	updatewsdmap();
 }
 
@@ -1736,9 +1668,7 @@ updatebar(Monitor *mon)
 		mon->bw = mon->w;
 		XMoveResizeWindow(dpy, mon->bar.win, mon->bx, mon->by, mon->bw,mon->bh);
 	}
-	if (!wsd.active) {
-		strcpy(mon->bar.buffer, mon->selws->name);
-	}
+	strcpy(mon->bar.buffer, mon->selws->name);
 	renderbar(mon);
 }
 
@@ -1874,122 +1804,6 @@ updatewsdmap(void)
 	}
 	updatewsdbox(wsd.target);
 	XSync(dpy, false);
-}
-
-void
-updatewsdbar(XEvent *e, char const *name)
-{
-	Status status;
-	char code[20], ansi;
-	unsigned int i, n;
-	KeySym keysym;
-	Workspace *ws;
-	XKeyPressedEvent *ev = &e->xkey;
-
-	/* if name is set, replace current buffer by name */
-	if (name) {
-		strncpy(selmon->bar.buffer, name, 256);
-		selmon->bar.cursor = strlen(selmon->bar.buffer);
-		updatebar(selmon);
-		return;
-	}
-
-	/* if IM is filtering the current input (e.g. dead key), ignore it */
-	if (XFilterEvent(e, selmon->bar.win)) {
-		return;
-	}
-
-	/* catch special keys */
-	keysym = XLookupKeysym(ev, 0);
-	ansi = keytoansi(&keysym);
-	if (!ansi) {
-		n = Xutf8LookupString(wsd.ic, ev, code, 20, NULL, &status);
-		if (!n) {
-			return;
-		} else if (n == 1 && (code[0] < 0x20 || code[0] == 0x7F)) {
-			ansi = code[0];
-		} else {
-			if (strlen(selmon->bar.buffer)+n < 256) {
-				for (i = strlen(selmon->bar.buffer)+n;
-						i >= selmon->bar.cursor+n; i--) {
-					selmon->bar.buffer[i] = selmon->bar.buffer[i-n];
-				}
-				strncpy(selmon->bar.buffer+selmon->bar.cursor, code, n);
-				selmon->bar.cursor += n;
-				updatebar(selmon);
-			} else {
-				warn("WSD bar: buffer is full");
-			}
-			return;
-		}
-	}
-
-	/* ANSI escape codes */
-	switch (ansi) {
-		case 0x01: /* ^A | Home */
-			selmon->bar.cursor = 0;
-			break;
-		case 0x02: /* ^B | Left */
-			selmon->bar.cursor = MAX(selmon->bar.cursor-1, 0);
-			break;
-		case 0x03: /* ^C |        */
-		case 0x1B: /*      Escape */
-			togglewsd(NULL);
-			break;
-		case 0x04: /* ^D | Delete */
-		case 0x7F: /*    | Delete (soft) */
-			for (i = selmon->bar.cursor; i < strlen(selmon->bar.buffer); i++) {
-				selmon->bar.buffer[i] = selmon->bar.buffer[i+1];
-			}
-			break;
-		case 0x05: /* ^E | End */
-			selmon->bar.cursor = strlen(selmon->bar.buffer);
-			break;
-		case 0x06: /* ^F | Right */
-			selmon->bar.cursor = MIN(selmon->bar.cursor+1, strlen(selmon->bar.buffer));
-			break;
-		case 0x08: /* ^H | Backspace */
-			if (selmon->bar.cursor) {
-				for (i = --selmon->bar.cursor; i < strlen(selmon->bar.buffer); i++) {
-					selmon->bar.buffer[i] = selmon->bar.buffer[i+1];
-				}
-			}
-			break;
-		case 0x0A: /* ^J          */
-		case 0x0D: /* ^M | Return */
-			if (e->xkey.state&ControlMask && keysym != XK_j) {
-				if (strlen(selmon->bar.buffer) && locatews(&ws, NULL,
-						wsd.target->x, wsd.target->y, NULL)) {
-					strncpy(ws->name, selmon->bar.buffer, 255);
-					ws->name[255] = 0;
-				}
-			} else {
-				if (strlen(selmon->bar.buffer) && locatews(&ws, NULL,
-						0, 0, selmon->bar.buffer)) {
-					setws(ws->x, ws->y);
-				} else {
-					setws(wsd.target->x, wsd.target->y);
-				}
-			}
-			togglewsd(NULL);
-			break;
-		case 0x0B: /* ^K */
-			selmon->bar.buffer[selmon->bar.cursor] = 0;
-			break;
-		case 0x0E: /* ^N | Down */
-			/* TODO */
-			break;
-		case 0x10: /* ^P | Up */
-			/* TODO */
-			break;
-		case 0x15: /* ^U */
-			strcpy(selmon->bar.buffer, selmon->bar.buffer+selmon->bar.cursor);
-			selmon->bar.cursor = 0;
-			break;
-		default:
-			warn("unknown keycode: %X", code[0]);
-	}
-	updatebar(selmon);
 }
 
 void

@@ -36,12 +36,10 @@ static char const *termcmd[] = { "xfce4-terminal", NULL };
 static char const *dmenucmd[] = { "dmenu_run", NULL };
 static char const *scrotcmd[] = { "scrot", NULL };
 
-/* default workspace names */
-static char const *wsnames[] = { "alpha", "beta", "gamma", "delta", "epsilon",
-                                 "zeta", "eta", "theta", "iota", "kappa",
-                                 "lambda", "mu", "nu", "xi", "omicron", "pi",
-                                 "rho", "sigma", "tau", "upsilon", "phi", "chi",
-                                 "psi", "omega" };
+/* dmenu arguments (see man dmenu) */
+static char const *dmenuargs[] = { "-p", "spawn", "-l", "10",
+	                               "-nf", "#888888", "-nb", "#222222",
+	                               "-sf", "#AFD800", "-sb", "#444444", NULL };
 
 /* custom behaviour */
 static void
@@ -61,65 +59,67 @@ custom_shutdown()
 /* normal keys */
 static Key const keys[] = {
 	/* applications */
-	{ MODKEY,                       XK_n,      spawn,      { .v=termcmd } },
-	{ MODKEY,                       XK_p,      spawn,      { .v=dmenucmd } },
-	{ 0,                            XK_Print,  spawn,      { .v=scrotcmd } },
+	{ MODKEY,                       XK_n,      spawn,       { .v=termcmd } },
+	{ MODKEY,                       XK_p,      spawn,       { .v=dmenucmd } },
+	{ 0,                            XK_Print,  spawn,       { .v=scrotcmd } },
 
 	/* windows */
-	{ MODKEY,                       XK_j,      stepfocus,  { .i=+1 } },
-	{ MODKEY,                       XK_k,      stepfocus,  { .i=-1 } },
-	{ MODKEY,                       XK_l,      setmfact,   { .f=+0.02 } },
-	{ MODKEY,                       XK_h,      setmfact,   { .f=-0.02 } },
+	{ MODKEY,                       XK_j,      stepfocus,   { .i=+1 } },
+	{ MODKEY,                       XK_k,      stepfocus,   { .i=-1 } },
+	{ MODKEY,                       XK_l,      setmfact,    { .f=+0.02 } },
+	{ MODKEY,                       XK_h,      setmfact,    { .f=-0.02 } },
 	{ MODKEY,                       XK_t,      togglefloat, { 0 } },
-	{ MODKEY|ShiftMask,             XK_c,      killclient, { 0 } },
+	{ MODKEY|ShiftMask,             XK_c,      killclient,  { 0 } },
 
 	/* layout */
-	{ MODKEY|ShiftMask,             XK_j,      shift,      { .i=+1 } },
-	{ MODKEY|ShiftMask,             XK_k,      shift,      { .i=-1 } },
-	{ MODKEY,                       XK_comma,  setnmaster, { .i=+1 } },
-	{ MODKEY,                       XK_period, setnmaster, { .i=-1 } },
-	{ MODKEY,                       XK_Return, zoom,       { 0 } },
+	{ MODKEY|ShiftMask,             XK_j,      shift,       { .i=+1 } },
+	{ MODKEY|ShiftMask,             XK_k,      shift,       { .i=-1 } },
+	{ MODKEY,                       XK_comma,  setnmaster,  { .i=+1 } },
+	{ MODKEY,                       XK_period, setnmaster,  { .i=-1 } },
+	{ MODKEY,                       XK_Return, zoom,        { 0 } },
 
 	/* workspaces */
-	{ MODKEY,                       XK_space,  togglewsd,  { 0 } },
-	{ MODKEY|ControlMask,           XK_h,      stepws,     { .i=LEFT } },
-	{ MODKEY|ControlMask,           XK_l,      stepws,     { .i=RIGHT } },
-	{ MODKEY|ControlMask,           XK_j,      stepws,     { .i=DOWN } },
-	{ MODKEY|ControlMask,           XK_k,      stepws,     { .i=UP } },
-	{ MODKEY|ControlMask|ShiftMask, XK_h,      moveclient, { .i=LEFT } },
-	{ MODKEY|ControlMask|ShiftMask, XK_l,      moveclient, { .i=RIGHT } },
-	{ MODKEY|ControlMask|ShiftMask, XK_j,      moveclient, { .i=DOWN } },
-	{ MODKEY|ControlMask|ShiftMask, XK_k,      moveclient, { .i=UP } },
+	{ MODKEY,                       XK_space,  togglewsd,   { 0 } },
+	{ MODKEY|ControlMask,           XK_h,      stepws,      { .i=LEFT } },
+	{ MODKEY|ControlMask,           XK_l,      stepws,      { .i=RIGHT } },
+	{ MODKEY|ControlMask,           XK_j,      stepws,      { .i=DOWN } },
+	{ MODKEY|ControlMask,           XK_k,      stepws,      { .i=UP } },
+	{ MODKEY|ControlMask|ShiftMask, XK_h,      moveclient,  { .i=LEFT } },
+	{ MODKEY|ControlMask|ShiftMask, XK_l,      moveclient,  { .i=RIGHT } },
+	{ MODKEY|ControlMask|ShiftMask, XK_j,      moveclient,  { .i=DOWN } },
+	{ MODKEY|ControlMask|ShiftMask, XK_k,      moveclient,  { .i=UP } },
+	{ MODKEY,                       XK_o,      changews,    { 0 } },
+	{ MODKEY,                       XK_r,      renamews,    { 0 } },
 
 	/* monitors */
-	{ MODKEY,                       XK_m,      stepmon,    { 0 } },
+	{ MODKEY,                       XK_m,      stepmon,     { 0 } },
 
 	/* session */
-	{ MODKEY,                       XK_q,      restart,    { 0 } },
-	{ MODKEY|ShiftMask,             XK_q,      quit,       { 0 } },
+	{ MODKEY,                       XK_q,      restart,     { 0 } },
+	{ MODKEY|ShiftMask,             XK_q,      quit,        { 0 } },
 };
 
 /* WSD keys */
 static Key const wsdkeys[] = {
-	{ 0,                            XK_Print,  spawn,      { .v=scrotcmd } },
-	{ MODKEY,                       XK_space,  togglewsd,  { 0 } },
+	{ 0,                            XK_Print,  spawn,       { .v=scrotcmd } },
+	{ MODKEY,                       XK_space,  togglewsd,   { 0 } },
 
 	/* move view */
-	{ MODKEY,                       XK_h,      stepwsdbox, { .i=LEFT } },
-	{ MODKEY,                       XK_l,      stepwsdbox, { .i=RIGHT } },
-	{ MODKEY,                       XK_j,      stepwsdbox, { .i=DOWN } },
-	{ MODKEY,                       XK_k,      stepwsdbox, { .i=UP } },
+	{ MODKEY,                       XK_h,      stepwsdbox,  { .i=LEFT } },
+	{ MODKEY,                       XK_l,      stepwsdbox,  { .i=RIGHT } },
+	{ MODKEY,                       XK_j,      stepwsdbox,  { .i=DOWN } },
+	{ MODKEY,                       XK_k,      stepwsdbox,  { .i=UP } },
 
 	/* move workspace */
-	{ MODKEY|ShiftMask,             XK_h,      movews,     { .i=LEFT } },
-	{ MODKEY|ShiftMask,             XK_l,      movews,     { .i=RIGHT } },
-	{ MODKEY|ShiftMask,             XK_j,      movews,     { .i=DOWN } },
-	{ MODKEY|ShiftMask,             XK_k,      movews,     { .i=UP } },
+	{ MODKEY|ShiftMask,             XK_h,      movews,      { .i=LEFT } },
+	{ MODKEY|ShiftMask,             XK_l,      movews,      { .i=RIGHT } },
+	{ MODKEY|ShiftMask,             XK_j,      movews,      { .i=DOWN } },
+	{ MODKEY|ShiftMask,             XK_k,      movews,      { .i=UP } },
 };
 
 /* mouse buttons */
 static Button const buttons[] = {
-	{ MODKEY,                       Button1,   movemouse,  { 0 } },
+	{ MODKEY,                       Button1,   movemouse,   { 0 } },
 	{ MODKEY,                       Button3,   resizemouse, { 0 } },
 };
 
