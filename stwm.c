@@ -132,7 +132,7 @@ static void enternotify(XEvent *);
 static void expose(XEvent *);
 static void grabbuttons(Client *, bool);
 static void grabkeys(void);
-static void hide(Client *);
+static void hideclient(Client *);
 static void hidews(Workspace *);
 static void initbar(Monitor *);
 static Client *initclient(Window, bool);
@@ -233,13 +233,18 @@ void
 arrange(Monitor *mon)
 {
 	unsigned int i;
+	Client *c;
+
 	for (i = 0; i < mon->selws->nc; i++) {
 		XSelectInput(dpy, mon->selws->clients[i]->win, 0);
 	}
-	/* TODO use array of layouts */
 	tile(mon);
 	for (i = 0; i < mon->selws->nc; i++) {
-		XSelectInput(dpy, mon->selws->clients[i]->win, CLIENTMASK);
+		c = mon->selws->clients[i];
+		if (c->floating) {
+			XMoveWindow(dpy, c->win, c->x, c->y);
+		}
+		XSelectInput(dpy, c->win, CLIENTMASK);
 	}
 }
 
@@ -613,7 +618,7 @@ dmenueval(void)
 				break;
 			case DMENU_VIEW:
 				if (locatews(&ws, NULL, 0, 0, buf)) {
-					setws(0, 0);
+					setws(ws->x, ws->y);
 				}
 				break;
 			default:
@@ -708,7 +713,7 @@ grabkeys(void)
 }
 
 void
-hide(Client *c)
+hideclient(Client *c)
 {
 	XMoveWindow(dpy, c->win, -c->w-2*BORDERWIDTH, c->y);
 }
@@ -718,7 +723,7 @@ hidews(Workspace *ws)
 {
 	unsigned int i;
 	for (i = 0; i < ws->nc; i++) {
-		hide(ws->clients[i]);
+		hideclient(ws->clients[i]);
 	}
 }
 
@@ -1785,7 +1790,7 @@ updatefocus(void)
 		sel = mon == selmon;
 
 		/* empty monitor: don't focus anything */
-		if (!mon->selws->ns) {
+		if (sel && !mon->selws->ns) {
 			XSetInputFocus(dpy, root, RevertToPointerRoot, CurrentTime);
 			continue;
 		}
