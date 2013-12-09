@@ -146,7 +146,7 @@ perform actions on them with a separately configured set of keys:
 
 The <code>wsmkeys</code> array defines keys for using the visual selection:
 
-* <code>Mod</code>+<code>Space</code>
+* <code>Esc</code> or <code>Mod</code>+<code>Space</code>
   close workspace map
 * <code>Mod</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
   set selection to left/below/above/right workspace

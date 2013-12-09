@@ -93,8 +93,8 @@ static Key const keys[] = {
 	{ MODKEY|ControlMask|ShiftMask, XK_l,      moveclient,  { .i=RIGHT } },
 	{ MODKEY|ControlMask|ShiftMask, XK_j,      moveclient,  { .i=DOWN } },
 	{ MODKEY|ControlMask|ShiftMask, XK_k,      moveclient,  { .i=UP } },
-	{ MODKEY,                       XK_o,      changews,    { 0 } },
-	{ MODKEY,                       XK_r,      renamews,    { 0 } },
+	{ MODKEY,                       XK_o,      dmenu,       { .i=DMENU_VIEW } },
+	{ MODKEY,                       XK_r,      dmenu,       { .i=DMENU_RENAME } },
 
 	/* monitors */
 	{ MODKEY,                       XK_m,      stepmon,     { 0 } },
@@ -106,8 +106,9 @@ static Key const keys[] = {
 
 /* WSM keys */
 static Key const wsmkeys[] = {
-	{ 0,                            XK_Print,  spawn,       { .v=scrotcmd } },
+	{ 0,                            XK_Escape, togglewsm,   { 0 } },
 	{ MODKEY,                       XK_space,  togglewsm,   { 0 } },
+	{ 0,                            XK_Return, viewws,      { 0 } },
 
 	/* move view */
 	{ MODKEY,                       XK_h,      stepwsmbox,  { .i=LEFT } },

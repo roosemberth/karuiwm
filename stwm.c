@@ -606,13 +606,18 @@ dmenueval(void)
 	}
 	if (ret > 0) {
 		buf[ret-1] = 0;
-		if (dmenu_state == DMENU_RENAME) {
-			strcpy(selmon->selws->name, buf);
-			updatebar(selmon);
-		} else if (dmenu_state == DMENU_VIEW) {
-			if (locatews(&ws, NULL, 0, 0, buf)) {
-				setws(0, 0);
-			}
+		switch (dmenu_state) {
+			case DMENU_RENAME:
+				strcpy(selmon->selws->name, buf);
+				updatebar(selmon);
+				break;
+			case DMENU_VIEW:
+				if (locatews(&ws, NULL, 0, 0, buf)) {
+					setws(0, 0);
+				}
+				break;
+			default:
+				warn("unknown dmenu state: %u", dmenu_state);
 		}
 	}
 	close(dmenu_out);
@@ -689,9 +694,16 @@ grabkeys(void)
 	unsigned int i;
 
 	XUngrabKey(dpy, AnyKey, AnyModifier, root);
-	for (i = 0; i < LENGTH(keys); i++) {
-		XGrabKey(dpy, XKeysymToKeycode(dpy, keys[i].key), keys[i].mod, root,
-				true, GrabModeAsync, GrabModeAsync);
+	if (wsm.active) {
+		for (i = 0; i < LENGTH(wsmkeys); i++) {
+			XGrabKey(dpy, XKeysymToKeycode(dpy, wsmkeys[i].key), wsmkeys[i].mod,
+					root, true, GrabModeAsync, GrabModeAsync);
+		}
+	} else {
+		for (i = 0; i < LENGTH(keys); i++) {
+			XGrabKey(dpy, XKeysymToKeycode(dpy, keys[i].key), keys[i].mod, root,
+					true, GrabModeAsync, GrabModeAsync);
+		}
 	}
 }
 
@@ -945,14 +957,16 @@ bool
 locatews(Workspace **ws, unsigned int *pos, int x, int y, char const *name)
 {
 	unsigned int i;
-	for (i = 0; i < nws; i++) {
-		if (name) {
+	if (name) {
+		for (i = 0; i < nws; i++) {
 			if (!strncmp(name, workspaces[i]->name, strlen(name))) {
 				if (ws) *ws = workspaces[i];
 				if (pos) *pos = i;
 				return true;
 			}
-		} else {
+		}
+	} else {
+		for (i = 0; i < nws; i++) {
 			if (workspaces[i]->x == x && workspaces[i]->y == y) {
 				if (ws) *ws = workspaces[i];
 				if (pos) *pos = i;
@@ -971,10 +985,11 @@ maprequest(XEvent *e)
 	Client *c = initclient(e->xmap.window, false);
 	if (c) {
 		attachclient(selmon->selws, c);
+		XMapWindow(dpy, c->win);
 		if (c->floating) {
-			XMapRaised(dpy, c->win);
+			XRaiseWindow(dpy, c->win);
 		} else {
-			XMapWindow(dpy, c->win);
+			XLowerWindow(dpy, c->win);
 		}
 		updatefocus();
 	}
@@ -1197,11 +1212,11 @@ resizemouse(Arg const *arg)
 		return;
 	}
 
-	/* set initial pointer position to lower right (TODO this is still buggy) */
+	/* set pointer position to lower right */
 	XWarpPointer(dpy, None, c->win, 0, 0, 0, 0,
 			c->w+2*BORDERWIDTH-1, c->h+2*BORDERWIDTH-1);
-	x = c->w+2*BORDERWIDTH-1;
-	y = c->h+2*BORDERWIDTH-1;
+	x = c->x+c->w+2*BORDERWIDTH-1;
+	y = c->y+c->h+2*BORDERWIDTH-1;
 
 	/* handle motions */
 	do {
@@ -1402,6 +1417,9 @@ setws(int x, int y)
 	if (locatews(&next, NULL, x, y, NULL) && collision(next)) {
 		return;
 	}
+	if (selmon->selws == next) {
+		return;
+	}
 
 	/* current workspace */
 	if (selmon->selws->nc) {
@@ -1514,7 +1532,9 @@ stepfocus(Arg const *arg)
 	push(selmon->selws, selmon->selws->clients[
 			(pos+selmon->selws->nc+arg->i)%selmon->selws->nc]);
 	updatefocus();
-	XRaiseWindow(dpy, selmon->selws->selcli->win);
+	if (selmon->selws->selcli->floating) {
+		XRaiseWindow(dpy, selmon->selws->selcli->win);
+	}
 }
 
 void
@@ -1676,9 +1696,10 @@ togglewsm(Arg const *arg)
 	/* initial target is the current workspace (make a "0-step") */
 	wsm.target->x = selmon->selws->x;
 	wsm.target->y = selmon->selws->y;
-	stepwsmbox(&((Arg const) { .i = NO_DIRECTION })); /* updates input bar */
+	stepwsmbox(&((Arg const) { .i = NO_DIRECTION }));
 
-	/* initial update */
+	/* grab WSM keys and give an initial update */
+	grabkeys();
 	updatewsm();
 }
 
