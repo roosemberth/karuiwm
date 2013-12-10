@@ -1790,8 +1790,10 @@ updatefocus(void)
 		sel = mon == selmon;
 
 		/* empty monitor: don't focus anything */
-		if (sel && !mon->selws->ns) {
-			XSetInputFocus(dpy, root, RevertToPointerRoot, CurrentTime);
+		if (!mon->selws->ns) {
+			if (sel) {
+				XSetInputFocus(dpy, root, RevertToPointerRoot, CurrentTime);
+			}
 			continue;
 		}
 
