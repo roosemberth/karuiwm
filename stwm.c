@@ -121,7 +121,6 @@ static void buttonpress(XEvent *);
 static bool checksizehints(Client *, int, int, unsigned int *, unsigned int *);
 static void cleanup(void);
 static void clientmessage(XEvent *);
-static bool collision(Workspace *);
 static void configurerequest(XEvent *);
 static void configurenotify(XEvent *);
 static void detachclient(Client *);
@@ -415,13 +414,6 @@ clientmessage(XEvent *e)
 	/* TODO */
 }
 
-bool
-collision(Workspace *ws)
-{
-	Monitor *mon;
-	return (locatemon(&mon, NULL, ws) && mon != selmon);
-}
-
 void
 configurenotify(XEvent *e)
 {
@@ -514,14 +506,21 @@ detachmon(Monitor *mon)
 {
 	unsigned int i;
 
-	if (!locatemon(&mon, &i, mon->selws)) {
-		warn("attempt to detach non-existing monitor");
-		return;
+	for (i = 0; i < nmon; i++) {
+		if (monitors[i] == mon) {
+			nmon--;
+			for (; i < nmon; i++) {
+				monitors[i] = monitors[i+1];
+			}
+			monitors = realloc(monitors, nmon*sizeof(Monitor *));
+			if (!monitors && nmon) {
+				die("could not allocate %d bytes for monitor list",
+						nmon*sizeof(Monitor *));
+			}
+			break;
+		}
 	}
-	for (nmon--; i < nmon; i++) {
-		monitors[i] = monitors[i+1];
-	}
-	monitors = realloc(monitors, nmon*sizeof(Monitor *));
+	warn("attempt to detach non-existing monitor");
 }
 
 void
@@ -978,6 +977,9 @@ locatemon(Monitor **mon, unsigned int *pos, Workspace const *ws)
 {
 	unsigned int i;
 
+	if (!ws) {
+		return false;
+	}
 	for (i = 0; i < nmon; i++) {
 		if (monitors[i]->selws == ws) {
 			if (mon) *mon = monitors[i];
@@ -1460,11 +1462,21 @@ void
 setws(int x, int y)
 {
 	Workspace *next=NULL;
+	Monitor *othermon=NULL;
 
-	if (locatews(&next, NULL, x, y, NULL) && collision(next)) {
+	if (locatews(&next, NULL, x, y, NULL) && selmon->selws == next) {
 		return;
 	}
-	if (selmon->selws == next) {
+
+	/* exchange monitors on collision */
+	if (locatemon(&othermon, NULL, next) && othermon != selmon) {
+		othermon->selws = selmon->selws;
+		selmon->selws = next;
+		arrange(selmon);
+		arrange(othermon);
+		updatebar(selmon);
+		updatebar(othermon);
+		updatefocus();
 		return;
 	}
 

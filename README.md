@@ -116,10 +116,13 @@ These are the default settings defined by the <code>keys</code> array:
 
 The <code>Mod</code> key is set to Mod1 (<code>Alt</code>):
 
-Mouse support is currently limited to resizing and moving clients.
-<code>Mod</code>+<code>Button1</code> moves a window,
-<code>Mod</code>+<code>Button3</code> resizes a window. In both cases the window
-will become floating.
+The mouse can be configured via the <code>buttons</code> array and currently
+support following actions:
+
+* <code>Mod</code>+<code>Button1</code>
+  grab and move window, make it floating
+* <code>Mod</code>+<code>Button3</code>
+  resize window, make it floating
 
 
 appendix A: workspaces
@@ -163,6 +166,6 @@ monitor), stwm uses a unified workspace set for all monitors.
 Once a monitor is added, it will attempt to display the next undisplayed
 workspace; if there is none, it will create a new workspace nearby and move its
 view there. If a monitor moves its view to a workspace that is already displayed
-on another monitor, the behaviour is unspecified (should get fixed in the
-future).
+on another monitor, the workspace view is swapped (except for floating windows,
+they behave a bit buggy yet).
 
