@@ -621,9 +621,8 @@ dmenueval(void)
 		buf[ret-1] = 0;
 		switch (dmenu_state) {
 			case DMENU_RENAME:
-				if (buf[0] != '*' && !locatews(NULL, NULL, 0, 0, buf)) {
-					renamews(selmon->selws, buf);
-				}
+				renamews(selmon->selws, buf);
+				updatebar(selmon);
 				break;
 			case DMENU_VIEW:
 				if (locatews(&ws, NULL, 0, 0, buf)) {
@@ -828,6 +827,9 @@ initmon(void)
 		die("could not allocate %u bytes for monitor", sizeof(Monitor));
 	}
 
+	/* create status bar */
+	initbar(mon);
+
 	/* assign workspace */
 	for (wsx = 0;; wsx++) {
 		if (!locatews(&ws, NULL, wsx, 0, NULL)) {
@@ -839,10 +841,6 @@ initmon(void)
 			break;
 		}
 	}
-
-	/* add status bar */
-	initbar(mon);
-
 	return mon;
 }
 
@@ -1201,7 +1199,8 @@ reltoxy(int *x, int *y, Workspace *ws, int direction)
 void
 renamews(Workspace *ws, char const *name)
 {
-	if (name && strlen(name)) {
+	if (name && strlen(name) && name[0] != '*' &&
+			!locatews(NULL, NULL, 0, 0, name)) {
 		strncpy(ws->name, name, 256);
 	} else {
 		sprintf(ws->name, "*%p", (void *) ws);
