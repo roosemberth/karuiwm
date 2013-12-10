@@ -1,5 +1,5 @@
-stwm - simple tiling window manager
-===================================
+stwm
+====
 
 stwm is a not so small, not so fast, and not so dynamic window manager for X.
 
@@ -84,6 +84,8 @@ These are the default settings defined by the <code>keys</code> array:
   swap client with next/previous client in the layout
 * <code>Mod</code>+<code>,</code>|<code>.</code>
   increase/decrease number of clients in the master area
+* <code>Mod</code>(+<code>Shift</code>)+<code>Space</code>
+  select next (previous) layout in the <code>layouts</code> array
 * <code>Mod</code>+<code>z</code>
   move selected client to master area
 
