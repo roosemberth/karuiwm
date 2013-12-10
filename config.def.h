@@ -6,7 +6,7 @@
 #define FORCESIZE true   /* force terminals to fit the layout? */
 #define BORDERWIDTH 1    /* window border width */
 #define WSMBORDERWIDTH 1 /* WSM box border width */
-#define WSMRADIUS 5      /* number of workspaces around WSM centre */
+#define WSMRADIUS 4      /* number of workspaces around WSM centre */
 
 /* colours */
 #define CBORDERNORM      0x222222   /* normal windows */
@@ -37,14 +37,11 @@ static void (*layouts[])(Monitor *) = {
 	NULL,   /* steplayout() will not cycle beyond this point */
 };
 
-/* default workspace name */
-#define DEFAULT_WSNAME "[no name]"
-
 /* dmenu arguments (see man dmenu) */
 #define PROMPT_RENAME "rename"
 #define PROMPT_CHANGE "workspace"
 #define PROMPT_SPAWN  "spawn"
-static char const *dmenuargs[] = { "-b", "-l", "10",
+static char const *dmenuargs[] = { "-l", "10",
 	                               "-nf", "#888888", "-nb", "#222222",
 	                               "-sf", "#AFD800", "-sb", "#444444", NULL };
 
@@ -87,12 +84,11 @@ static Key const keys[] = {
 	{ MODKEY|ShiftMask,             XK_k,      shift,       { .i=-1 } },
 	{ MODKEY,                       XK_comma,  setnmaster,  { .i=+1 } },
 	{ MODKEY,                       XK_period, setnmaster,  { .i=-1 } },
-	{ MODKEY,                       XK_z,      zoom,        { 0 } },
+	{ MODKEY,                       XK_Return, zoom,        { 0 } },
 	{ MODKEY,                       XK_space,  steplayout,  { .i=+1 } },
 	{ MODKEY|ShiftMask,             XK_space,  steplayout,  { .i=-1 } },
 
 	/* workspaces */
-	{ MODKEY,                       XK_o,      togglewsm,   { 0 } },
 	{ MODKEY|ControlMask,           XK_h,      stepws,      { .i=LEFT } },
 	{ MODKEY|ControlMask,           XK_l,      stepws,      { .i=RIGHT } },
 	{ MODKEY|ControlMask,           XK_j,      stepws,      { .i=DOWN } },
@@ -101,8 +97,9 @@ static Key const keys[] = {
 	{ MODKEY|ControlMask|ShiftMask, XK_l,      moveclient,  { .i=RIGHT } },
 	{ MODKEY|ControlMask|ShiftMask, XK_j,      moveclient,  { .i=DOWN } },
 	{ MODKEY|ControlMask|ShiftMask, XK_k,      moveclient,  { .i=UP } },
-	{ MODKEY,                       XK_Return, dmenu,       { .i=DMENU_VIEW } },
-	{ MODKEY|ShiftMask,             XK_Return, dmenu,       { .i=DMENU_RENAME } },
+	{ MODKEY,                       XK_o,      togglewsm,   { 0 } },
+	{ MODKEY,                       XK_i,      dmenu,       { .i=DMENU_VIEW } },
+	{ MODKEY|ShiftMask,             XK_i,      dmenu,       { .i=DMENU_RENAME } },
 
 	/* monitors */
 	{ MODKEY,                       XK_m,      stepmon,     { 0 } },
@@ -114,8 +111,9 @@ static Key const keys[] = {
 
 /* WSM keys */
 static Key const wsmkeys[] = {
+	{ 0,                            XK_Print,  spawn,       { .v=scrotcmd } },
+
 	{ 0,                            XK_Escape, togglewsm,   { 0 } },
-	{ MODKEY,                       XK_o,      togglewsm,   { 0 } },
 	{ 0,                            XK_Return, viewws,      { 0 } },
 
 	/* move view */

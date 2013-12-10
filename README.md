@@ -85,8 +85,8 @@ These are the default settings defined by the <code>keys</code> array:
 * <code>Mod</code>+<code>,</code>|<code>.</code>
   increase/decrease number of clients in the master area
 * <code>Mod</code>(+<code>Shift</code>)+<code>Space</code>
-  select next (previous) layout in the <code>layouts</code> array
-* <code>Mod</code>+<code>z</code>
+  select next (previous) layout
+* <code>Mod</code>+<code>Return</code>
   move selected client to master area
 
 **Workspaces**
@@ -95,9 +95,9 @@ These are the default settings defined by the <code>keys</code> array:
   set view to left/below/above/right workspace
 * <code>Mod</code>+<code>Ctrl</code>+<code>Shift</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
   move and follow client to left/below/above/right workspace
-* <code>Mod</code>+<code>Return</code>
+* <code>Mod</code>+<code>i</code>
   switch to a workspace by name using dmenu
-* <code>Mod</code>+<code>Shift</code>+<code>Return</code>
+* <code>Mod</code>+<code>Shift</code>+<code>i</code>
   rename current workspace using dmenu
 * <code>Mod</code>+<code>o</code>
   open workspace map (see appendix A)
@@ -137,16 +137,20 @@ The workspace map (accessible by <code>Mod</code>+<code>Space</code>, see above)
 is a visual representation of the workspaces and allows to perform actions on
 them with a separately configured set of keys (the <code>wsmkeys</code> array):
 
-* <code>Esc</code> or <code>Mod</code>+<code>o</code>
-  close workspace map
 * <code>Mod</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
   set selection to left/below/above/right workspace
 * <code>Mod</code>+<code>Shift</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
   swap selected workspace with left/below/above/right workspace
 * <code>Return</code>
   switch to the selected workspace
+* <code>Esc</code>
+  close workspace map without selecting a workspace
 
 ![screenshot](http://ayekat.ch/img/host/github.com/screen_stwm.png)
+
+Each workspace is assigned a unique name that can be used to switch workspaces
+by name. If no or an empty name is assigned to a workspace, it automatically
+takes the workspace structure's pointer value, preceded by <code>\*</code>.
 
 
 appendix B: Xinerama (aka multi-monitor)

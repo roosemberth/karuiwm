@@ -158,6 +158,7 @@ static void propertynotify(XEvent *);
 static void push(Workspace *, Client *);
 static void quit(Arg const *);
 static void reltoxy(int *, int *, Workspace *, int);
+static void renamews(Workspace *, char const *);
 static void renderbar(Monitor *);
 static void renderwsmbox(Workspace *);
 static void resizemouse(Arg const *);
@@ -553,7 +554,7 @@ detachws(Workspace *ws)
 void
 dmenu(Arg const *arg)
 {
-	int in[2], out[2], i, len;
+	int in[2], out[2], i;
 	char const *cmd[LENGTH(dmenuargs)+3];
 
 	/* assemble dmenu command */
@@ -596,9 +597,7 @@ dmenu(Arg const *arg)
 	close(out[1]);
 	if (arg->i == DMENU_VIEW) {
 		for (i = 0; i < nws; i++) {
-			len = strlen(workspaces[i]->name);
-			write(in[1], len ? workspaces[i]->name : DEFAULT_WSNAME,
-					len ? len : strlen(DEFAULT_WSNAME));
+			write(in[1], workspaces[i]->name, strlen(workspaces[i]->name));
 			write(in[1], "\n", 1);
 		}
 	}
@@ -622,8 +621,9 @@ dmenueval(void)
 		buf[ret-1] = 0;
 		switch (dmenu_state) {
 			case DMENU_RENAME:
-				strcpy(selmon->selws->name, buf);
-				updatebar(selmon);
+				if (buf[0] != '*' && !locatews(NULL, NULL, 0, 0, buf)) {
+					renamews(selmon->selws, buf);
+				}
 				break;
 			case DMENU_VIEW:
 				if (locatews(&ws, NULL, 0, 0, buf)) {
@@ -859,9 +859,9 @@ initws(int x, int y)
 	ws->y = y;
 	ws->mfact = MFACT;
 	ws->nmaster = NMASTER;
-	ws->name[0] = 0;
 	ws->wsmbox = 0;
 	ws->ilayout = 0;
+	renamews(ws, NULL);
 	return ws;
 }
 
@@ -1195,6 +1195,16 @@ reltoxy(int *x, int *y, Workspace *ws, int direction)
 		case RIGHT: if (x) (*x)++; break;
 		case UP:    if (y) (*y)--; break;
 		case DOWN:  if (y) (*y)++; break;
+	}
+}
+
+void
+renamews(Workspace *ws, char const *name)
+{
+	if (name && strlen(name)) {
+		strncpy(ws->name, name, 256);
+	} else {
+		sprintf(ws->name, "*%p", (void *) ws);
 	}
 }
 
@@ -1761,7 +1771,11 @@ updatebar(Monitor *mon)
 		mon->bw = mon->w;
 		XMoveResizeWindow(dpy, mon->bar.win, mon->bx, mon->by, mon->bw,mon->bh);
 	}
-	strcpy(mon->bar.buffer, mon->selws->name);
+	if (strlen(mon->selws->name)) {
+		strcpy(mon->bar.buffer, mon->selws->name);
+	} else {
+		sprintf(mon->bar.buffer, "*%p", (void *) mon->selws);
+	}
 	renderbar(mon);
 }
 
