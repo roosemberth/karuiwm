@@ -100,6 +100,7 @@ struct Workspace {
 	float mfact;
 	char name[256];
 	int x, y;
+	int ilayout;
 };
 
 struct {
@@ -130,6 +131,7 @@ static void dmenu(Arg const *);
 static void dmenueval(void);
 static void enternotify(XEvent *);
 static void expose(XEvent *);
+static int gettiled(Client ***, Monitor *);
 static void grabbuttons(Client *, bool);
 static void grabkeys(void);
 static void hideclient(Client *);
@@ -173,13 +175,13 @@ static void sigchld(int);
 static void spawn(Arg const *);
 static void stdlog(FILE *, char const *, ...);
 static void stepfocus(Arg const *);
+static void steplayout(Arg const *);
 static void stepmon(Arg const *);
 static void stepws(Arg const *);
 static void stepwsmbox(Arg const *arg);
 static void termclient(Client *);
 static void termmon(Monitor *);
 static void termws(Workspace *);
-static void tile(Monitor *);
 static void togglefloat(Arg const *);
 static void togglewsm(Arg const *);
 static size_t unifyscreens(XineramaScreenInfo **, size_t);
@@ -195,6 +197,10 @@ static void viewws(Arg const *);
 static int xerror(Display *, XErrorEvent *);
 static int (*xerrorxlib)(Display *, XErrorEvent *);
 static void zoom(Arg const *);
+
+/* layouts */
+static void bstack(Monitor *);
+static void rstack(Monitor *);
 
 /* event handlers, as array to allow O(1) access; codes in X.h */
 static void (*handle[LASTEvent])(XEvent *) = {
@@ -225,9 +231,12 @@ static Monitor *selmon;             /* selected monitor */
 static unsigned int nmon;           /* number of monitors */
 static int dmenu_out;               /* dmenu's output file descriptor */
 static enum DMenuState dmenu_state; /* dmenu's state */
+static int nlayouts;                /* number of cyclable layouts */
 
 /* configuration */
 #include "config.h"
+
+/* function implementation */
 
 void
 arrange(Monitor *mon)
@@ -238,7 +247,7 @@ arrange(Monitor *mon)
 	for (i = 0; i < mon->selws->nc; i++) {
 		XSelectInput(dpy, mon->selws->clients[i]->win, 0);
 	}
-	tile(mon);
+	layouts[mon->selws->ilayout](mon);
 	for (i = 0; i < mon->selws->nc; i++) {
 		c = mon->selws->clients[i];
 		if (c->floating) {
@@ -676,6 +685,28 @@ expose(XEvent *e)
 	}
 }
 
+int
+gettiled(Client ***tiled, Monitor *mon)
+{
+	unsigned int i, n;
+
+	*tiled = calloc(mon->selws->nc, sizeof(Client *));
+	if (!*tiled) {
+		die("could not allocate %u bytes for client list",
+				mon->selws->nc*sizeof(Client *));
+	}
+	for (n = i = 0; i < mon->selws->nc; i++) {
+		if (!mon->selws->clients[i]->floating) {
+			(*tiled)[n++] = mon->selws->clients[i];
+		}
+	}
+	*tiled = realloc(*tiled, n*sizeof(Client *));
+	if (!tiled && n) {
+		die("could not allocate %u bytes for client list", n*sizeof(Client *));
+	}
+	return n;
+}
+
 void
 grabbuttons(Client *c, bool focused)
 {
@@ -830,6 +861,7 @@ initws(int x, int y)
 	ws->nmaster = NMASTER;
 	ws->name[0] = 0;
 	ws->wsmbox = 0;
+	ws->ilayout = 0;
 	return ws;
 }
 
@@ -1325,7 +1357,12 @@ setup(void)
 	root = RootWindow(dpy, screen);
 	dc.gc = XCreateGC(dpy, root, 0, NULL);
 
-	/* mouse and keyboard */
+	/* events */
+	wa.event_mask = SubstructureNotifyMask|SubstructureRedirectMask|
+			KeyPressMask|StructureNotifyMask|ButtonPressMask|PointerMotionMask;
+	XChangeWindowAttributes(dpy, root, CWEventMask, &wa);
+
+	/* input: mouse, keyboard */
 	cursor[CURSOR_NORMAL] = XCreateFontCursor(dpy, XC_left_ptr);
 	cursor[CURSOR_RESIZE] = XCreateFontCursor(dpy, XC_sizing);
 	cursor[CURSOR_MOVE] = XCreateFontCursor(dpy, XC_fleur);
@@ -1333,18 +1370,14 @@ setup(void)
 	XChangeWindowAttributes(dpy, root, CWCursor, &wa);
 	grabkeys();
 
-	/* event mask */
-	wa.event_mask = SubstructureNotifyMask|SubstructureRedirectMask|
-			KeyPressMask|StructureNotifyMask|ButtonPressMask|PointerMotionMask;
-	XChangeWindowAttributes(dpy, root, CWEventMask, &wa);
+	/* high: layouts (needed here, for updategeom() below) */
+	for (nlayouts=0; nlayouts<LENGTH(layouts) && layouts[nlayouts]; nlayouts++);
 
-	/* font */
+	/* output: font, monitors */
 	setupfont();
-
-	/* monitors */
 	updategeom();
 
-	/* workspace map */
+	/* high: workspace map */
 	setupwsm();
 }
 
@@ -1543,6 +1576,13 @@ stepfocus(Arg const *arg)
 }
 
 void
+steplayout(Arg const *arg)
+{
+	selmon->selws->ilayout = (selmon->selws->ilayout+nlayouts+arg->i)%nlayouts;
+	arrange(selmon);
+}
+
+void
 stepmon(Arg const *arg)
 {
 	Monitor *mon;
@@ -1596,59 +1636,6 @@ termws(Workspace *ws)
 		warn("destroying non-empty workspace");
 	}
 	free(ws);
-}
-
-/* TODO move to layouts.h */
-void
-tile(Monitor *mon)
-{
-	Client **tiled;
-	unsigned int ncm, i, ntiled, w, h;
-	int x;
-
-	if (!mon->selws->nc) {
-		return;
-	}
-
-	/* get non-floating clients (TODO move to separate function) */
-	tiled = calloc(mon->selws->nc, sizeof(Client *));
-	if (!tiled) {
-		die("could not allocate %u bytes for client list", mon->selws->nc);
-	}
-	for (ntiled = 0, i = 0; i < mon->selws->nc; i++) {
-		if (!mon->selws->clients[i]->floating) {
-			tiled[ntiled++] = mon->selws->clients[i];
-		}
-	}
-	tiled = realloc(tiled, ntiled*sizeof(Client *));
-	if (!tiled && ntiled) {
-		die("could not allocate %u bytes for client list",
-				ntiled*sizeof(Client *));
-	}
-
-	/* draw master area */
-	ncm = MIN(mon->selws->nmaster, ntiled);
-	if (ncm) {
-		x = mon->wx;
-		w = mon->selws->nmaster >= ntiled ? mon->ww : mon->selws->mfact*mon->ww;
-		h = mon->wh/ncm;
-		for (i = 0; i < ncm; i++) {
-			moveresize(tiled[i], x, mon->wy + i*h,
-					w - 2*BORDERWIDTH, h - 2*BORDERWIDTH);
-		}
-	}
-	if (ncm == ntiled) {
-		return;
-	}
-
-	/* draw stack area */
-	x = mon->wx+(ncm ? mon->selws->mfact*mon->ww : 0);
-	w = ncm ? mon->ww-x : mon->ww;
-	h = mon->wh/(ntiled-ncm);
-	for (i = ncm; i < ntiled; i++) {
-		moveresize(tiled[i], x, mon->wy + (i-ncm)*h,
-				w - 2*BORDERWIDTH, h - 2*BORDERWIDTH);
-	}
 }
 
 void
@@ -1996,6 +1983,88 @@ zoom(Arg const *arg)
 	}
 	arrange(selmon);
 }
+
+/* layouts */
+
+void
+bstack(Monitor *mon)
+{
+	Client **tiled;
+	unsigned int i, ncm, nct, w, h;
+	int y;
+
+	/* get tiled clients */
+	if (!mon->selws->nc || !(nct = gettiled(&tiled, mon))) {
+		return;
+	}
+
+	/* draw master area */
+	ncm = MIN(mon->selws->nmaster, nct);
+	if (ncm) {
+		y = mon->wy;
+		w = mon->ww/ncm;
+		h = ncm == nct ? mon->wh : mon->selws->mfact*mon->wh;
+		for (i = 0; i < ncm; i++) {
+			moveresize(tiled[i], mon->wx+i*w, y,
+					w-2*BORDERWIDTH, h-2*BORDERWIDTH);
+		}
+	}
+	if (ncm == nct) {
+		free(tiled);
+		return;
+	}
+
+	/* draw stack area */
+	y = mon->wy+(ncm ? mon->selws->mfact*mon->wh : mon->wy);
+	w = mon->ww/(nct-ncm);
+	h = ncm ? mon->h-y : mon->wh;
+	for (i = ncm; i < nct; i++) {
+		moveresize(tiled[i], mon->wx+(i-ncm)*w, y,
+				w-2*BORDERWIDTH, h-2*BORDERWIDTH);
+	}
+	free(tiled);
+}
+
+void
+rstack(Monitor *mon)
+{
+	Client **tiled;
+	unsigned int i, ncm, nct, w, h;
+	int x;
+
+	/* get tiled clients */
+	if (!mon->selws->nc || !(nct = gettiled(&tiled, mon))) {
+		return;
+	}
+
+	/* draw master area */
+	ncm = MIN(mon->selws->nmaster, nct);
+	if (ncm) {
+		x = mon->wx;
+		w = ncm == nct ? mon->ww : mon->selws->mfact*mon->ww;
+		h = mon->wh/ncm;
+		for (i = 0; i < ncm; i++) {
+			moveresize(tiled[i], x, mon->wy+i*h,
+					w-2*BORDERWIDTH, h-2*BORDERWIDTH);
+		}
+	}
+	if (ncm == nct) {
+		free(tiled);
+		return;
+	}
+
+	/* draw stack area */
+	x = mon->wx+(ncm ? mon->selws->mfact*mon->ww : mon->wx);
+	w = ncm ? mon->w-x : mon->ww;
+	h = mon->wh/(nct-ncm);
+	for (i = ncm; i < nct; i++) {
+		moveresize(tiled[i], x, mon->wy+(i-ncm)*h,
+				w-2*BORDERWIDTH, h-2*BORDERWIDTH);
+	}
+	free(tiled);
+}
+
+/* main */
 
 int
 main(int argc, char **argv)

@@ -1,6 +1,5 @@
 /* stwm configuration */
 
-/* layout */
 #define FONTSTR "-misc-fixed-medium-r-semicondensed--13-100-100-100-c-60-iso8859-1"
 #define NMASTER 1        /* number of clients in master area */
 #define MFACT 0.5        /* size of master area */
@@ -31,9 +30,12 @@
 #define WSMCBGTARGET     CBGSEL
 #define WSMCBORDERTARGET CBORDERSEL
 
-/* commands */
-static char const *termcmd[] = { "xfce4-terminal", NULL };
-static char const *scrotcmd[] = { "scrot", NULL };
+/* layouts */
+static void (*layouts[])(Monitor *) = {
+	rstack, /* stack at right [default] */
+	bstack, /* stack at bottom */
+	NULL,   /* steplayout() will not cycle beyond this point */
+};
 
 /* default workspace name */
 #define DEFAULT_WSNAME "[no name]"
@@ -45,6 +47,10 @@ static char const *scrotcmd[] = { "scrot", NULL };
 static char const *dmenuargs[] = { "-b", "-l", "10",
 	                               "-nf", "#888888", "-nb", "#222222",
 	                               "-sf", "#AFD800", "-sb", "#444444", NULL };
+
+/* commands */
+static char const *termcmd[] = { "xterm", NULL };
+static char const *scrotcmd[] = { "scrot", NULL };
 
 /* custom behaviour */
 static void
@@ -81,10 +87,12 @@ static Key const keys[] = {
 	{ MODKEY|ShiftMask,             XK_k,      shift,       { .i=-1 } },
 	{ MODKEY,                       XK_comma,  setnmaster,  { .i=+1 } },
 	{ MODKEY,                       XK_period, setnmaster,  { .i=-1 } },
-	{ MODKEY,                       XK_Return, zoom,        { 0 } },
+	{ MODKEY,                       XK_z,      zoom,        { 0 } },
+	{ MODKEY,                       XK_space,  steplayout,  { .i=+1 } },
+	{ MODKEY|ShiftMask,             XK_space,  steplayout,  { .i=-1 } },
 
 	/* workspaces */
-	{ MODKEY,                       XK_space,  togglewsm,   { 0 } },
+	{ MODKEY,                       XK_o,      togglewsm,   { 0 } },
 	{ MODKEY|ControlMask,           XK_h,      stepws,      { .i=LEFT } },
 	{ MODKEY|ControlMask,           XK_l,      stepws,      { .i=RIGHT } },
 	{ MODKEY|ControlMask,           XK_j,      stepws,      { .i=DOWN } },
@@ -93,8 +101,8 @@ static Key const keys[] = {
 	{ MODKEY|ControlMask|ShiftMask, XK_l,      moveclient,  { .i=RIGHT } },
 	{ MODKEY|ControlMask|ShiftMask, XK_j,      moveclient,  { .i=DOWN } },
 	{ MODKEY|ControlMask|ShiftMask, XK_k,      moveclient,  { .i=UP } },
-	{ MODKEY,                       XK_o,      dmenu,       { .i=DMENU_VIEW } },
-	{ MODKEY,                       XK_r,      dmenu,       { .i=DMENU_RENAME } },
+	{ MODKEY,                       XK_Return, dmenu,       { .i=DMENU_VIEW } },
+	{ MODKEY|ShiftMask,             XK_Return, dmenu,       { .i=DMENU_RENAME } },
 
 	/* monitors */
 	{ MODKEY,                       XK_m,      stepmon,     { 0 } },
@@ -107,7 +115,7 @@ static Key const keys[] = {
 /* WSM keys */
 static Key const wsmkeys[] = {
 	{ 0,                            XK_Escape, togglewsm,   { 0 } },
-	{ MODKEY,                       XK_space,  togglewsm,   { 0 } },
+	{ MODKEY,                       XK_o,      togglewsm,   { 0 } },
 	{ 0,                            XK_Return, viewws,      { 0 } },
 
 	/* move view */

@@ -1,32 +1,16 @@
-stwm
-====
+stwm - simple tiling window manager
+===================================
 
-An attempt to build a dynamically tiling window manager with Xlib. It is
-inspired by [xmonad](http://xmonad.org/) and based on
+stwm is a not so small, not so fast, and not so dynamic window manager for X.
+
+It is inspired by [xmonad](http://xmonad.org/) and based on
 [dwm](http://dwm.suckless.org/).
-
-Currently these are the features of stwm:
-
-* workspaces arranged in two dimensions, with dynamic creation and destruction
-* Xinerama support for multi-monitor setup, with shared set of workspaces
-
-These are the features that will get added:
-
-* complete multi-monitor support (moving clients to other monitors, swapping
-  monitors upon collision, indicator for focused monitor, fix focus issue upon
-  destroying last client on a workspace)
-* complete mouse support (fix initial resize bug)
-* client rules (floating, workspace, ...)
-* scratchpad
-* multiple layouts + cycling through them
-
-These are features that *might* get added in the future:
-
-* savestate for restoring the session after a restart
 
 
 build
 -----
+
+stwm requires Xlib and Xinerama to be installed on the system.
 
 This will create the binary <code>stwm</code>:
 
@@ -79,7 +63,7 @@ These are the default settings defined by the <code>keys</code> array:
 * <code>Mod</code>+<code>n</code>
   launch xterm
 * <code>Mod</code>+<code>p</code>
-  launch dmenu
+  launch dmenu\_run
 * <code>PrtSc</code>
   launch scrot (screenshot)
 
@@ -100,7 +84,7 @@ These are the default settings defined by the <code>keys</code> array:
   swap client with next/previous client in the layout
 * <code>Mod</code>+<code>,</code>|<code>.</code>
   increase/decrease number of clients in the master area
-* <code>Mod</code>+<code>Return</code>
+* <code>Mod</code>+<code>z</code>
   move selected client to master area
 
 **Workspaces**
@@ -109,12 +93,12 @@ These are the default settings defined by the <code>keys</code> array:
   set view to left/below/above/right workspace
 * <code>Mod</code>+<code>Ctrl</code>+<code>Shift</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
   move and follow client to left/below/above/right workspace
-* <code>Mod</code>+<code>o</code>
+* <code>Mod</code>+<code>Return</code>
   switch to a workspace by name using dmenu
-* <code>Mod</code>+<code>r</code>
+* <code>Mod</code>+<code>Shift</code>+<code>Return</code>
   rename current workspace using dmenu
-* <code>Mod</code>+<code>Space</code>
-  open workspace map (see below)
+* <code>Mod</code>+<code>o</code>
+  open workspace map (see appendix A)
 
 **Monitors**
 
@@ -136,26 +120,6 @@ Mouse support is currently limited to resizing and moving clients.
 will become floating.
 
 
-workspace map
-----------------
-
-The workspace map is a visual representation of the workspaces and allows to
-perform actions on them with a separately configured set of keys:
-
-![screenshot](http://ayekat.ch/img/host/github.com/screen_stwm.png)
-
-The <code>wsmkeys</code> array defines keys for using the visual selection:
-
-* <code>Esc</code> or <code>Mod</code>+<code>Space</code>
-  close workspace map
-* <code>Mod</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
-  set selection to left/below/above/right workspace
-* <code>Mod</code>+<code>Shift</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
-  swap selected workspace with left/below/above/right workspace
-* <code>Return</code>
-  switch to the selected workspace
-
-
 appendix A: workspaces
 ----------------------
 
@@ -167,9 +131,24 @@ Whether a workspaces is temporary or persistent depends on the number of clients
 on that workspace; an empty workspace is considered temporary, whereas it
 becomes persistent as soon as a client is added.
 
+The workspace map (accessible by <code>Mod</code>+<code>Space</code>, see above)
+is a visual representation of the workspaces and allows to perform actions on
+them with a separately configured set of keys (the <code>wsmkeys</code> array):
 
-appendix B: multi-monitor
--------------------------
+* <code>Esc</code> or <code>Mod</code>+<code>o</code>
+  close workspace map
+* <code>Mod</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
+  set selection to left/below/above/right workspace
+* <code>Mod</code>+<code>Shift</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
+  swap selected workspace with left/below/above/right workspace
+* <code>Return</code>
+  switch to the selected workspace
+
+![screenshot](http://ayekat.ch/img/host/github.com/screen_stwm.png)
+
+
+appendix B: Xinerama (aka multi-monitor)
+----------------------------------------
 
 stwm comes with Xinerama support and is thus capable of handling a multi-monitor
 setup. Unlike its parent dwm however (which assigns a separate tag set to each
