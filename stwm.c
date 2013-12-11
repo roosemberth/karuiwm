@@ -130,6 +130,7 @@ static void dmenu(Arg const *);
 static void dmenueval(void);
 static void enternotify(XEvent *);
 static void expose(XEvent *);
+static void focusin(XEvent *);
 static int gettiled(Client ***, Monitor *);
 static void grabbuttons(Client *, bool);
 static void grabkeys(void);
@@ -210,6 +211,7 @@ static void (*handle[LASTEvent])(XEvent *) = {
 	[ConfigureRequest] = configurerequest, /*23*/
 	[EnterNotify]      = enternotify,      /* 7*/
 	[Expose]           = expose,           /*12*/
+	[FocusIn]          = focusin,          /* 9*/
 	[KeyPress]         = keypress,         /* 2*/
 	[KeyRelease]       = keyrelease,       /* 3*/
 	[MapRequest]       = maprequest,       /*20*/
@@ -244,15 +246,21 @@ arrange(Monitor *mon)
 	unsigned int i;
 	Client *c;
 
+	/* prevent mouse from changing focus */
 	for (i = 0; i < mon->selws->nc; i++) {
 		XSelectInput(dpy, mon->selws->clients[i]->win, 0);
 	}
+
+	/* apply current layout */
 	layouts[mon->selws->ilayout](mon);
+
+	/* move floating windows to correct position */
 	for (i = 0; i < mon->selws->nc; i++) {
 		c = mon->selws->clients[i];
 		if (c->floating) {
-			XMoveWindow(dpy, c->win, c->x, c->y);
+			XMoveWindow(dpy, c->win, c->x, c->y); /* TODO xinerama issue */
 		}
+		/* reenable mouse */
 		XSelectInput(dpy, c->win, CLIENTMASK);
 	}
 }
@@ -517,7 +525,7 @@ detachmon(Monitor *mon)
 				die("could not allocate %d bytes for monitor list",
 						nmon*sizeof(Monitor *));
 			}
-			break;
+			return;
 		}
 	}
 	warn("attempt to detach non-existing monitor");
@@ -680,6 +688,23 @@ expose(XEvent *e)
 	}
 	if (e->xexpose.window == wsm.target->wsmbox) {
 		renderwsmbox(wsm.target);
+	}
+}
+
+/* fix for VTE terminals that tend to steal the focus */
+void
+focusin(XEvent *e)
+{
+	Window win = e->xfocus.window;
+
+	if (win == root) {
+		return;
+	}
+	if (!selmon->selws->nc || win != selmon->selws->selcli->win) {
+		warn("focusin on unfocused window %d (focus is on %d)",
+				e->xfocus.window,
+				selmon->selws->nc ? selmon->selws->selcli->win : -1);
+		updatefocus();
 	}
 }
 
@@ -1370,7 +1395,8 @@ setup(void)
 
 	/* events */
 	wa.event_mask = SubstructureNotifyMask|SubstructureRedirectMask|
-			KeyPressMask|StructureNotifyMask|ButtonPressMask|PointerMotionMask;
+			KeyPressMask|StructureNotifyMask|ButtonPressMask|PointerMotionMask|
+			FocusChangeMask;
 	XChangeWindowAttributes(dpy, root, CWEventMask, &wa);
 
 	/* input: mouse, keyboard */
@@ -1804,7 +1830,7 @@ updatefocus(void)
 		/* empty monitor: don't focus anything */
 		if (!mon->selws->ns) {
 			if (sel) {
-				XSetInputFocus(dpy, root, RevertToPointerRoot, CurrentTime);
+				XSetInputFocus(dpy, root, RevertToNone, CurrentTime);
 			}
 			continue;
 		}
@@ -1819,7 +1845,7 @@ updatefocus(void)
 		}
 		if (sel) {
 			XSetWindowBorder(dpy, mon->selws->selcli->win, CBORDERSEL);
-			XSetInputFocus(dpy, mon->selws->selcli->win, RevertToPointerRoot,
+			XSetInputFocus(dpy, mon->selws->selcli->win, RevertToNone,
 					CurrentTime);
 			grabbuttons(mon->selws->stack[j], true);
 		}
