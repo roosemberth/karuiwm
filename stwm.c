@@ -164,6 +164,7 @@ static void renderwsmbox(Workspace *);
 static void resizemouse(Arg const *);
 static void restart(Arg const *);
 static void run(void);
+static void savesession(Arg const *arg);
 static void scan(void);
 static void setmfact(Arg const *);
 static void setup(void);
@@ -1347,6 +1348,43 @@ run(void)
 			}
 		}
 	}
+}
+
+void
+savesession(Arg const *arg)
+{
+	FILE *f;
+	char fname[256];
+	unsigned int i, j;
+	Client *c;
+	Workspace *ws;
+
+	/* TODO check if file exists already (unlikely but possible) */
+	srand(time(NULL));
+	snprintf(fname, 256, "/tmp/%s_session_%d", APPNAME, rand());
+	f = fopen(fname, "w");
+
+	/* save monitors */
+	fprintf(f, "%u\n", nmon);
+	for (i = 0; i < nmon; i++) {
+		fprintf(f, "%d:%d\n", monitors[i]->selws->x, monitors[i]->selws->y);
+	}
+
+	/* save workspaces and their clients */
+	fprintf(f, "%u\n", nws);
+	for (i = 0; i < nws; i++) {
+		ws = workspaces[i];
+		fprintf(f, "%d:%u:%f:%d:%d:%d:%s\n",
+				ws->nmaster, ws->nc, ws->mfact, ws->x, ws->y, ws->ilayout, ws->name);
+		for (j = 0; j < workspaces[i]->nc; j++) {
+			c = workspaces[i]->clients[j];
+			fprintf(f, "  %u:%d:%d:%u:%u:%d:%d:%d:%d:%d\n",
+					c->win, c->x, c->y, c->w, c->h, c->floating,
+					c->basew, c->baseh, c->incw, c->inch);
+		}
+	}
+
+	fclose(f);
 }
 
 void
