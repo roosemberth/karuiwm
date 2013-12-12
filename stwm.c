@@ -20,6 +20,9 @@
 #define APPNAME "stwm"
 #define BUTTONMASK (ButtonPressMask|ButtonReleaseMask)
 #define CLIENTMASK (EnterWindowMask)
+#define INTERSECT(MON, X, Y, W, H) \
+	((MAX(0, MIN((X)+(W),(MON)->x+(MON)->w) - MAX((MON)->x, X))) * \
+	 (MAX(0, MIN((Y)+(H),(MON)->y+(MON)->h) - MAX((MON)->y, Y))))
 #define LENGTH(ARR) (sizeof(ARR)/sizeof(ARR[0]))
 #define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
@@ -56,8 +59,7 @@ typedef struct {
 } Button;
 
 typedef struct {
-	int x, y;
-	unsigned int w, h;
+	int x, y, w, h;
 	char name[256];
 	Window win;
 	bool floating;
@@ -82,9 +84,9 @@ typedef struct {
 
 typedef struct {
 	Workspace *selws;
-	unsigned int x, y, w, h;     /* monitor dimensions */
-	unsigned int bx, by, bw, bh; /* status bar dimensions */
-	unsigned int wx, wy, ww, wh; /* workspace dimensions */
+	int x, y, w, h;     /* monitor dimensions */
+	int bx, by, bw, bh; /* status bar dimensions */
+	int wx, wy, ww, wh; /* workspace dimensions */
 	struct {
 		Window win;
 		char buffer[256];
@@ -118,7 +120,7 @@ static void arrange(Monitor *);
 static void attachclient(Workspace *, Client *);
 static void attachws(Workspace *);
 static void buttonpress(XEvent *);
-static bool checksizehints(Client *, int, int, unsigned int *, unsigned int *);
+static bool checksizehints(Client *, int, int, int *, int *);
 static void cleanup(void);
 static void clientmessage(XEvent *);
 static void configurerequest(XEvent *);
@@ -146,12 +148,13 @@ static void keyrelease(XEvent *);
 static void killclient(Arg const *);
 static bool locateclient(Workspace **, Client **, unsigned int *, Window const);
 static bool locatemon(Monitor **, unsigned int *, Workspace const *);
+static Monitor *locaterect(int, int, int, int);
 static bool locatews(Workspace **, unsigned int *, int, int, char const *);
 static void mappingnotify(XEvent *);
 static void maprequest(XEvent *);
 static void moveclient(Arg const *);
 static void movemouse(Arg const *);
-static void moveresize(Client *, int, int, unsigned int, unsigned int);
+static void moveresize(Monitor *, Client *, int, int, int, int);
 static void movews(Arg const *);
 static void pop(Workspace *, Client *);
 static void propertynotify(XEvent *);
@@ -259,7 +262,7 @@ arrange(Monitor *mon)
 	for (i = 0; i < mon->selws->nc; i++) {
 		c = mon->selws->clients[i];
 		if (c->floating) {
-			XMoveWindow(dpy, c->win, c->x, c->y); /* TODO xinerama issue */
+			XMoveWindow(dpy, c->win, mon->x+c->x, mon->y+c->y);
 		}
 		/* reenable mouse */
 		XSelectInput(dpy, c->win, CLIENTMASK);
@@ -270,6 +273,8 @@ void
 attachclient(Workspace *ws, Client *c)
 {
 	unsigned int i, pos;
+	Monitor *mon;
+	XWindowAttributes wa;
 
 	/* add to list */
 	ws->clients = realloc(ws->clients, ++ws->nc*sizeof(Client *));
@@ -295,11 +300,17 @@ attachclient(Workspace *ws, Client *c)
 	push(ws, c);
 
 	/* update layout if on a selected workspace */
-	for (i = 0; i < nmon; i++) {
-		if (monitors[i]->selws == ws) {
-			arrange(monitors[i]);
-			break;
+	if (locatemon(&mon, NULL, ws)) {
+		/* update coordinates if floating */
+		if (c->floating) {
+			if (!XGetWindowAttributes(dpy, c->win, &wa)) {
+				warn("XGetWindowAttributes() failed for window %d", c->win);
+			} else {
+				c->x = wa.x - mon->x;
+				c->y = wa.y - mon->y;
+			}
 		}
+		arrange(mon);
 	}
 }
 
@@ -330,9 +341,14 @@ buttonpress(XEvent *e)
 	unsigned int i;
 	Client *c;
 	Workspace *ws;
+	Monitor *mon;
 
-	if (!locateclient(&ws, &c, NULL, e->xbutton.window)) {
+	if (!locateclient(&ws, &c, NULL, e->xbutton.window) ||
+			!locatemon(&mon, NULL, ws)) {
 		return;
+	}
+	if (mon != selmon) {
+		selmon = mon;
 	}
 	push(ws, c);
 	updatefocus();
@@ -346,9 +362,9 @@ buttonpress(XEvent *e)
 }
 
 bool
-checksizehints(Client *c, int x, int y, unsigned int *w, unsigned int *h)
+checksizehints(Client *c, int x, int y, int *w, int *h)
 {
-	unsigned int u;
+	int u;
 	bool change = false;;
 
 	if ((!c->floating && FORCESIZE) || (!c->basew && !c->baseh)) {
@@ -1016,10 +1032,27 @@ locatemon(Monitor **mon, unsigned int *pos, Workspace const *ws)
 	return false;
 }
 
+Monitor *
+locaterect(int x, int y, int w, int h)
+{
+	Monitor *mon = selmon;
+	unsigned int i;
+	int a, area=0;
+
+	for (i = 0; i < nmon; i++) {
+		if ((a = INTERSECT(monitors[i], x, y, w, h)) > area) {
+			area = a;
+			mon = monitors[i];
+		}
+	}
+	return mon;
+}
+
 bool
 locatews(Workspace **ws, unsigned int *pos, int x, int y, char const *name)
 {
 	unsigned int i;
+
 	if (name) {
 		for (i = 0; i < nws; i++) {
 			if (!strncmp(name, workspaces[i]->name, strlen(name))) {
@@ -1078,6 +1111,7 @@ moveclient(Arg const *arg)
 void
 movemouse(Arg const *arg)
 {
+	Monitor *mon;
 	XEvent ev;
 	Window dummy;
 	Client *c = selmon->selws->selcli;
@@ -1114,19 +1148,28 @@ movemouse(Arg const *arg)
 				cy = cy+(ev.xmotion.y-y);
 				x = ev.xmotion.x;
 				y = ev.xmotion.y;
-				moveresize(c, cx, cy, c->w, c->h);
+				moveresize(selmon, c, cx, cy, c->w, c->h);
 				break;
 		}
 	} while (ev.type != ButtonRelease);
+
+	/* check if it has been moved to another monitor */
+	mon = locaterect(selmon->x+c->x, selmon->y+c->y, c->w, c->h);
+	if (mon != selmon) {
+		detachclient(c);
+		attachclient(mon->selws, c);
+		selmon = mon;
+		updatefocus();
+	}
 
 	XUngrabPointer(dpy, CurrentTime);
 }
 
 void
-moveresize(Client *c, int x, int y, unsigned int w, unsigned int h)
+moveresize(Monitor *mon, Client *c, int x, int y, int w, int h)
 {
 	if (checksizehints(c, x, y, &w, &h)) {
-		XMoveResizeWindow(dpy, c->win, c->x = x, c->y = y,
+		XMoveResizeWindow(dpy, c->win, mon->x + (c->x=x), mon->y + (c->y=y),
 				c->w = MAX(w, 1), c->h = MAX(h, 1));
 	}
 }
@@ -1289,8 +1332,8 @@ resizemouse(Arg const *arg)
 	/* set pointer position to lower right */
 	XWarpPointer(dpy, None, c->win, 0, 0, 0, 0,
 			c->w+2*BORDERWIDTH-1, c->h+2*BORDERWIDTH-1);
-	x = c->x+c->w+2*BORDERWIDTH-1;
-	y = c->y+c->h+2*BORDERWIDTH-1;
+	x = selmon->x+c->x+c->w+2*BORDERWIDTH-1;
+	y = selmon->y+c->y+c->h+2*BORDERWIDTH-1;
 
 	/* handle motions */
 	do {
@@ -1309,7 +1352,7 @@ resizemouse(Arg const *arg)
 				ch = ch+(ev.xmotion.y_root-y);
 				x = ev.xmotion.x_root;
 				y = ev.xmotion.y_root;
-				moveresize(c, c->x, c->y, cw, ch);
+				moveresize(selmon, c, c->x, c->y, cw, ch);
 				break;
 		}
 	} while (ev.type != ButtonRelease);
@@ -1378,7 +1421,7 @@ savesession(Arg const *arg)
 				ws->nmaster, ws->nc, ws->mfact, ws->x, ws->y, ws->ilayout, ws->name);
 		for (j = 0; j < workspaces[i]->nc; j++) {
 			c = workspaces[i]->clients[j];
-			fprintf(f, "  %u:%d:%d:%u:%u:%d:%d:%d:%d:%d\n",
+			fprintf(f, "  %lu:%d:%d:%u:%u:%d:%d:%d:%d:%d\n",
 					c->win, c->x, c->y, c->w, c->h, c->floating,
 					c->basew, c->baseh, c->incw, c->inch);
 		}
@@ -1943,8 +1986,8 @@ updatemon(Monitor *mon, int x, int y, unsigned int w, unsigned int h)
 	mon->h = h;
 	updatebar(mon);
 
-	mon->wx = mon->x;
-	mon->wy = mon->y+mon->bh;
+	mon->wx = 0;
+	mon->wy = mon->bh;
 	mon->ww = mon->w;
 	mon->wh = mon->h-mon->bh;
 	arrange(mon);
@@ -2005,8 +2048,8 @@ updatewsmbox(Workspace *ws)
 	/* show box */
 	c = ws->x + wsm.rad - wsm.target->x;
 	r = ws->y + wsm.rad - wsm.target->y;
-	x = selmon->ww/2 - wsm.w*wsm.rad - wsm.w/2 + c*wsm.w + selmon->wx;
-	y = selmon->wh/2 - wsm.h*wsm.rad - wsm.h/2 + r*wsm.h + selmon->wy;
+	x = selmon->x + selmon->wx + (selmon->ww/2 - wsm.w*wsm.rad - wsm.w/2 + c*wsm.w);
+	y = selmon->y + selmon->wy + (selmon->wh/2 - wsm.h*wsm.rad - wsm.h/2 + r*wsm.h);
 	XMoveWindow(dpy, ws->wsmbox, x, y);
 	XRaiseWindow(dpy, ws->wsmbox);
 
@@ -2096,7 +2139,7 @@ bstack(Monitor *mon)
 		w = mon->ww/ncm;
 		h = ncm == nct ? mon->wh : mon->selws->mfact*mon->wh;
 		for (i = 0; i < ncm; i++) {
-			moveresize(tiled[i], mon->wx+i*w, y,
+			moveresize(mon, tiled[i], mon->wx+i*w, y,
 					w-2*BORDERWIDTH, h-2*BORDERWIDTH);
 		}
 	}
@@ -2110,7 +2153,7 @@ bstack(Monitor *mon)
 	w = mon->ww/(nct-ncm);
 	h = ncm ? mon->h-y : mon->wh;
 	for (i = ncm; i < nct; i++) {
-		moveresize(tiled[i], mon->wx+(i-ncm)*w, y,
+		moveresize(mon, tiled[i], mon->wx+(i-ncm)*w, y,
 				w-2*BORDERWIDTH, h-2*BORDERWIDTH);
 	}
 	free(tiled);
@@ -2135,7 +2178,7 @@ rstack(Monitor *mon)
 		w = ncm == nct ? mon->ww : mon->selws->mfact*mon->ww;
 		h = mon->wh/ncm;
 		for (i = 0; i < ncm; i++) {
-			moveresize(tiled[i], x, mon->wy+i*h,
+			moveresize(mon, tiled[i], x, mon->wy+i*h,
 					w-2*BORDERWIDTH, h-2*BORDERWIDTH);
 		}
 	}
@@ -2149,7 +2192,7 @@ rstack(Monitor *mon)
 	w = ncm ? mon->w-x : mon->ww;
 	h = mon->wh/(nct-ncm);
 	for (i = ncm; i < nct; i++) {
-		moveresize(tiled[i], x, mon->wy+(i-ncm)*h,
+		moveresize(mon, tiled[i], x, mon->wy+(i-ncm)*h,
 				w-2*BORDERWIDTH, h-2*BORDERWIDTH);
 	}
 	free(tiled);
