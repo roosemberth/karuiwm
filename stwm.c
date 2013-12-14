@@ -43,28 +43,33 @@ enum { CURSOR_NORMAL, CURSOR_RESIZE, CURSOR_MOVE, CURSOR_LAST };
 enum { LEFT, RIGHT, UP, DOWN, NO_DIRECTION };
 enum DMenuState { DMENU_SPAWN, DMENU_RENAME, DMENU_VIEW, DMENU_INACTIVE };
 
+typedef union Arg Arg;
+typedef struct Button Button;
+typedef struct Client Client;
+typedef struct Key Key;
+typedef struct Monitor Monitor;
 typedef struct Workspace Workspace;
 
-typedef union {
+union Arg {
 	int i;
 	float f;
 	const void *v;
-} Arg;
+};
 
-typedef struct {
+struct Button {
 	unsigned int mod;
 	unsigned int button;
 	void (*func)(Arg const *);
 	Arg const arg;
-} Button;
+};
 
-typedef struct {
+struct Client {
 	int x, y, w, h;
 	char name[256];
 	Window win;
 	bool floating;
 	int basew, baseh, incw, inch;
-} Client;
+};
 
 struct {
 	GC gc;
@@ -75,14 +80,14 @@ struct {
 	} font;
 } dc;
 
-typedef struct {
+struct Key {
 	unsigned int mod;
 	KeySym key;
 	void (*func)(Arg const *);
 	Arg const arg;
-} Key;
+};
 
-typedef struct {
+struct Monitor {
 	Workspace *selws;
 	int x, y, w, h;     /* monitor dimensions */
 	int bx, by, bw, bh; /* status bar dimensions */
@@ -91,7 +96,7 @@ typedef struct {
 		Window win;
 		char buffer[256];
 	} bar;
-} Monitor;
+};
 
 struct Workspace {
 	Client **clients, **stack;
@@ -125,9 +130,9 @@ static void cleanup(void);
 static void clientmessage(XEvent *);
 static void configurerequest(XEvent *);
 static void configurenotify(XEvent *);
-static void detachclient(Client *);
+static bool detachclient(Client *);
 static void detachmon(Monitor *);
-static void detachws(Workspace *);
+static bool detachws(Workspace *);
 static void dmenu(Arg const *);
 static void dmenueval(void);
 static void enternotify(XEvent *);
@@ -170,6 +175,7 @@ static void run(void);
 static void savesession(Arg const *arg);
 static void scan(void);
 static void setmfact(Arg const *);
+static void setpad(Arg const *);
 static void setup(void);
 static void setupfont(void);
 static void setupwsm(void);
@@ -188,6 +194,7 @@ static void termclient(Client *);
 static void termmon(Monitor *);
 static void termws(Workspace *);
 static void togglefloat(Arg const *);
+static void togglepad(Arg const *);
 static void togglewsm(Arg const *);
 static size_t unifyscreens(XineramaScreenInfo **, size_t);
 static void unmapnotify(XEvent *);
@@ -238,6 +245,8 @@ static unsigned int nmon;           /* number of monitors */
 static int dmenu_out;               /* dmenu's output file descriptor */
 static enum DMenuState dmenu_state; /* dmenu's state */
 static int nlayouts;                /* number of cyclable layouts */
+static Client *pad;                 /* scratchpad window */
+static bool pad_visible;            /* if the scratchpad is visible */
 
 /* configuration */
 #include "config.h"
@@ -276,6 +285,9 @@ attachclient(Workspace *ws, Client *c)
 	Monitor *mon;
 	XWindowAttributes wa;
 
+	/* remove from other workspaces */
+	while (detachclient(c));
+
 	/* add to list */
 	ws->clients = realloc(ws->clients, ++ws->nc*sizeof(Client *));
 	if (!ws->clients) {
@@ -303,6 +315,7 @@ attachclient(Workspace *ws, Client *c)
 	if (locatemon(&mon, NULL, ws)) {
 		/* update coordinates if floating */
 		if (c->floating) {
+			XRaiseWindow(dpy, c->win);
 			if (!XGetWindowAttributes(dpy, c->win, &wa)) {
 				warn("XGetWindowAttributes() failed for window %d", c->win);
 			} else {
@@ -415,7 +428,6 @@ cleanup(void)
 			termclient(c);
 		}
 		if (nws && ws == workspaces[0]) { /* workspace is still here */
-			detachws(ws);
 			termws(ws);
 		}
 	}
@@ -490,7 +502,7 @@ configurerequest(XEvent *e)
 	XSendEvent(dpy, c->win, false, StructureNotifyMask, (XEvent *) &cev);
 }
 
-void
+bool
 detachclient(Client *c)
 {
 	unsigned int i;
@@ -498,8 +510,7 @@ detachclient(Client *c)
 	Monitor *mon;
 
 	if (!locateclient(&ws, &c, &i, c->win)) {
-		warn("attempt to detach an unhandled window %d", c->win);
-		return;
+		return false;
 	}
 
 	/* remove from stack */
@@ -521,9 +532,9 @@ detachclient(Client *c)
 		arrange(mon);
 		updatefocus();
 	} else if (!ws->nc) {
-		detachws(ws);
 		termws(ws);
 	}
+	return true;
 }
 
 void
@@ -548,14 +559,13 @@ detachmon(Monitor *mon)
 	warn("attempt to detach non-existing monitor");
 }
 
-void
+bool
 detachws(Workspace *ws)
 {
 	unsigned int i;
 
 	if (!locatews(&ws, &i, ws->x, ws->y, NULL)) {
-		warn("attempt to detach non-existing workspace");
-		return;
+		return false;;
 	}
 
 	nws--;
@@ -573,6 +583,7 @@ detachws(Workspace *ws)
 		ws->wsmbox = 0;
 		updatewsm();
 	}
+	return true;
 }
 
 void
@@ -1156,7 +1167,6 @@ movemouse(Arg const *arg)
 	/* check if it has been moved to another monitor */
 	mon = locaterect(selmon->x+c->x, selmon->y+c->y, c->w, c->h);
 	if (mon != selmon) {
-		detachclient(c);
 		attachclient(mon->selws, c);
 		selmon = mon;
 		updatefocus();
@@ -1458,6 +1468,41 @@ setmfact(Arg const *arg)
 }
 
 void
+setpad(Arg const *arg)
+{
+	Client *newpad=NULL;
+
+	/* if there is no pad and no client is focused, don't do anything */
+	if (!selmon->selws->nc && !pad) {
+		return;
+	}
+
+	/* if pad has focus, unpad it */
+	if (selmon->selws->selcli == pad) {
+		pad->floating = pad_visible = false;
+		pad = NULL;
+		arrange(selmon);
+		return;
+	}
+
+	/* pad does not have focus, make sure it's invisible (to simplify things) */
+	if (pad_visible) {
+		togglepad(NULL);
+	}
+
+	/* unpad old pad (if existing), set new pad */
+	newpad = selmon->selws->selcli;
+	if (pad) {
+		pad->floating = false;
+		attachclient(selmon->selws, pad);
+	}
+	pad = newpad;
+
+	/* show new pad */
+	togglepad(NULL);
+}
+
+void
 setup(void)
 {
 	XSetWindowAttributes wa;
@@ -1495,8 +1540,10 @@ setup(void)
 	setupfont();
 	updategeom();
 
-	/* high: workspace map */
+	/* high: workspace map, scratchpad */
 	setupwsm();
+	pad = NULL;
+	pad_visible = false;
 }
 
 void
@@ -1591,7 +1638,6 @@ setws(int x, int y)
 	if (selmon->selws->nc) {
 		hidews(selmon->selws);
 	} else {
-		detachws(selmon->selws);
 		termws(selmon->selws);
 	}
 
@@ -1601,6 +1647,11 @@ setws(int x, int y)
 	} else {
 		selmon->selws = initws(x, y);
 		attachws(selmon->selws);
+	}
+
+	if (pad_visible) {
+		togglepad(NULL);
+		togglepad(NULL);
 	}
 
 	arrange(selmon);
@@ -1747,6 +1798,7 @@ stepwsmbox(Arg const *arg)
 void
 termclient(Client *c)
 {
+	while (detachclient(c));
 	free(c);
 }
 
@@ -1760,6 +1812,7 @@ termmon(Monitor *mon)
 void
 termws(Workspace *ws)
 {
+	while (detachws(ws));
 	if (ws->nc) {
 		warn("destroying non-empty workspace");
 	}
@@ -1781,6 +1834,28 @@ togglefloat(Arg const *arg)
 		XLowerWindow(dpy, c->win);
 	}
 	arrange(selmon);
+	updatefocus();
+}
+
+void
+togglepad(Arg const *arg)
+{
+	debug("togglepad()");
+
+	if (!pad) {
+		return;
+	}
+	if (pad_visible) {
+		detachclient(pad);
+		hideclient(pad);
+	} else {
+		pad->floating = true;
+		attachclient(selmon->selws, pad);
+		moveresize(selmon, pad, selmon->wx + PADMARGIN, selmon->wy + PADMARGIN,
+				selmon->ww - 2*PADMARGIN - 2*BORDERWIDTH,
+				selmon->wh - 2*PADMARGIN - 2*BORDERWIDTH);
+	}
+	pad_visible = !pad_visible;
 	updatefocus();
 }
 
@@ -1870,8 +1945,11 @@ unmapnotify(XEvent *e)
 	Workspace *ws;
 	Monitor *mon;
 
-	if (locateclient(&ws, &c, NULL, e->xunmap.window)) {
-		detachclient(c);
+	if (pad && e->xunmap.window == pad->win) {
+		termclient(pad);
+		pad_visible = false;
+		pad = NULL;
+	} else if (locateclient(&ws, &c, NULL, e->xunmap.window)) {
 		termclient(c);
 		if (locatemon(&mon, NULL, ws)) {
 			arrange(mon);
