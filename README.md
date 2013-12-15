@@ -67,7 +67,7 @@ These are the default settings defined by the <code>keys</code> array:
 * <code>PrtSc</code>
   launch scrot (screenshot)
 
-**Windows**
+**Clients**
 
 * <code>Mod</code>+<code>j</code>|<code>k</code>
   set focus to next/previous client
@@ -102,7 +102,14 @@ These are the default settings defined by the <code>keys</code> array:
 * <code>Mod</code>+<code>o</code>
   open workspace map (see appendix A)
 
-**Monitors**
+**Scratchpad** (see appendix C)
+
+* <code>Mod</code>+<code>Tab</code>
+  toggle scratchpad
+* <code>Mod</code>+<code>Shift</code>+<code>Tab</code>
+  set focused client as scratchpad, or unset scratchpad if it is focused
+
+**Monitors** (see appendix B)
 
 * <code>Mod</code>+<code>m</code>
   set focus to next monitor
@@ -168,4 +175,16 @@ workspace; if there is none, it will create a new workspace nearby and move its
 view there. If a monitor moves its view to a workspace that is already displayed
 on another monitor, the workspace view is swapped (except for floating windows,
 they behave a bit buggy yet).
+
+
+appendic C: scratchpad
+----------------------
+
+A scratchpad is a client that can easily be displayed and dismissed, typically a
+terminal emulator to spontaneously type a command. In stwm, the scratchpad can
+be toggled by hitting <code>Mod</code>+<code>Tab</code>.
+
+At startup, no client is defined as the scratchpad (thus toggling it won't have
+any effect); one first needs to define a window as the scratchpad by hitting
+<code>Mod</code>+<code>Shift</code>+<code>Tab</code>.
 
