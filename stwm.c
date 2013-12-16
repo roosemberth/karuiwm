@@ -246,7 +246,7 @@ static int dmenu_out;               /* dmenu's output file descriptor */
 static enum DMenuState dmenu_state; /* dmenu's state */
 static int nlayouts;                /* number of cyclable layouts */
 static Client *pad;                 /* scratchpad window */
-static bool pad_visible;            /* if the scratchpad is visible */
+static Monitor *pad_mon;            /* monitor the scratchpad is currently on */
 
 /* configuration */
 #include "config.h"
@@ -471,7 +471,8 @@ configurerequest(XEvent *e)
 	XConfigureRequestEvent *ev = &e->xconfigurerequest;
 
 	/* forward configuration if not managed (or if we don't force the size) */
-	if (!FORCESIZE || !locateclient(NULL, &c, NULL, ev->window) || c->floating) {
+	if (!FORCESIZE || (pad && ev->window == pad->win) ||
+			!locateclient(NULL, &c, NULL, ev->window) || c->floating) {
 		wc = (XWindowChanges) {
 			.x = ev->x,
 			.y = ev->y,
@@ -683,8 +684,10 @@ enternotify(XEvent *e)
 	Client *c;
 
 	if (!locateclient(&ws, &c, &pos, e->xcrossing.window)) {
-		warn("attempt to enter unhandled/invisible window %d",
-				e->xcrossing.window);
+		if (pad && e->xcrossing.window != pad->win) {
+			warn("attempt to enter unhandled/invisible window %d",
+					e->xcrossing.window);
+		}
 		return;
 	}
 	if (locatemon(&mon, NULL, ws) && mon != selmon) {
@@ -797,7 +800,7 @@ grabkeys(void)
 void
 hideclient(Client *c)
 {
-	XMoveWindow(dpy, c->win, -c->w-2*BORDERWIDTH, c->y);
+	moveresize(selmon, c, -c->w-2*BORDERWIDTH, c->y, c->w, c->h);
 }
 
 void
@@ -1472,33 +1475,29 @@ setpad(Arg const *arg)
 {
 	Client *newpad=NULL;
 
-	/* if there is no pad and no client is focused, don't do anything */
-	if (!selmon->selws->nc && !pad) {
-		return;
-	}
-
 	/* if pad has focus, unpad it */
-	if (selmon->selws->selcli == pad) {
-		pad->floating = pad_visible = false;
+	if (pad_mon == selmon) {
+		pad->floating = false;
+		attachclient(selmon->selws, pad);
 		pad = NULL;
-		arrange(selmon);
+		pad_mon = NULL;
+		updatefocus();
 		return;
 	}
 
-	/* pad does not have focus, make sure it's invisible (to simplify things) */
-	if (pad_visible) {
-		togglepad(NULL);
+	/* pad does not have focus; check if anything has focus */
+	if (!selmon->selws->nc) {
+		return;
 	}
 
-	/* unpad old pad (if existing), set new pad */
+	/* set current focus as pad, remove old pad if necessary */
 	newpad = selmon->selws->selcli;
+	detachclient(newpad);
 	if (pad) {
 		pad->floating = false;
 		attachclient(selmon->selws, pad);
 	}
 	pad = newpad;
-
-	/* show new pad */
 	togglepad(NULL);
 }
 
@@ -1543,7 +1542,7 @@ setup(void)
 	/* high: workspace map, scratchpad */
 	setupwsm();
 	pad = NULL;
-	pad_visible = false;
+	pad_mon = NULL;
 }
 
 void
@@ -1647,11 +1646,6 @@ setws(int x, int y)
 	} else {
 		selmon->selws = initws(x, y);
 		attachws(selmon->selws);
-	}
-
-	if (pad_visible) {
-		togglepad(NULL);
-		togglepad(NULL);
 	}
 
 	arrange(selmon);
@@ -1840,22 +1834,21 @@ togglefloat(Arg const *arg)
 void
 togglepad(Arg const *arg)
 {
-	debug("togglepad()");
-
 	if (!pad) {
 		return;
 	}
-	if (pad_visible) {
-		detachclient(pad);
+	if (pad_mon) {
 		hideclient(pad);
+		pad_mon = NULL;
 	} else {
 		pad->floating = true;
-		attachclient(selmon->selws, pad);
-		moveresize(selmon, pad, selmon->wx + PADMARGIN, selmon->wy + PADMARGIN,
+		pad_mon = selmon;
+		moveresize(selmon, pad,
+				selmon->x + selmon->wx + PADMARGIN,
+				selmon->y + selmon->wy + PADMARGIN,
 				selmon->ww - 2*PADMARGIN - 2*BORDERWIDTH,
 				selmon->wh - 2*PADMARGIN - 2*BORDERWIDTH);
 	}
-	pad_visible = !pad_visible;
 	updatefocus();
 }
 
@@ -1947,8 +1940,8 @@ unmapnotify(XEvent *e)
 
 	if (pad && e->xunmap.window == pad->win) {
 		termclient(pad);
-		pad_visible = false;
 		pad = NULL;
+		pad_mon = NULL;
 	} else if (locateclient(&ws, &c, NULL, e->xunmap.window)) {
 		termclient(c);
 		if (locatemon(&mon, NULL, ws)) {
@@ -2008,6 +2001,14 @@ updatefocus(void)
 					CurrentTime);
 			grabbuttons(mon->selws->stack[j], true);
 		}
+	}
+
+	/* focus scratchpad if visible */
+	if (pad_mon == selmon) {
+		XSetInputFocus(dpy, pad->win, RevertToNone, CurrentTime);
+		XSetWindowBorder(dpy, pad->win, CBORDERSEL);
+		XRaiseWindow(dpy, pad->win);
+		return;
 	}
 }
 
