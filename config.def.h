@@ -32,10 +32,10 @@
 #define WSMCBORDERTARGET CBORDERSEL
 
 /* layouts */
-static void (*layouts[])(Monitor *) = {
-	rstack, /* stack at right [default] */
-	bstack, /* stack at bottom */
-	NULL,   /* steplayout() will not cycle beyond this point */
+static Layout const layouts[] = {
+	{ "[]=", rstack }, /* stack at right [default] */
+	{ "TTT", bstack }, /* stack at bottom */
+	{ NULL,     NULL },   /* steplayout() will not cycle beyond this point */
 };
 
 /* dmenu arguments (see man dmenu) */

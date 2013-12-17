@@ -47,6 +47,7 @@ typedef union Arg Arg;
 typedef struct Button Button;
 typedef struct Client Client;
 typedef struct Key Key;
+typedef struct Layout Layout;
 typedef struct Monitor Monitor;
 typedef struct Workspace Workspace;
 
@@ -85,6 +86,11 @@ struct Key {
 	KeySym key;
 	void (*func)(Arg const *);
 	Arg const arg;
+};
+
+struct Layout {
+	char const *icon;
+	void (*func)(Monitor *);
 };
 
 struct Monitor {
@@ -262,7 +268,7 @@ arrange(Monitor *mon)
 	Client *c;
 
 	setclientmask(mon, false);
-	layouts[mon->selws->ilayout](mon);
+	layouts[mon->selws->ilayout].func(mon);
 	for (i = 0; i < mon->selws->nc; i++) {
 		c = mon->selws->clients[i];
 		if (c->floating) {
@@ -1558,7 +1564,7 @@ setup(void)
 	grabkeys();
 
 	/* high: layouts (needed here, for updategeom() below) */
-	for (nlayouts=0; nlayouts<LENGTH(layouts) && layouts[nlayouts]; nlayouts++);
+	for (nlayouts=0; nlayouts<LENGTH(layouts) && layouts[nlayouts].icon; nlayouts++);
 
 	/* output: font, monitors */
 	setupfont();
@@ -1992,11 +1998,8 @@ updatebar(Monitor *mon)
 		mon->bw = mon->w;
 		XMoveResizeWindow(dpy, mon->bar.win, mon->bx, mon->by, mon->bw,mon->bh);
 	}
-	if (strlen(mon->selws->name)) {
-		strcpy(mon->bar.buffer, mon->selws->name);
-	} else {
-		sprintf(mon->bar.buffer, "*%p", (void *) mon->selws);
-	}
+	sprintf(mon->bar.buffer, "%s  %s", layouts[mon->selws->ilayout].icon,
+				mon->selws->name);
 	renderbar(mon);
 }
 
