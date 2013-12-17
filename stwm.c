@@ -206,6 +206,7 @@ static void updatemon(Monitor *, int, int, unsigned int, unsigned int);
 static void updatesizehints(Client *);
 static void updatewsm(void);
 static void updatewsmbox(Workspace *);
+static void viewmon(Monitor *);
 static void viewws(Arg const *);
 static int xerror(Display *, XErrorEvent *);
 static int (*xerrorxlib)(Display *, XErrorEvent *);
@@ -351,7 +352,7 @@ buttonpress(XEvent *e)
 		return;
 	}
 	if (mon != selmon) {
-		selmon = mon;
+		viewmon(mon);
 	}
 	push(ws, c);
 	updatefocus();
@@ -679,7 +680,7 @@ enternotify(XEvent *e)
 	Client *c;
 
 	if (pad && e->xcrossing.window == pad->win) {
-		selmon = pad_mon;
+		viewmon(pad_mon);
 	} else {
 		if (!locateclient(&ws, &c, &pos, e->xcrossing.window)) {
 			warn("attempt to enter unhandled/invisible window %d",
@@ -687,7 +688,7 @@ enternotify(XEvent *e)
 			return;
 		}
 		if (locatemon(&mon, NULL, ws) && mon != selmon) {
-			selmon = mon;
+			viewmon(mon);
 		}
 		push(selmon->selws, c);
 	}
@@ -1172,7 +1173,7 @@ movemouse(Arg const *arg)
 	if (mon != selmon) {
 		detachclient(c);
 		attachclient(mon->selws, c);
-		selmon = mon;
+		viewmon(mon);
 		updatefocus();
 	}
 
@@ -1304,7 +1305,7 @@ renderbar(Monitor *mon)
 	XFillRectangle(dpy, mon->bar.win, dc.gc, 0, 0, mon->bw, mon->bh);
 
 	/* foreground */
-	XSetForeground(dpy, dc.gc, CNORM);
+	XSetForeground(dpy, dc.gc, mon == selmon ? CBORDERSEL : CNORM);
 	Xutf8DrawString(dpy, mon->bar.win, dc.font.xfontset, dc.gc, 6,
 			dc.font.ascent+1, mon->bar.buffer, strlen(mon->bar.buffer));
 	XSync(dpy, false);
@@ -1783,14 +1784,15 @@ steplayout(Arg const *arg)
 void
 stepmon(Arg const *arg)
 {
-	Monitor *mon;
+	Monitor *oldmon;
 	unsigned int pos;
 
-	if (!locatemon(&mon, &pos, selmon->selws)) {
+	if (!locatemon(&oldmon, &pos, selmon->selws)) {
 		warn("attempt to step from non-existing monitor");
 		return;
 	}
-	selmon = monitors[(pos+nmon+1)%nmon];
+	oldmon = selmon;
+	viewmon(monitors[(pos+nmon+1)%nmon]);
 	updatefocus();
 }
 
@@ -2168,6 +2170,15 @@ updatewsmbox(Workspace *ws)
 	XRaiseWindow(dpy, ws->wsmbox);
 
 	renderwsmbox(ws);
+}
+
+void
+viewmon(Monitor *mon)
+{
+	Monitor *oldmon = selmon;
+	selmon = mon;
+	updatebar(oldmon);
+	updatebar(selmon);
 }
 
 void
