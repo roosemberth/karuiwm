@@ -174,6 +174,7 @@ static void restart(Arg const *);
 static void run(void);
 static void savesession(Arg const *arg);
 static void scan(void);
+static void setclientmask(Monitor *, bool);
 static void setmfact(Arg const *);
 static void setpad(Arg const *);
 static void setup(void);
@@ -259,23 +260,15 @@ arrange(Monitor *mon)
 	unsigned int i;
 	Client *c;
 
-	/* prevent mouse from changing focus */
-	for (i = 0; i < mon->selws->nc; i++) {
-		XSelectInput(dpy, mon->selws->clients[i]->win, 0);
-	}
-
-	/* apply current layout */
+	setclientmask(mon, false);
 	layouts[mon->selws->ilayout](mon);
-
-	/* move floating windows to correct position */
 	for (i = 0; i < mon->selws->nc; i++) {
 		c = mon->selws->clients[i];
 		if (c->floating) {
 			XMoveWindow(dpy, c->win, mon->x+c->x, mon->y+c->y);
 		}
-		/* reenable mouse */
-		XSelectInput(dpy, c->win, CLIENTMASK);
 	}
+	setclientmask(mon, true);
 }
 
 void
@@ -685,17 +678,19 @@ enternotify(XEvent *e)
 	Monitor *mon;
 	Client *c;
 
-	if (!locateclient(&ws, &c, &pos, e->xcrossing.window)) {
-		if (pad && e->xcrossing.window != pad->win) {
+	if (pad && e->xcrossing.window == pad->win) {
+		selmon = pad_mon;
+	} else {
+		if (!locateclient(&ws, &c, &pos, e->xcrossing.window)) {
 			warn("attempt to enter unhandled/invisible window %d",
 					e->xcrossing.window);
+			return;
 		}
-		return;
+		if (locatemon(&mon, NULL, ws) && mon != selmon) {
+			selmon = mon;
+		}
+		push(selmon->selws, c);
 	}
-	if (locatemon(&mon, NULL, ws) && mon != selmon) {
-		selmon = mon;
-	}
-	push(selmon->selws, c);
 	updatefocus();
 }
 
@@ -1474,6 +1469,25 @@ scan(void)
 }
 
 void
+setclientmask(Monitor *mon, bool set)
+{
+	int i;
+
+	if (!mon) {
+		return;
+	}
+	if (set) {
+		for (i = 0; i < mon->selws->nc; i++) {
+			XSelectInput(dpy, mon->selws->clients[i]->win, CLIENTMASK);
+		}
+	} else {
+		for (i = 0; i < mon->selws->nc; i++) {
+			XSelectInput(dpy, mon->selws->clients[i]->win, 0);
+		}
+	}
+}
+
+void
 setmfact(Arg const *arg)
 {
 	selmon->selws->mfact = MAX(0.1, MIN(0.9, selmon->selws->mfact+arg->f));
@@ -1846,19 +1860,21 @@ togglepad(Arg const *arg)
 	if (!pad) {
 		return;
 	}
-	if (pad_mon) {
+	setclientmask(selmon, false);
+	if (pad_mon == selmon) {
 		hideclient(pad);
 		pad_mon = NULL;
 	} else {
 		pad->floating = true;
 		pad_mon = selmon;
 		moveresize(selmon, pad,
-				selmon->x + selmon->wx + PADMARGIN,
-				selmon->y + selmon->wy + PADMARGIN,
+				selmon->wx + PADMARGIN,
+				selmon->wy + PADMARGIN,
 				selmon->ww - 2*PADMARGIN - 2*BORDERWIDTH,
 				selmon->wh - 2*PADMARGIN - 2*BORDERWIDTH);
 	}
 	updatefocus();
+	setclientmask(selmon, true);
 }
 
 void
@@ -1991,7 +2007,7 @@ updatefocus(void)
 
 	for (i = 0; i < nmon; i++) {
 		mon = monitors[i];
-		sel = mon == selmon;
+		sel = mon == selmon && pad_mon != selmon;
 
 		/* empty monitor: don't focus anything */
 		if (!mon->selws->ns) {
@@ -2017,8 +2033,8 @@ updatefocus(void)
 		}
 	}
 
-	/* focus scratchpad if visible */
-	if (pad_mon) {
+	/* focus scratchpad if existent and visible */
+	if (pad) {
 		if (pad_mon == selmon) {
 			XSetInputFocus(dpy, pad->win, RevertToPointerRoot, CurrentTime);
 			XSetWindowBorder(dpy, pad->win, CBORDERSEL);
@@ -2028,7 +2044,6 @@ updatefocus(void)
 			XSetWindowBorder(dpy, pad->win, CBORDERNORM);
 			grabbuttons(pad, false);
 		}
-		return;
 	}
 }
 

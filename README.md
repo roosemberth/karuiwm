@@ -180,11 +180,11 @@ they behave a bit buggy yet).
 appendic C: scratchpad
 ----------------------
 
-A scratchpad is a client that can easily be displayed and dismissed, typically a
+A scratchpad is a window that can easily be displayed and dismissed, typically a
 terminal emulator to spontaneously type a command. In stwm, the scratchpad can
 be toggled by hitting <code>Mod</code>+<code>Tab</code>.
 
 At startup, no client is defined as the scratchpad (thus toggling it won't have
-any effect); one first needs to define a window as the scratchpad by hitting
+any effect); one first needs to define a client as the scratchpad by hitting
 <code>Mod</code>+<code>Shift</code>+<code>Tab</code>.
 
