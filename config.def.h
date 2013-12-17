@@ -7,6 +7,7 @@
 #define BORDERWIDTH 1    /* window border width */
 #define WSMBORDERWIDTH 1 /* WSM box border width */
 #define WSMRADIUS 4      /* number of workspaces around WSM centre */
+#define PADMARGIN 20     /* border gap for scratchpad workspace */
 
 /* colours */
 #define CBORDERNORM      0x222222   /* normal windows */
@@ -100,6 +101,10 @@ static Key const keys[] = {
 	{ MODKEY,                       XK_o,      togglewsm,   { 0 } },
 	{ MODKEY,                       XK_i,      dmenu,       { .i=DMENU_VIEW } },
 	{ MODKEY|ShiftMask,             XK_i,      dmenu,       { .i=DMENU_RENAME } },
+
+	/* scratchpad */
+	{ MODKEY,                       XK_Tab,    togglepad,   { 0 } },
+	{ MODKEY|ShiftMask,             XK_Tab,    setpad,      { 0 } },
 
 	/* monitors */
 	{ MODKEY,                       XK_m,      stepmon,     { 0 } },
