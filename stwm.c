@@ -130,9 +130,9 @@ static void cleanup(void);
 static void clientmessage(XEvent *);
 static void configurerequest(XEvent *);
 static void configurenotify(XEvent *);
-static bool detachclient(Client *);
+static void detachclient(Client *);
 static void detachmon(Monitor *);
-static bool detachws(Workspace *);
+static void detachws(Workspace *);
 static void dmenu(Arg const *);
 static void dmenueval(void);
 static void enternotify(XEvent *);
@@ -180,7 +180,7 @@ static void setup(void);
 static void setupfont(void);
 static void setupwsm(void);
 static void setnmaster(Arg const *);
-static void setws(int, int);
+static void setws(Monitor *, int, int);
 static void shift(Arg const *);
 static void sigchld(int);
 static void spawn(Arg const *);
@@ -285,9 +285,6 @@ attachclient(Workspace *ws, Client *c)
 	Monitor *mon;
 	XWindowAttributes wa;
 
-	/* remove from other workspaces */
-	while (detachclient(c));
-
 	/* add to list */
 	ws->clients = realloc(ws->clients, ++ws->nc*sizeof(Client *));
 	if (!ws->clients) {
@@ -378,7 +375,7 @@ bool
 checksizehints(Client *c, int x, int y, int *w, int *h)
 {
 	int u;
-	bool change = false;;
+	bool change = false;
 
 	if ((!c->floating && FORCESIZE) || (!c->basew && !c->baseh)) {
 		return true;
@@ -404,6 +401,8 @@ checksizehints(Client *c, int x, int y, int *w, int *h)
 void
 cleanup(void)
 {
+	debug("cleanup");
+
 	unsigned int i;
 	Monitor *mon;
 	Workspace *ws;
@@ -416,6 +415,11 @@ cleanup(void)
 
 	/* make monitors point nowhere (so all workspaces are removed) */
 	for (i = 0; i < nmon; i++) {
+		mon = monitors[i];
+		if (!mon->selws->nc) {
+			detachws(mon->selws);
+			termws(mon->selws);
+		}
 		monitors[i]->selws = NULL;
 	}
 
@@ -426,9 +430,6 @@ cleanup(void)
 			c = ws->clients[0];
 			detachclient(c);
 			termclient(c);
-		}
-		if (nws && ws == workspaces[0]) { /* workspace is still here */
-			termws(ws);
 		}
 	}
 	termws(wsm.target);
@@ -503,7 +504,7 @@ configurerequest(XEvent *e)
 	XSendEvent(dpy, c->win, false, StructureNotifyMask, (XEvent *) &cev);
 }
 
-bool
+void
 detachclient(Client *c)
 {
 	unsigned int i;
@@ -511,7 +512,8 @@ detachclient(Client *c)
 	Monitor *mon;
 
 	if (!locateclient(&ws, &c, &i, c->win)) {
-		return false;
+		warn("attempt to detach non-existent client");
+		return;
 	}
 
 	/* remove from stack */
@@ -533,9 +535,9 @@ detachclient(Client *c)
 		arrange(mon);
 		updatefocus();
 	} else if (!ws->nc) {
+		detachws(ws);
 		termws(ws);
 	}
-	return true;
 }
 
 void
@@ -560,13 +562,14 @@ detachmon(Monitor *mon)
 	warn("attempt to detach non-existing monitor");
 }
 
-bool
+void
 detachws(Workspace *ws)
 {
 	unsigned int i;
 
 	if (!locatews(&ws, &i, ws->x, ws->y, NULL)) {
-		return false;;
+		warn("attempt to detach non-existent workspace");
+		return;
 	}
 
 	nws--;
@@ -584,7 +587,6 @@ detachws(Workspace *ws)
 		ws->wsmbox = 0;
 		updatewsm();
 	}
-	return true;
 }
 
 void
@@ -662,7 +664,7 @@ dmenueval(void)
 				break;
 			case DMENU_VIEW:
 				if (locatews(&ws, NULL, 0, 0, buf)) {
-					setws(ws->x, ws->y);
+					setws(selmon, ws->x, ws->y);
 				}
 				break;
 			default:
@@ -933,6 +935,8 @@ initwsmbox(void)
 void
 keypress(XEvent *e)
 {
+	//debug("keypress()");
+
 	unsigned int i;
 	KeySym keysym = XLookupKeysym(&e->xkey, 0);
 
@@ -962,6 +966,7 @@ void
 keyrelease(XEvent *e)
 {
 	//debug("keyrelease()");
+	/* TODO */
 }
 
 void
@@ -971,7 +976,7 @@ killclient(Arg const *arg)
 	Client *c;
 	Atom protocol, request;
 	Atom *supported;
-	bool match;
+	bool match=false;
 	XClientMessageEvent cmev;
 
 	/* nothing to kill */
@@ -1170,6 +1175,7 @@ movemouse(Arg const *arg)
 	/* check if it has been moved to another monitor */
 	mon = locaterect(selmon->x+c->x, selmon->y+c->y, c->w, c->h);
 	if (mon != selmon) {
+		detachclient(c);
 		attachclient(mon->selws, c);
 		selmon = mon;
 		updatefocus();
@@ -1263,6 +1269,8 @@ push(Workspace *ws, Client *c)
 void
 quit(Arg const *arg)
 {
+	debug("quit()");
+
 	restarting = false;
 	running = false;
 }
@@ -1376,6 +1384,8 @@ resizemouse(Arg const *arg)
 void
 restart(Arg const *arg)
 {
+	debug("restart()");
+
 	restarting = true;
 	running = false;
 }
@@ -1612,44 +1622,45 @@ setupwsm(void)
 }
 
 void
-setws(int x, int y)
+setws(Monitor *mon, int x, int y)
 {
 	Workspace *next=NULL;
 	Monitor *othermon=NULL;
 
-	if (locatews(&next, NULL, x, y, NULL) && selmon->selws == next) {
+	if (locatews(&next, NULL, x, y, NULL) && mon->selws == next) {
 		return;
 	}
 
 	/* exchange monitors on collision */
-	if (locatemon(&othermon, NULL, next) && othermon != selmon) {
-		othermon->selws = selmon->selws;
-		selmon->selws = next;
-		arrange(selmon);
+	if (locatemon(&othermon, NULL, next) && othermon != mon) {
+		othermon->selws = mon->selws;
+		mon->selws = next;
+		arrange(mon);
 		arrange(othermon);
-		updatebar(selmon);
+		updatebar(mon);
 		updatebar(othermon);
 		updatefocus();
 		return;
 	}
 
 	/* current workspace */
-	if (selmon->selws->nc) {
-		hidews(selmon->selws);
+	if (mon->selws->nc) {
+		hidews(mon->selws);
 	} else {
-		termws(selmon->selws);
+		detachws(mon->selws);
+		termws(mon->selws);
 	}
 
 	/* next workspace */
 	if (next) {
-		selmon->selws = next;
+		mon->selws = next;
 	} else {
-		selmon->selws = initws(x, y);
-		attachws(selmon->selws);
+		mon->selws = initws(x, y);
+		attachws(mon->selws);
 	}
 
-	arrange(selmon);
-	updatebar(selmon);
+	arrange(mon);
+	updatebar(mon);
 	updatefocus();
 }
 
@@ -1774,7 +1785,7 @@ stepws(Arg const *arg)
 {
 	int x, y;
 	reltoxy(&x, &y, selmon->selws, arg->i);
-	setws(x, y);
+	setws(selmon, x, y);
 }
 
 void
@@ -1792,7 +1803,6 @@ stepwsmbox(Arg const *arg)
 void
 termclient(Client *c)
 {
-	while (detachclient(c));
 	free(c);
 }
 
@@ -1806,7 +1816,6 @@ termmon(Monitor *mon)
 void
 termws(Workspace *ws)
 {
-	while (detachws(ws));
 	if (ws->nc) {
 		warn("destroying non-empty workspace");
 	}
@@ -1940,9 +1949,14 @@ unmapnotify(XEvent *e)
 
 	if (pad && e->xunmap.window == pad->win) {
 		termclient(pad);
-		pad = NULL;
+		if (pad_mon) {
+			pad_mon = NULL;
+			updatefocus();
+		}
 		pad_mon = NULL;
+		pad = NULL;
 	} else if (locateclient(&ws, &c, NULL, e->xunmap.window)) {
+		detachclient(c);
 		termclient(c);
 		if (locatemon(&mon, NULL, ws)) {
 			arrange(mon);
@@ -1982,7 +1996,7 @@ updatefocus(void)
 		/* empty monitor: don't focus anything */
 		if (!mon->selws->ns) {
 			if (sel) {
-				XSetInputFocus(dpy, root, RevertToNone, CurrentTime);
+				XSetInputFocus(dpy, root, RevertToPointerRoot, CurrentTime);
 			}
 			continue;
 		}
@@ -1997,17 +2011,23 @@ updatefocus(void)
 		}
 		if (sel) {
 			XSetWindowBorder(dpy, mon->selws->selcli->win, CBORDERSEL);
-			XSetInputFocus(dpy, mon->selws->selcli->win, RevertToNone,
+			XSetInputFocus(dpy, mon->selws->selcli->win, RevertToPointerRoot,
 					CurrentTime);
 			grabbuttons(mon->selws->stack[j], true);
 		}
 	}
 
 	/* focus scratchpad if visible */
-	if (pad_mon == selmon) {
-		XSetInputFocus(dpy, pad->win, RevertToNone, CurrentTime);
-		XSetWindowBorder(dpy, pad->win, CBORDERSEL);
-		XRaiseWindow(dpy, pad->win);
+	if (pad_mon) {
+		if (pad_mon == selmon) {
+			XSetInputFocus(dpy, pad->win, RevertToPointerRoot, CurrentTime);
+			XSetWindowBorder(dpy, pad->win, CBORDERSEL);
+			XRaiseWindow(dpy, pad->win);
+			grabbuttons(pad, true);
+		} else {
+			XSetWindowBorder(dpy, pad->win, CBORDERNORM);
+			grabbuttons(pad, false);
+		}
 		return;
 	}
 }
@@ -2141,7 +2161,7 @@ viewws(Arg const *arg)
 	if (!wsm.active) {
 		return;
 	}
-	setws(wsm.target->x, wsm.target->y);
+	setws(selmon, wsm.target->x, wsm.target->y);
 	togglewsm(NULL);
 }
 
