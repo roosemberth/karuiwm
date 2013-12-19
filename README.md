@@ -11,7 +11,8 @@ It is based on [dwm](http://dwm.suckless.org/) and inspired by
 build
 -----
 
-stwm requires Xlib and Xinerama to be installed on the system.
+stwm requires Xlib and Xinerama to be installed on the system. It is also highly
+recommended to install dmenu, since some workspace-related actions rely on it.
 
 This will create the binary <code>stwm</code>:
 
@@ -177,8 +178,12 @@ with a separately configured set of keys (the <code>wsmkeys</code> array):
   close workspace map without selecting a workspace
 
 Each workspace is assigned a unique name that can be used to switch workspaces
-by name. If no or an empty name is assigned to a workspace, it automatically
+by name using dmenu (see the dmenu manpage for further information how to use
+it). If no or an empty name is assigned to a workspace, it automatically
 takes the workspace structure's pointer value, preceded by <code>\*</code>.
+
+Renaming and switching workspaces happens through the key combinations
+<code>Mod</code>(+<code>Shift</code>)+<code>i</code> (see above).
 
 
 appendix B: Xinerama (aka multi-monitor)
