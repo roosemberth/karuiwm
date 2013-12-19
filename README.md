@@ -26,23 +26,31 @@ you may run:
 install
 -------
 
-As the project is still in early development, there is currently no automated
-way to install stwm on the system.
+	make install
+
+will install stwm to <code>/usr/local/bin</code> by default; modify the Makefile
+to change the installation directory.
 
 
 run
 ---
 
-Given that stwm is not yet ready to be installed on any system, it allows a way
-to invoke it from within the project directory.
+Follow the standard procedure to launch a WM by adding an <code>.xinitrc</code>
+to your home directory.
 
-This will launch a new X session on display **:1** (modify the Makefile to
-change) with stwm as the window manager:
+Here is an example <code>.xinitrc</code>.
 
-	make run
+	#!/bin/sh
+	# xinitrc to launch stwm
+	
+	# set sane keyboard layout:
+	setxkbmap -layout ch -option 'caps:swapescape' &
+	
+	# launch stwm:
+	exec stwm
 
-Create a <code>xinitrc.custom</code> file to customise startup actions, like
-launching a systray or setting the keyboard layout.
+You may add other actions to launch the WM, but make sure that
+<code>exec stwm</code> comes at last.
 
 
 configure
@@ -173,8 +181,7 @@ monitor), stwm uses a unified workspace set for all monitors.
 Once a monitor is added, it will attempt to display the next undisplayed
 workspace; if there is none, it will create a new workspace nearby and move its
 view there. If a monitor moves its view to a workspace that is already displayed
-on another monitor, the workspace view is swapped (except for floating windows,
-they behave a bit buggy yet).
+on another monitor, the workspace view is swapped.
 
 
 appendic C: scratchpad

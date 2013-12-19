@@ -1,6 +1,7 @@
 CC?=gcc
 LFLAGS=-lX11 -lXinerama
 CFLAGS=-Wall -Wpedantic -std=c99
+INSTALLDIR=/usr/local/bin
 
 build:
 	@[ -f config.h ] || cp config.def.h config.h
@@ -12,11 +13,9 @@ dev: build
 scan:
 	scan-build make dev
 
-run:
-	xinit ./xinitrc -- :1
+install:
+	install stwm ${INSTALLDIR}/stwm
 
-xephyr:
-	xinit ./xinitrc -- $(shell which Xephyr) :1
-
-all: dev xephyr
+uninstall:
+	rm ${INSTALLDIR}/stwm
 

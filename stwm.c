@@ -2417,7 +2417,7 @@ main(int argc, char **argv)
 	XCloseDisplay(dpy);
 	note("shutting down ...");
 	if (restarting) {
-		execl(APPNAME, APPNAME, NULL); /* TODO change to execlp */
+		execlp(APPNAME, APPNAME, NULL);
 	}
 	return EXIT_SUCCESS;
 }
