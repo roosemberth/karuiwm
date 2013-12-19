@@ -204,6 +204,7 @@ static void stepmon(Arg const *);
 static void stepws(Arg const *);
 static void stepwsmbox(Arg const *arg);
 static void termclient(Client *);
+static void termlayout(Layout *);
 static void termmon(Monitor *);
 static void termws(Workspace *);
 static void togglefloat(Arg const *);
@@ -445,6 +446,13 @@ cleanup(void)
 		mon = monitors[0];
 		detachmon(mon);
 		termmon(mon);
+	}
+
+	/* remove layouts */
+	for (i = 0; i < LENGTH(layouts); i++) {
+		if (layouts[i].icon_bitfield) {
+			termlayout(&layouts[i]);
+		}
 	}
 
 	/* graphic context */
@@ -1291,9 +1299,10 @@ reltoxy(int *x, int *y, Workspace *ws, int direction)
 void
 renamews(Workspace *ws, char const *name)
 {
-	if (name && strlen(name) && name[0] != '*' &&
-			!locatews(NULL, NULL, 0, 0, name)) {
-		strncpy(ws->name, name, 256);
+	if (name && strlen(name)) {
+		if (name[0] != '*' && !locatews(NULL, NULL, 0, 0, name)) {
+			strncpy(ws->name, name, 256);
+		}
 	} else {
 		sprintf(ws->name, "*%p", (void *) ws);
 	}
@@ -1887,6 +1896,13 @@ void
 termclient(Client *c)
 {
 	free(c);
+}
+
+void
+termlayout(Layout *l)
+{
+	XFreePixmap(dpy, l->icon_norm);
+	XFreePixmap(dpy, l->icon_sel);
 }
 
 void
