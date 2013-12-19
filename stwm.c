@@ -41,7 +41,7 @@
 /* enums */
 enum { CURSOR_NORMAL, CURSOR_RESIZE, CURSOR_MOVE, CURSOR_LAST };
 enum { LEFT, RIGHT, UP, DOWN, NO_DIRECTION };
-enum DMenuState { DMENU_SPAWN, DMENU_RENAME, DMENU_VIEW, DMENU_INACTIVE };
+enum DMenuState { DMENU_INACTIVE, DMENU_SPAWN, DMENU_RENAME, DMENU_VIEW };
 
 typedef union Arg Arg;
 typedef struct Button Button;
@@ -1597,10 +1597,11 @@ setup(void)
 	setupfont();
 	updategeom();
 
-	/* high: workspace map, scratchpad */
+	/* high: workspace map, scratchpad, dmenu */
 	setupwsm();
 	pad = NULL;
 	pad_mon = NULL;
+	dmenu_state = DMENU_INACTIVE;
 }
 
 void
