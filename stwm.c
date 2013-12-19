@@ -89,8 +89,10 @@ struct Key {
 };
 
 struct Layout {
-	char const *icon;
+	long const *icon_bitfield;
 	void (*func)(Monitor *);
+	Pixmap icon_norm, icon_sel;
+	int w, h;
 };
 
 struct Monitor {
@@ -131,7 +133,7 @@ static void arrange(Monitor *);
 static void attachclient(Workspace *, Client *);
 static void attachws(Workspace *);
 static void buttonpress(XEvent *);
-static bool checksizehints(Client *, int, int, int *, int *);
+static bool checksizehints(Client *, int *, int *);
 static void cleanup(void);
 static void clientmessage(XEvent *);
 static void configurerequest(XEvent *);
@@ -152,6 +154,7 @@ static void hidews(Workspace *);
 static void initbar(Monitor *);
 static Client *initclient(Window, bool);
 static Monitor *initmon(void);
+static Pixmap initpixmap(long const *, long const);
 static Workspace *initws(int, int);
 static Window initwsmbox(void);
 static void keypress(XEvent *);
@@ -163,10 +166,9 @@ static Monitor *locaterect(int, int, int, int);
 static bool locatews(Workspace **, unsigned int *, int, int, char const *);
 static void mappingnotify(XEvent *);
 static void maprequest(XEvent *);
-static void moveclient(Arg const *);
 static void movemouse(Arg const *);
-static void moveresize(Monitor *, Client *, int, int, int, int);
-static void movews(Arg const *);
+static void moveclient(Monitor *, Client *, int, int);
+static void moveresizeclient(Monitor *, Client *, int, int, int, int);
 static void pop(Workspace *, Client *);
 static void propertynotify(XEvent *);
 static void push(Workspace *, Client *);
@@ -175,20 +177,24 @@ static void reltoxy(int *, int *, Workspace *, int);
 static void renamews(Workspace *, char const *);
 static void renderbar(Monitor *);
 static void renderwsmbox(Workspace *);
+static void resizeclient(Client *, int, int);
 static void resizemouse(Arg const *);
 static void restart(Arg const *);
 static void run(void);
 static void savesession(Arg const *arg);
 static void scan(void);
+static void sendfollowclient(Arg const *);
 static void setclientmask(Monitor *, bool);
 static void setmfact(Arg const *);
 static void setpad(Arg const *);
 static void setup(void);
 static void setupfont(void);
+static void setuplayouts(void);
 static void setupwsm(void);
 static void setnmaster(Arg const *);
 static void setws(Monitor *, int, int);
-static void shift(Arg const *);
+static void shiftclient(Arg const *);
+static void shiftws(Arg const *);
 static void sigchld(int);
 static void spawn(Arg const *);
 static void stdlog(FILE *, char const *, ...);
@@ -272,7 +278,7 @@ arrange(Monitor *mon)
 	for (i = 0; i < mon->selws->nc; i++) {
 		c = mon->selws->clients[i];
 		if (c->floating) {
-			XMoveWindow(dpy, c->win, mon->x+c->x, mon->y+c->y);
+			moveclient(mon, c, c->x, c->y);
 		}
 	}
 	setclientmask(mon, true);
@@ -372,7 +378,7 @@ buttonpress(XEvent *e)
 }
 
 bool
-checksizehints(Client *c, int x, int y, int *w, int *h)
+checksizehints(Client *c, int *w, int *h)
 {
 	int u;
 	bool change = false;
@@ -395,7 +401,7 @@ checksizehints(Client *c, int x, int y, int *w, int *h)
 			change = true;
 		}
 	}
-	return change || c->x != x || c->y != y;
+	return change;
 }
 
 void
@@ -804,7 +810,7 @@ grabkeys(void)
 void
 hideclient(Client *c)
 {
-	moveresize(selmon, c, -c->w-2*BORDERWIDTH, c->y, c->w, c->h);
+	XMoveWindow(dpy, c->win, -c->w-2*BORDERWIDTH, c->y);
 }
 
 void
@@ -872,6 +878,26 @@ initclient(Window win, bool viewable)
 	grabbuttons(c, false);
 	XSelectInput(dpy, c->win, CLIENTMASK);
 	return c;
+}
+
+Pixmap
+initpixmap(long const *bitfield, long const colour)
+{
+	int x, y;
+	long w = bitfield[0];
+	long h = bitfield[1];
+	Pixmap icon;
+
+	icon = XCreatePixmap(dpy, root, w, h, DefaultDepth(dpy, screen));
+	for (y = 0; y < h; y++) {
+		for (x = 0; x < w; x++) {
+			if ((bitfield[y+2]>>(w-x-1))&1) {
+				XSetForeground(dpy, dc.gc, colour);
+				XDrawPoint(dpy, icon, dc.gc, x, y);
+			}
+		}
+	}
+	return icon;
 }
 
 Monitor *
@@ -1120,16 +1146,6 @@ mappingnotify(XEvent *e)
 }
 
 void
-moveclient(Arg const *arg)
-{
-	Client *c = selmon->selws->selcli;
-	detachclient(c);
-	stepws(arg);
-	attachclient(selmon->selws, c);
-	updatefocus();
-}
-
-void
 movemouse(Arg const *arg)
 {
 	Monitor *mon;
@@ -1169,7 +1185,7 @@ movemouse(Arg const *arg)
 				cy = cy+(ev.xmotion.y-y);
 				x = ev.xmotion.x;
 				y = ev.xmotion.y;
-				moveresize(selmon, c, cx, cy, c->w, c->h);
+				moveclient(selmon, c, cx, cy);
 				break;
 		}
 	} while (ev.type != ButtonRelease);
@@ -1187,37 +1203,17 @@ movemouse(Arg const *arg)
 }
 
 void
-moveresize(Monitor *mon, Client *c, int x, int y, int w, int h)
+moveclient(Monitor *mon, Client *c, int x, int y)
 {
-	if (checksizehints(c, x, y, &w, &h)) {
-		XMoveResizeWindow(dpy, c->win, mon->x + (c->x=x), mon->y + (c->y=y),
-				c->w = MAX(w, 1), c->h = MAX(h, 1));
-	}
+	XMoveWindow(dpy, c->win, (mon ? mon->x : 0) + (c->x=x),
+			(mon ? mon->y : 0) + (c->y=y));
 }
 
 void
-movews(Arg const *arg)
+moveresizeclient(Monitor *mon, Client *c, int x, int y, int w, int h)
 {
-	Workspace *src=NULL, *dst=NULL;
-	Workspace *ref = wsm.active ? wsm.target : selmon->selws;
-	int dx, dy;
-
-	reltoxy(&dx, &dy, ref, arg->i);
-	locatews(&src, NULL, ref->x, ref->y, NULL);
-	locatews(&dst, NULL, dx, dy, NULL);
-
-	if (dst) {
-		dst->x = ref->x;
-		dst->y = ref->y;
-	}
-	if (src) {
-		src->x = dx;
-		src->y = dy;
-	}
-	if (wsm.active) {
-		wsm.target->x = dx;
-		wsm.target->y = dy;
-	}
+	moveclient(mon, c, x, y);
+	resizeclient(c, w, h);
 }
 
 void
@@ -1304,15 +1300,19 @@ renamews(Workspace *ws, char const *name)
 void
 renderbar(Monitor *mon)
 {
-	/* TODO X pixel offset */
+	Layout *layout = &layouts[mon->selws->ilayout];
 
 	/* background */
 	XSetForeground(dpy, dc.gc, CBGNORM);
 	XFillRectangle(dpy, mon->bar.win, dc.gc, 0, 0, mon->bw, mon->bh);
 
-	/* foreground */
+	/* layout icon */
+	XCopyArea(dpy, mon == selmon ? layout->icon_sel : layout->icon_norm,
+			mon->bar.win, dc.gc, 0, 0, layout->w, layout->h, 6, 0);
+
+	/* workspace name */
 	XSetForeground(dpy, dc.gc, mon == selmon ? CBORDERSEL : CNORM);
-	Xutf8DrawString(dpy, mon->bar.win, dc.font.xfontset, dc.gc, 6,
+	Xutf8DrawString(dpy, mon->bar.win, dc.font.xfontset, dc.gc, layout->w+12,
 			dc.font.ascent+1, mon->bar.buffer, strlen(mon->bar.buffer));
 	XSync(dpy, false);
 }
@@ -1335,6 +1335,14 @@ renderwsmbox(Workspace *ws)
 			: ws == wsm.target ? WSMCTARGET : WSMCNORM);
 	Xutf8DrawString(dpy, ws->wsmbox, dc.font.xfontset, dc.gc, 2,
 			dc.font.ascent+1, ws->name, strlen(ws->name));
+}
+
+void
+resizeclient(Client *c, int w, int h)
+{
+	if (checksizehints(c, &w, &h)) {
+		XResizeWindow(dpy, c->win, c->w = MAX(w, 1), c->h = MAX(h, 1));
+	}
 }
 
 void
@@ -1375,7 +1383,7 @@ resizemouse(Arg const *arg)
 				ch = ch+(ev.xmotion.y_root-y);
 				x = ev.xmotion.x_root;
 				y = ev.xmotion.y_root;
-				moveresize(selmon, c, c->x, c->y, cw, ch);
+				resizeclient(c, cw, ch);
 				break;
 		}
 	} while (ev.type != ButtonRelease);
@@ -1476,6 +1484,16 @@ scan(void)
 }
 
 void
+sendfollowclient(Arg const *arg)
+{
+	Client *c = selmon->selws->selcli;
+	detachclient(c);
+	stepws(arg);
+	attachclient(selmon->selws, c);
+	updatefocus();
+}
+
+void
 setclientmask(Monitor *mon, bool set)
 {
 	int i;
@@ -1508,7 +1526,6 @@ setpad(Arg const *arg)
 
 	/* if pad has focus, unpad it */
 	if (pad_mon == selmon) {
-		pad->floating = false;
 		attachclient(selmon->selws, pad);
 		pad = NULL;
 		pad_mon = NULL;
@@ -1525,7 +1542,6 @@ setpad(Arg const *arg)
 	newpad = selmon->selws->selcli;
 	detachclient(newpad);
 	if (pad) {
-		pad->floating = false;
 		attachclient(selmon->selws, pad);
 	}
 	pad = newpad;
@@ -1564,7 +1580,7 @@ setup(void)
 	grabkeys();
 
 	/* high: layouts (needed here, for updategeom() below) */
-	for (nlayouts=0; nlayouts<LENGTH(layouts) && layouts[nlayouts].icon; nlayouts++);
+	setuplayouts();
 
 	/* output: font, monitors */
 	setupfont();
@@ -1609,6 +1625,23 @@ setupfont(void)
 		dc.font.descent = dc.font.xfontstruct->descent;
 	}
 	dc.font.height = dc.font.ascent + dc.font.descent;
+}
+
+void
+setuplayouts()
+{
+	unsigned int i, len=LENGTH(layouts);
+
+	for (nlayouts = 0; nlayouts < len && layouts[nlayouts].icon_bitfield; nlayouts++);
+	for (i = 0; i < len; i++) {
+		if (!layouts[i].icon_bitfield) {
+			continue;
+		}
+		layouts[i].icon_norm = initpixmap(layouts[i].icon_bitfield, CNORM);
+		layouts[i].icon_sel = initpixmap(layouts[i].icon_bitfield, CBORDERSEL);
+		layouts[i].w = layouts[i].icon_bitfield[0];
+		layouts[i].h = layouts[i].icon_bitfield[1];
+	}
 }
 
 void
@@ -1696,7 +1729,7 @@ setnmaster(Arg const *arg)
 }
 
 void
-shift(Arg const *arg)
+shiftclient(Arg const *arg)
 {
 	unsigned int pos;
 
@@ -1713,6 +1746,31 @@ shift(Arg const *arg)
 			selmon->selws->selcli;
 
 	arrange(selmon);
+}
+
+void
+shiftws(Arg const *arg)
+{
+	Workspace *src=NULL, *dst=NULL;
+	Workspace *ref = wsm.active ? wsm.target : selmon->selws;
+	int dx, dy;
+
+	reltoxy(&dx, &dy, ref, arg->i);
+	locatews(&src, NULL, ref->x, ref->y, NULL);
+	locatews(&dst, NULL, dx, dy, NULL);
+
+	if (dst) {
+		dst->x = ref->x;
+		dst->y = ref->y;
+	}
+	if (src) {
+		src->x = dx;
+		src->y = dy;
+	}
+	if (wsm.active) {
+		wsm.target->x = dx;
+		wsm.target->y = dy;
+	}
 }
 
 void
@@ -1784,6 +1842,7 @@ void
 steplayout(Arg const *arg)
 {
 	selmon->selws->ilayout = (selmon->selws->ilayout+nlayouts+arg->i)%nlayouts;
+	updatebar(selmon);
 	arrange(selmon);
 }
 
@@ -1873,13 +1932,10 @@ togglepad(Arg const *arg)
 		hideclient(pad);
 		pad_mon = NULL;
 	} else {
-		pad->floating = true;
 		pad_mon = selmon;
-		moveresize(selmon, pad,
-				selmon->wx + PADMARGIN,
-				selmon->wy + PADMARGIN,
-				selmon->ww - 2*PADMARGIN - 2*BORDERWIDTH,
-				selmon->wh - 2*PADMARGIN - 2*BORDERWIDTH);
+		moveresizeclient(pad_mon, pad,
+				pad_mon->wx + PADMARGIN, pad_mon->wy + PADMARGIN,
+				pad_mon->ww - 2*PADMARGIN, pad_mon->wh - 2*PADMARGIN);
 	}
 	updatefocus();
 	setclientmask(selmon, true);
@@ -1998,8 +2054,7 @@ updatebar(Monitor *mon)
 		mon->bw = mon->w;
 		XMoveResizeWindow(dpy, mon->bar.win, mon->bx, mon->by, mon->bw,mon->bh);
 	}
-	sprintf(mon->bar.buffer, "%s  %s", layouts[mon->selws->ilayout].icon,
-				mon->selws->name);
+	sprintf(mon->bar.buffer, "%s", mon->selws->name);
 	renderbar(mon);
 }
 
@@ -2267,7 +2322,7 @@ bstack(Monitor *mon)
 		w = mon->ww/ncm;
 		h = ncm == nct ? mon->wh : mon->selws->mfact*mon->wh;
 		for (i = 0; i < ncm; i++) {
-			moveresize(mon, tiled[i], mon->wx+i*w, y,
+			moveresizeclient(mon, tiled[i], mon->wx+i*w, y,
 					w-2*BORDERWIDTH, h-2*BORDERWIDTH);
 		}
 	}
@@ -2281,7 +2336,7 @@ bstack(Monitor *mon)
 	w = mon->ww/(nct-ncm);
 	h = ncm ? mon->h-y : mon->wh;
 	for (i = ncm; i < nct; i++) {
-		moveresize(mon, tiled[i], mon->wx+(i-ncm)*w, y,
+		moveresizeclient(mon, tiled[i], mon->wx+(i-ncm)*w, y,
 				w-2*BORDERWIDTH, h-2*BORDERWIDTH);
 	}
 	free(tiled);
@@ -2306,7 +2361,7 @@ rstack(Monitor *mon)
 		w = ncm == nct ? mon->ww : mon->selws->mfact*mon->ww;
 		h = mon->wh/ncm;
 		for (i = 0; i < ncm; i++) {
-			moveresize(mon, tiled[i], x, mon->wy+i*h,
+			moveresizeclient(mon, tiled[i], x, mon->wy+i*h,
 					w-2*BORDERWIDTH, h-2*BORDERWIDTH);
 		}
 	}
@@ -2320,7 +2375,7 @@ rstack(Monitor *mon)
 	w = ncm ? mon->w-x : mon->ww;
 	h = mon->wh/(nct-ncm);
 	for (i = ncm; i < nct; i++) {
-		moveresize(mon, tiled[i], x, mon->wy+(i-ncm)*h,
+		moveresizeclient(mon, tiled[i], x, mon->wy+(i-ncm)*h,
 				w-2*BORDERWIDTH, h-2*BORDERWIDTH);
 	}
 	free(tiled);

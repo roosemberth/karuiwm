@@ -31,11 +31,51 @@
 #define WSMCBGTARGET     CBGSEL
 #define WSMCBORDERTARGET CBORDERSEL
 
+/* icon for rstack layout */
+static long const icon_rstack[] = {
+	17, 15,
+	0x00000,
+	0x00000,
+	0x1FEFF,
+	0x1FEFF,
+	0x1FEFF,
+	0x1FE00,
+	0x1FEFF,
+	0x1FEFF,
+	0x1FEFF,
+	0x1FE00,
+	0x1FEFF,
+	0x1FEFF,
+	0x1FEFF,
+	0x00000,
+	0x00000,
+};
+
+/* icon for bstack layout */
+static long const icon_bstack[] = {
+	17, 15,
+	0x00000,
+	0x00000,
+	0x1FFFF,
+	0x1FFFF,
+	0x1FFFF,
+	0x1FFFF,
+	0x1FFFF,
+	0x00000,
+	0x1F7DF,
+	0x1F7DF,
+	0x1F7DF,
+	0x1F7DF,
+	0x1F7DF,
+	0x00000,
+	0x00000,
+};
+
 /* layouts */
-static Layout const layouts[] = {
-	{ "[]=", rstack }, /* stack at right [default] */
-	{ "TTT", bstack }, /* stack at bottom */
-	{ NULL,     NULL },   /* steplayout() will not cycle beyond this point */
+static Layout layouts[] = {
+	{ icon_rstack, rstack },
+	{ icon_bstack, bstack },
+	{ NULL,        NULL },
 };
 
 /* dmenu arguments (see man dmenu) */
@@ -81,8 +121,8 @@ static Key const keys[] = {
 	{ MODKEY|ShiftMask,             XK_c,      killclient,  { 0 } },
 
 	/* layout */
-	{ MODKEY|ShiftMask,             XK_j,      shift,       { .i=+1 } },
-	{ MODKEY|ShiftMask,             XK_k,      shift,       { .i=-1 } },
+	{ MODKEY|ShiftMask,             XK_j,      shiftclient, { .i=+1 } },
+	{ MODKEY|ShiftMask,             XK_k,      shiftclient, { .i=-1 } },
 	{ MODKEY,                       XK_comma,  setnmaster,  { .i=+1 } },
 	{ MODKEY,                       XK_period, setnmaster,  { .i=-1 } },
 	{ MODKEY,                       XK_Return, zoom,        { 0 } },
@@ -94,10 +134,10 @@ static Key const keys[] = {
 	{ MODKEY|ControlMask,           XK_l,      stepws,      { .i=RIGHT } },
 	{ MODKEY|ControlMask,           XK_j,      stepws,      { .i=DOWN } },
 	{ MODKEY|ControlMask,           XK_k,      stepws,      { .i=UP } },
-	{ MODKEY|ControlMask|ShiftMask, XK_h,      moveclient,  { .i=LEFT } },
-	{ MODKEY|ControlMask|ShiftMask, XK_l,      moveclient,  { .i=RIGHT } },
-	{ MODKEY|ControlMask|ShiftMask, XK_j,      moveclient,  { .i=DOWN } },
-	{ MODKEY|ControlMask|ShiftMask, XK_k,      moveclient,  { .i=UP } },
+	{ MODKEY|ControlMask|ShiftMask, XK_h,      sendfollowclient, { .i=LEFT } },
+	{ MODKEY|ControlMask|ShiftMask, XK_l,      sendfollowclient, { .i=RIGHT } },
+	{ MODKEY|ControlMask|ShiftMask, XK_j,      sendfollowclient, { .i=DOWN } },
+	{ MODKEY|ControlMask|ShiftMask, XK_k,      sendfollowclient, { .i=UP } },
 	{ MODKEY,                       XK_o,      togglewsm,   { 0 } },
 	{ MODKEY,                       XK_i,      dmenu,       { .i=DMENU_VIEW } },
 	{ MODKEY|ShiftMask,             XK_i,      dmenu,       { .i=DMENU_RENAME } },
@@ -128,10 +168,10 @@ static Key const wsmkeys[] = {
 	{ MODKEY,                       XK_k,      stepwsmbox,  { .i=UP } },
 
 	/* move workspace */
-	{ MODKEY|ShiftMask,             XK_h,      movews,      { .i=LEFT } },
-	{ MODKEY|ShiftMask,             XK_l,      movews,      { .i=RIGHT } },
-	{ MODKEY|ShiftMask,             XK_j,      movews,      { .i=DOWN } },
-	{ MODKEY|ShiftMask,             XK_k,      movews,      { .i=UP } },
+	{ MODKEY|ShiftMask,             XK_h,      shiftws,     { .i=LEFT } },
+	{ MODKEY|ShiftMask,             XK_l,      shiftws,     { .i=RIGHT } },
+	{ MODKEY|ShiftMask,             XK_j,      shiftws,     { .i=DOWN } },
+	{ MODKEY|ShiftMask,             XK_k,      shiftws,     { .i=UP } },
 };
 
 /* mouse buttons */
