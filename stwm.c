@@ -154,7 +154,7 @@ static void hidews(Workspace *);
 static void initbar(Monitor *);
 static Client *initclient(Window, bool);
 static Monitor *initmon(void);
-static Pixmap initpixmap(long const *, long const);
+static Pixmap initpixmap(long const *, long const, long const);
 static Workspace *initws(int, int);
 static Window initwsmbox(void);
 static void keypress(XEvent *);
@@ -881,7 +881,7 @@ initclient(Window win, bool viewable)
 }
 
 Pixmap
-initpixmap(long const *bitfield, long const colour)
+initpixmap(long const *bitfield, long const fg, long const bg)
 {
 	int x, y;
 	long w = bitfield[0];
@@ -889,10 +889,12 @@ initpixmap(long const *bitfield, long const colour)
 	Pixmap icon;
 
 	icon = XCreatePixmap(dpy, root, w, h, DefaultDepth(dpy, screen));
+	XSetForeground(dpy, dc.gc, bg);
+	XFillRectangle(dpy, icon, dc.gc, 0, 0, w, h);
+	XSetForeground(dpy, dc.gc, fg);
 	for (y = 0; y < h; y++) {
 		for (x = 0; x < w; x++) {
 			if ((bitfield[y+2]>>(w-x-1))&1) {
-				XSetForeground(dpy, dc.gc, colour);
 				XDrawPoint(dpy, icon, dc.gc, x, y);
 			}
 		}
@@ -1637,8 +1639,8 @@ setuplayouts()
 		if (!layouts[i].icon_bitfield) {
 			continue;
 		}
-		layouts[i].icon_norm = initpixmap(layouts[i].icon_bitfield, CNORM);
-		layouts[i].icon_sel = initpixmap(layouts[i].icon_bitfield, CBORDERSEL);
+		layouts[i].icon_norm = initpixmap(layouts[i].icon_bitfield, CNORM, CBGNORM);
+		layouts[i].icon_sel = initpixmap(layouts[i].icon_bitfield, CBORDERSEL, CBGNORM);
 		layouts[i].w = layouts[i].icon_bitfield[0];
 		layouts[i].h = layouts[i].icon_bitfield[1];
 	}
