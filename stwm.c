@@ -30,12 +30,13 @@
 
 /* log macros */
 #define warn(...) stdlog(stderr, "\033[33mWRN\033[0m "__VA_ARGS__)
-#define die(...) warn("\033[31mERR\033[0m "__VA_ARGS__); exit(EXIT_FAILURE)
+#define die(...)  stdlog(stderr, "\033[31mERR\033[0m "__VA_ARGS__); \
+                  exit(EXIT_FAILURE)
 #define note(...) stdlog(stdout, "    "__VA_ARGS__)
 #ifdef DEBUG
-#define debug(...) stdlog(stdout, "\033[34mDBG\033[0m "__VA_ARGS__)
+  #define debug(...) stdlog(stdout, "\033[34mDBG\033[0m "__VA_ARGS__)
 #else
-#define debug(...)
+  #define debug(...)
 #endif
 
 /* enums */
@@ -385,7 +386,7 @@ checksizehints(Client *c, int *w, int *h)
 	bool change = false;
 
 	if ((!c->floating && FORCESIZE) || (!c->basew && !c->baseh)) {
-		return true;
+		return *w != c->w || *h != c->h;
 	}
 
 	if (*w != c->w) {
@@ -418,6 +419,12 @@ cleanup(void)
 	/* disable WSM */
 	if (wsm.active) {
 		togglewsm(NULL);
+	}
+
+	/* remove scratchpad */
+	if (pad) {
+		free(pad);
+		pad = NULL;
 	}
 
 	/* make monitors point nowhere (so all workspaces are removed) */
@@ -455,8 +462,18 @@ cleanup(void)
 		}
 	}
 
-	/* graphic context */
+	/* remove X resources */
+	if (dc.font.xfontset) {
+		XFreeFontSet(dpy, dc.font.xfontset);
+	} else {
+		XFreeFont(dpy, dc.font.xfontstruct);
+	}
 	XFreeGC(dpy, dc.gc);
+	XUngrabKey(dpy, AnyKey, AnyModifier, root);
+	XFreeCursor(dpy, cursor[CURSOR_NORMAL]);
+	XFreeCursor(dpy, cursor[CURSOR_RESIZE]);
+	XFreeCursor(dpy, cursor[CURSOR_MOVE]);
+	XSetInputFocus(dpy, PointerRoot, RevertToPointerRoot, CurrentTime);
 }
 
 void

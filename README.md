@@ -1,10 +1,11 @@
 stwm
 ====
 
-stwm is a not so small, not so fast, and not so dynamic window manager for X.
+stwm is a not so small, not so fast, and not so dynamic tiling window manager
+for X.
 
-It is inspired by [xmonad](http://xmonad.org/) and based on
-[dwm](http://dwm.suckless.org/).
+It is based on [dwm](http://dwm.suckless.org/) and inspired by
+[xmonad](http://xmonad.org/).
 
 
 build
@@ -32,10 +33,20 @@ will install stwm to <code>/usr/local/bin</code> by default; modify the Makefile
 to change the installation directory.
 
 
+uninstall
+---------
+
+	make uninstall
+
+will remove stwm from your system. Alternatively, you may simply delete the
+<code>stwm</code> binary from <code>/usr/local/bin</code> (or where ever you
+installed it to).
+
+
 run
 ---
 
-Follow the standard procedure to launch a WM by adding an <code>.xinitrc</code>
+Follow the standard procedure for launching a WM; add an <code>.xinitrc</code>
 to your home directory.
 
 Here is an example <code>.xinitrc</code>.
@@ -50,7 +61,8 @@ Here is an example <code>.xinitrc</code>.
 	exec stwm
 
 You may add other actions to launch the WM, but make sure that
-<code>exec stwm</code> comes at last.
+<code>exec stwm</code> comes at last (since everything after that won't get
+executed).
 
 
 configure
@@ -151,9 +163,9 @@ Whether a workspaces is temporary or persistent depends on the number of clients
 on that workspace; an empty workspace is considered temporary, whereas it
 becomes persistent as soon as a client is added.
 
-The workspace map (accessible by <code>Mod</code>+<code>Space</code>, see above)
-is a visual representation of the workspaces and allows to perform actions on
-them with a separately configured set of keys (the <code>wsmkeys</code> array):
+The workspace map (accessible by <code>Mod</code>+<code>o</code>, see above) is
+a visual representation of the workspaces and allows to perform actions on them
+with a separately configured set of keys (the <code>wsmkeys</code> array):
 
 * <code>Mod</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
   set selection to left/below/above/right workspace
@@ -163,8 +175,6 @@ them with a separately configured set of keys (the <code>wsmkeys</code> array):
   switch to the selected workspace
 * <code>Esc</code>
   close workspace map without selecting a workspace
-
-![screenshot](http://ayekat.ch/img/host/github.com/screen_stwm.png)
 
 Each workspace is assigned a unique name that can be used to switch workspaces
 by name. If no or an empty name is assigned to a workspace, it automatically
@@ -184,7 +194,7 @@ view there. If a monitor moves its view to a workspace that is already displayed
 on another monitor, the workspace view is swapped.
 
 
-appendic C: scratchpad
+appendix C: scratchpad
 ----------------------
 
 A scratchpad is a window that can easily be displayed and dismissed, typically a
@@ -194,4 +204,12 @@ be toggled by hitting <code>Mod</code>+<code>Tab</code>.
 At startup, no client is defined as the scratchpad (thus toggling it won't have
 any effect); one first needs to define a client as the scratchpad by hitting
 <code>Mod</code>+<code>Shift</code>+<code>Tab</code>.
+
+
+meta
+----
+
+Bug reports are welcome, feature requests too (if they do not require me to add
+a thousand lines of code or change the programming language). If there is any
+need for support, visit <code>irc.freenode.net#stwm</code>.
 
