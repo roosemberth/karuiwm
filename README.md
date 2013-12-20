@@ -1,8 +1,7 @@
 stwm
 ====
 
-stwm is a not so small, not so fast, and not so dynamic tiling window manager
-for X.
+stwm is a small, dynamically tiling window manager for X.
 
 It is based on [dwm](http://dwm.suckless.org/) and inspired by
 [xmonad](http://xmonad.org/).
@@ -22,7 +21,7 @@ Alternatively, if you want to add debug output (all the <code>debug()</code>
 calls in stwm, additional debug symbols through GCCs <code>-g</code> option),
 you may run:
 
-	make dev
+	make debug
 
 
 install
@@ -153,6 +152,16 @@ support following actions:
   resize window, make it floating
 
 
+develop
+-------
+
+	make dev
+
+will compile stwm as in <code>make debug</code>, then start stwm in Xephyr. It
+is recommended to change <code>MODMASK</code> to a value different from your
+native stwm/dwm/xmonad/whatever instance to avoid keycode conflicts.
+
+
 appendix A: workspaces
 ----------------------
 
@@ -214,7 +223,12 @@ any effect); one first needs to define a client as the scratchpad by hitting
 meta
 ----
 
-Bug reports are welcome, feature requests too (if they do not require me to add
-a thousand lines of code or change the programming language). If there is any
-need for support, visit <code>irc.freenode.net#stwm</code>.
+Bug reports are welcome, especially since this is still in a quite early
+development state.
+
+Feature requests are welcome too, as long as they do not require me to add a
+thousand lines of code or change the programming language).
+
+In the unlikely case there is any need for support, visit
+<code>irc.freenode.net#stwm</code>.
 

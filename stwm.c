@@ -43,6 +43,10 @@
 enum { CURSOR_NORMAL, CURSOR_RESIZE, CURSOR_MOVE, CURSOR_LAST };
 enum { LEFT, RIGHT, UP, DOWN, NO_DIRECTION };
 enum DMenuState { DMENU_INACTIVE, DMENU_SPAWN, DMENU_RENAME, DMENU_VIEW };
+enum { WM_PROTOCOLS, WM_DELETE_WINDOW, WM_STATE, WM_TAKE_FOCUS,
+		_NET_ACTIVE_WINDOW, _NET_SUPPORTED, _NET_WM_NAME, _NET_WM_STATE,
+		_NET_WM_STATE_FULLSCREEN, _NET_WM_WINDOW_TYPE,
+		_NET_WM_WINDOW_TYPE_DIALOG, ATOM_LAST };
 
 typedef union Arg Arg;
 typedef struct Button Button;
@@ -69,7 +73,7 @@ struct Client {
 	int x, y, w, h;
 	char name[256];
 	Window win;
-	bool floating;
+	bool floating, fullscreen;
 	int basew, baseh, incw, inch;
 };
 
@@ -189,6 +193,7 @@ static void setclientmask(Monitor *, bool);
 static void setmfact(Arg const *);
 static void setpad(Arg const *);
 static void setup(void);
+static void setupatoms(void);
 static void setupfont(void);
 static void setuplayouts(void);
 static void setupwsm(void);
@@ -263,6 +268,7 @@ static enum DMenuState dmenu_state; /* dmenu's state */
 static int nlayouts;                /* number of cyclable layouts */
 static Client *pad;                 /* scratchpad window */
 static Monitor *pad_mon;            /* monitor the scratchpad is currently on */
+static Atom atom[ATOM_LAST];        /* atoms */
 
 /* configuration */
 #include "config.h"
@@ -1029,7 +1035,6 @@ killclient(Arg const *arg)
 {
 	int n;
 	Client *c;
-	Atom protocol, request;
 	Atom *supported;
 	bool match=false;
 	XClientMessageEvent cmev;
@@ -1040,12 +1045,10 @@ killclient(Arg const *arg)
 	}
 
 	/* check if we may communicate to the client via atoms */
-	protocol = XInternAtom(dpy, "WM_PROTOCOLS", false);
-	request = XInternAtom(dpy, "WM_DELETE_WINDOW", false);
 	c = selmon->selws->selcli;
 	if (XGetWMProtocols(dpy, c->win, &supported, &n)) {
 		while (!match && n--) {
-			match = supported[n] == request;
+			match = supported[n] == atom[WM_DELETE_WINDOW];
 		}
 		XFree(supported);
 	}
@@ -1053,9 +1056,9 @@ killclient(Arg const *arg)
 		cmev = (XClientMessageEvent) {
 			.type = ClientMessage,
 			.window = c->win,
-			.message_type = protocol,
+			.message_type = atom[WM_PROTOCOLS],
 			.format = 32,
-			.data.l[0] = request,
+			.data.l[0] = atom[WM_DELETE_WINDOW],
 			.data.l[1] = CurrentTime
 		};
 		XSendEvent(dpy, c->win, false, NoEventMask, (XEvent *) &cmev);
@@ -1336,7 +1339,7 @@ renderbar(Monitor *mon)
 
 	/* layout icon */
 	XCopyArea(dpy, mon == selmon ? layout->icon_sel : layout->icon_norm,
-			mon->bar.win, dc.gc, 0, 0, layout->w, layout->h, 6, 0);
+			mon->bar.win, dc.gc, 0, 0, layout->w, layout->h, 2, 0);
 
 	/* workspace name */
 	XSetForeground(dpy, dc.gc, mon == selmon ? CBORDERSEL : CNORM);
@@ -1588,10 +1591,11 @@ setup(void)
 		die("could not set locale");
 	}
 
-	/* basic: root window, graphic context */
+	/* basic: root window, graphic context, atoms */
 	screen = DefaultScreen(dpy);
 	root = RootWindow(dpy, screen);
 	dc.gc = XCreateGC(dpy, root, 0, NULL);
+	setupatoms();
 
 	/* events */
 	wa.event_mask = SubstructureNotifyMask|SubstructureRedirectMask|
@@ -1619,6 +1623,22 @@ setup(void)
 	pad = NULL;
 	pad_mon = NULL;
 	dmenu_state = DMENU_INACTIVE;
+}
+
+void
+setupatoms(void)
+{
+	atom[WM_PROTOCOLS] = XInternAtom(dpy, "WM_PROTOCOLS", false);
+	atom[WM_DELETE_WINDOW] = XInternAtom(dpy, "WM_DELETE_WINDOW", false);
+	atom[WM_STATE] = XInternAtom(dpy, "WM_STATE", false);
+	atom[WM_TAKE_FOCUS] = XInternAtom(dpy, "WM_TAKE_FOCUS", false);
+	atom[_NET_ACTIVE_WINDOW] = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", false);
+	atom[_NET_SUPPORTED] = XInternAtom(dpy, "_NET_SUPPORTED", false);
+	atom[_NET_WM_NAME] = XInternAtom(dpy, "_NET_WM_NAME", false);
+	atom[_NET_WM_STATE] = XInternAtom(dpy, "_NET_WM_STATE", false);
+	atom[_NET_WM_STATE_FULLSCREEN] = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", false);
+	atom[_NET_WM_WINDOW_TYPE] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", false);
+	atom[_NET_WM_WINDOW_TYPE_DIALOG] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", false);
 }
 
 void
