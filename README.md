@@ -29,8 +29,8 @@ install
 
 	make install
 
-will install stwm to <code>/usr/local/bin</code> by default; modify the Makefile
-to change the installation directory.
+as root will install stwm to <code>/usr/local/bin</code> by default; modify the
+Makefile to change the installation directory.
 
 
 uninstall
@@ -38,8 +38,8 @@ uninstall
 
 	make uninstall
 
-will remove stwm from your system. Alternatively, you may simply delete the
-<code>stwm</code> binary from <code>/usr/local/bin</code> (or where ever you
+as root will remove stwm from your system. Alternatively, you may simply delete
+the <code>stwm</code> binary from <code>/usr/local/bin</code> (or where ever you
 installed it to).
 
 
