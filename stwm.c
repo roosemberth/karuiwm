@@ -401,24 +401,44 @@ checksizehints(Client *c, int *w, int *h)
 	int u;
 	bool change = false;
 
+	debug("checksizehints: 1");
 	if ((!c->floating && FORCESIZE) || c->fullscreen) {
+		debug("checksizehints: 2");
 		return *w != c->w || *h != c->h;
 	}
 
+	/* if there are no resize limitations, don't limit anything */
+	if (!(c->basew && !c->incw)) {
+		return true;
+	}
+
+	debug("checksizehints: 3");
 	if (*w != c->w) {
+		debug("checksizehints: 4");
 		u = (*w-c->basew)/c->incw;
+		debug("checksizehints: 5");
 		*w = c->basew+u*c->incw;
+		debug("checksizehints: 6");
 		if (*w != c->w) {
+			debug("checksizehints: 7");
 			change = true;
 		}
+		debug("checksizehints: 8");
 	}
+	debug("checksizehints: 9");
 	if (*h != c->h) {
+		debug("checksizehints: 10");
 		u = (*h-c->baseh)/c->inch;
+		debug("checksizehints: 11");
 		*h = c->baseh+u*c->inch;
+		debug("checksizehints: 12");
 		if (*h != c->h) {
+			debug("checksizehints: 13");
 			change = true;
 		}
+		debug("checksizehints: 14");
 	}
+	debug("checksizehints: 15");
 	return change;
 }
 
@@ -1436,8 +1456,12 @@ renderwsmbox(Workspace *ws)
 void
 resizeclient(Client *c, int w, int h)
 {
+	debug("resizeclient: 1");
 	if (checksizehints(c, &w, &h)) {
+		debug("resizeclient: 2");
 		XResizeWindow(dpy, c->win, c->w = MAX(w, 1), c->h = MAX(h, 1));
+	} else {
+		debug("resizeclient: 3");
 	}
 }
 
@@ -1453,7 +1477,7 @@ resizemouse(Arg const *arg)
 
 	/* don't resize fullscreen client */
 	if (c->fullscreen) {
-		debug("attempt to resize fullscreen client");
+		warn("attempt to resize fullscreen client");
 		return;
 	}
 
@@ -1473,6 +1497,7 @@ resizemouse(Arg const *arg)
 	/* handle motions */
 	do {
 		XMaskEvent(dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
+		debug("\033[38;5;238m[resizemouse] run(): e.type=%d\033[0m", ev.type);
 		switch (ev.type) {
 			case ConfigureRequest:
 			case Expose:
@@ -1480,14 +1505,22 @@ resizemouse(Arg const *arg)
 				handle[ev.type](&ev);
 				break;
 			case MotionNotify:
+				debug("resizemouse: 1");
 				if (!c->floating) {
+					debug("resizemouse: 2");
 					togglefloat(NULL);
 				}
+				debug("resizemouse: 3");
 				cw = cw+(ev.xmotion.x_root-x);
+				debug("resizemouse: 4");
 				ch = ch+(ev.xmotion.y_root-y);
+				debug("resizemouse: 5");
 				x = ev.xmotion.x_root;
+				debug("resizemouse: 6");
 				y = ev.xmotion.y_root;
+				debug("resizemouse: 7");
 				resizeclient(c, cw, ch);
+				debug("resizemouse: 8");
 				break;
 		}
 	} while (ev.type != ButtonRelease);
@@ -1515,7 +1548,7 @@ run(void)
 
 	running = true;
 	while (running && !XNextEvent(dpy, &e)) {
-		//debug("run(): e.type=%d", e.type);
+		debug("\033[38;5;238mrun(): e.type=%d\033[0m", e.type);
 		if (handle[e.type]) {
 			handle[e.type](&e);
 		}
