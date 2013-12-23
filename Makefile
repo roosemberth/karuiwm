@@ -19,6 +19,8 @@ install:
 uninstall:
 	rm ${INSTALLDIR}/bin/stwm
 
-dev: debug
-	xinit ./stwm -- $(shell which Xephyr) :1
+# for ayekat, for developing
+dev:
+	make debug
+	xinit ./stwm -- :1
 

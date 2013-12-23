@@ -10,6 +10,7 @@
 #include <sys/wait.h>
 #include <sys/select.h>
 #include <X11/Xlib.h>
+#include <X11/Xatom.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
 #include <X11/Xproto.h>
@@ -19,7 +20,7 @@
 /* macros */
 #define APPNAME "stwm"
 #define BUTTONMASK (ButtonPressMask|ButtonReleaseMask)
-#define CLIENTMASK (EnterWindowMask)
+#define CLIENTMASK (EnterWindowMask|PropertyChangeMask|StructureNotifyMask)
 #define INTERSECT(MON, X, Y, W, H) \
 	((MAX(0, MIN((X)+(W),(MON)->x+(MON)->w) - MAX((MON)->x, X))) * \
 	 (MAX(0, MIN((Y)+(H),(MON)->y+(MON)->h) - MAX((MON)->y, Y))))
@@ -71,10 +72,12 @@ struct Button {
 
 struct Client {
 	int x, y, w, h;
+	int oldx, oldy, oldw, oldh;
 	char name[256];
 	Window win;
 	bool floating, fullscreen;
 	int basew, baseh, incw, inch;
+	int minw, minh;
 };
 
 struct {
@@ -188,8 +191,10 @@ static void restart(Arg const *);
 static void run(void);
 static void savesession(Arg const *arg);
 static void scan(void);
+static bool sendevent(Client *, Atom);
 static void sendfollowclient(Arg const *);
 static void setclientmask(Monitor *, bool);
+static void setfullscreen(Client *, bool);
 static void setmfact(Arg const *);
 static void setpad(Arg const *);
 static void setup(void);
@@ -219,6 +224,7 @@ static void togglewsm(Arg const *);
 static size_t unifyscreens(XineramaScreenInfo **, size_t);
 static void unmapnotify(XEvent *);
 static void updatebar(Monitor *);
+static void updateclient(Client *);
 static void updatefocus(void);
 static void updategeom(void);
 static void updatemon(Monitor *, int, int, unsigned int, unsigned int);
@@ -268,7 +274,7 @@ static enum DMenuState dmenu_state; /* dmenu's state */
 static int nlayouts;                /* number of cyclable layouts */
 static Client *pad;                 /* scratchpad window */
 static Monitor *pad_mon;            /* monitor the scratchpad is currently on */
-static Atom atom[ATOM_LAST];        /* atoms */
+static Atom atoms[ATOM_LAST];       /* atoms */
 
 /* configuration */
 #include "config.h"
@@ -280,6 +286,10 @@ arrange(Monitor *mon)
 {
 	unsigned int i;
 	Client *c;
+
+	if (!mon) {
+		return;
+	}
 
 	setclientmask(mon, false);
 	layouts[mon->selws->ilayout].func(mon);
@@ -391,8 +401,13 @@ checksizehints(Client *c, int *w, int *h)
 	int u;
 	bool change = false;
 
-	if ((!c->floating && FORCESIZE) || (!c->basew && !c->baseh)) {
+	if ((!c->floating && FORCESIZE) || c->fullscreen) {
 		return *w != c->w || *h != c->h;
+	}
+
+	/* if there are no resize limitations, don't limit anything */
+	if (!(c->basew && !c->incw)) {
+		return true;
 	}
 
 	if (*w != c->w) {
@@ -486,13 +501,28 @@ void
 clientmessage(XEvent *e)
 {
 	debug("clientmessage(%d)", e->xclient.window);
-	/* TODO */
+
+	Client *c;
+	XClientMessageEvent *ev = &e->xclient;
+
+	if (!locateclient(NULL, &c, NULL, ev->window)) {
+		return;
+	}
+
+	if (ev->message_type == atoms[_NET_WM_STATE]) {
+		if (ev->data.l[1] == atoms[_NET_WM_STATE_FULLSCREEN] ||
+				ev->data.l[2] == atoms[_NET_WM_STATE_FULLSCREEN]) {
+			setfullscreen(c, ev->data.l[0] == 1 || /* _NET_WM_STATE_ADD */
+					(ev->data.l[0] == 2 /* _NET_WM_STATE_TOGGLE */ &&
+					 !c->fullscreen));
+		}
+	}
 }
 
 void
 configurenotify(XEvent *e)
 {
-	debug("configurenotify(%d)", e->xconfigure.window);
+	//debug("configurenotify(%d)", e->xconfigure.window);
 	if (e->xconfigure.window == root) {
 		updategeom();
 	}
@@ -510,7 +540,8 @@ configurerequest(XEvent *e)
 
 	/* forward configuration if not managed (or if we don't force the size) */
 	if (!FORCESIZE || (pad && ev->window == pad->win) ||
-			!locateclient(NULL, &c, NULL, ev->window) || c->floating) {
+			!locateclient(NULL, &c, NULL, ev->window) || c->fullscreen ||
+			c->floating) {
 		wc = (XWindowChanges) {
 			.x = ev->x,
 			.y = ev->y,
@@ -784,6 +815,7 @@ int
 gettiled(Client ***tiled, Monitor *mon)
 {
 	unsigned int i, n;
+	Client *c;
 
 	*tiled = calloc(mon->selws->nc, sizeof(Client *));
 	if (!*tiled) {
@@ -791,8 +823,10 @@ gettiled(Client ***tiled, Monitor *mon)
 				mon->selws->nc*sizeof(Client *));
 	}
 	for (n = i = 0; i < mon->selws->nc; i++) {
-		if (!mon->selws->clients[i]->floating) {
+		c = mon->selws->clients[i];
+		if (!c->floating && !c->fullscreen) {
 			(*tiled)[n++] = mon->selws->clients[i];
+		} else {
 		}
 	}
 	*tiled = realloc(*tiled, n*sizeof(Client *));
@@ -898,6 +932,7 @@ initclient(Window win, bool viewable)
 	}
 	c->win = win;
 	c->floating = false; /* TODO apply rules */
+	c->fullscreen = false;
 	if (c->floating) {
 		c->x = wa.x;
 		c->y = wa.y;
@@ -907,7 +942,6 @@ initclient(Window win, bool viewable)
 	XSetWindowBorderWidth(dpy, c->win, BORDERWIDTH);
 	updatesizehints(c);
 	grabbuttons(c, false);
-	XSelectInput(dpy, c->win, CLIENTMASK);
 	return c;
 }
 
@@ -1033,39 +1067,20 @@ keyrelease(XEvent *e)
 void
 killclient(Arg const *arg)
 {
-	int n;
 	Client *c;
-	Atom *supported;
-	bool match=false;
-	XClientMessageEvent cmev;
 
 	/* nothing to kill */
 	if (!selmon->selws->nc) {
 		return;
 	}
 
-	/* check if we may communicate to the client via atoms */
+	/* try to kill the client via the atom WM_DELETE_WINDOW atom */
 	c = selmon->selws->selcli;
-	if (XGetWMProtocols(dpy, c->win, &supported, &n)) {
-		while (!match && n--) {
-			match = supported[n] == atom[WM_DELETE_WINDOW];
-		}
-		XFree(supported);
-	}
-	if (match) {
-		cmev = (XClientMessageEvent) {
-			.type = ClientMessage,
-			.window = c->win,
-			.message_type = atom[WM_PROTOCOLS],
-			.format = 32,
-			.data.l[0] = atom[WM_DELETE_WINDOW],
-			.data.l[1] = CurrentTime
-		};
-		XSendEvent(dpy, c->win, false, NoEventMask, (XEvent *) &cmev);
+	if (sendevent(c, atoms[WM_DELETE_WINDOW])) {
 		return;
 	}
 
-	/* fallback if the client does not speak our language */
+	/* otherwise massacre the client */
 	XGrabServer(dpy);
 	XSetCloseDownMode(dpy, DestroyAll);
 	XKillClient(dpy, selmon->selws->selcli->win);
@@ -1156,16 +1171,24 @@ maprequest(XEvent *e)
 	debug("maprequest(%d)", e->xmaprequest.window);
 
 	Client *c = initclient(e->xmap.window, false);
-	if (c) {
-		attachclient(selmon->selws, c);
-		XMapWindow(dpy, c->win);
-		if (c->floating) {
-			XRaiseWindow(dpy, c->win);
-		} else {
-			XLowerWindow(dpy, c->win);
-		}
-		updatefocus();
+	if (!c) {
+		return;
 	}
+
+	attachclient(selmon->selws, c);
+	XMapWindow(dpy, c->win);
+
+	/* floating */
+	if (c->floating) {
+		XRaiseWindow(dpy, c->win);
+	} else {
+		XLowerWindow(dpy, c->win);
+	}
+
+	/* fullscreen */
+	c->fullscreen = false;
+	updateclient(c);
+	updatefocus();
 }
 
 void
@@ -1184,6 +1207,11 @@ movemouse(Arg const *arg)
 	Client *c = selmon->selws->selcli;
 	int cx=c->x, cy=c->y, x, y, i;
 	unsigned int ui;
+
+	/* don't move fullscreen client */
+	if (c->fullscreen) {
+		return;
+	}
 
 	/* grab the pointer and change the cursor appearance */
 	if (XGrabPointer(dpy, root, true, MOUSEMASK, GrabModeAsync, GrabModeAsync,
@@ -1276,7 +1304,31 @@ void
 propertynotify(XEvent *e)
 {
 	debug("propertynotify(%d)", e->xproperty.window);
-	/* TODO */
+
+	XPropertyEvent *ev;
+	Client *c;
+
+	ev = &e->xproperty;
+	if (!locateclient(NULL, &c, NULL, ev->window)) {
+		return;
+	}
+	switch (ev->atom) {
+		case XA_WM_TRANSIENT_FOR:
+			/* TODO */
+			break;
+		case XA_WM_NORMAL_HINTS:
+			updatesizehints(c);
+			break;
+		case XA_WM_HINTS:
+			/* TODO urgency hint */
+			break;
+	}
+	if (ev->atom == XA_WM_NAME || ev->atom == atoms[_NET_WM_NAME]) {
+		/* TODO */
+	}
+	if (ev->atom == atoms[_NET_WM_WINDOW_TYPE]) {
+		updateclient(c);
+	}
 }
 
 void
@@ -1384,6 +1436,12 @@ resizemouse(Arg const *arg)
 	int x, y;
 	unsigned int cw=c->w, ch=c->h;
 
+	/* don't resize fullscreen client */
+	if (c->fullscreen) {
+		warn("attempt to resize fullscreen client");
+		return;
+	}
+
 	/* grab the pointer and change the cursor appearance */
 	if (XGrabPointer(dpy, root, false, MOUSEMASK, GrabModeAsync, GrabModeAsync,
 			None, cursor[CURSOR_RESIZE], CurrentTime) != GrabSuccess) {
@@ -1400,6 +1458,7 @@ resizemouse(Arg const *arg)
 	/* handle motions */
 	do {
 		XMaskEvent(dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
+		//debug("\033[38;5;238m[resizemouse] run(): e.type=%d\033[0m", ev.type);
 		switch (ev.type) {
 			case ConfigureRequest:
 			case Expose:
@@ -1442,7 +1501,7 @@ run(void)
 
 	running = true;
 	while (running && !XNextEvent(dpy, &e)) {
-		//debug("run(): e.type=%d", e.type);
+		//debug("\033[38;5;238mrun(): e.type=%d\033[0m", e.type);
 		if (handle[e.type]) {
 			handle[e.type](&e);
 		}
@@ -1514,6 +1573,33 @@ scan(void)
 	}
 }
 
+bool
+sendevent(Client *c, Atom atom)
+{
+	int n;
+	Atom *supported;
+	bool exists;
+	XEvent ev;
+
+	if (XGetWMProtocols(dpy, c->win, &supported, &n)) {
+		while (!exists && n--) {
+			exists = supported[n] == atom;
+		}
+		XFree(supported);
+	}
+	if (!exists) {
+		return false;
+	}
+	ev.type = ClientMessage;
+	ev.xclient.window = c->win;
+	ev.xclient.message_type = atoms[WM_PROTOCOLS];
+	ev.xclient.format = 32;
+	ev.xclient.data.l[0] = atom;
+	ev.xclient.data.l[1] = CurrentTime;
+	XSendEvent(dpy, c->win, false, NoEventMask, &ev);
+	return true;
+}
+
 void
 sendfollowclient(Arg const *arg)
 {
@@ -1540,6 +1626,34 @@ setclientmask(Monitor *mon, bool set)
 		for (i = 0; i < mon->selws->nc; i++) {
 			XSelectInput(dpy, mon->selws->clients[i]->win, 0);
 		}
+	}
+}
+
+void
+setfullscreen(Client *c, bool fullscreen)
+{
+	debug("setfullscreen(%d) %d", c->win, fullscreen);
+
+	Monitor *mon=NULL;
+	Workspace *ws;
+	locateclient(&ws, NULL, NULL, c->win) && locatemon(&mon, NULL, ws);
+
+	c->fullscreen = fullscreen;
+	if (fullscreen) {
+		c->oldx = c->x;
+		c->oldy = c->y;
+		c->oldw = c->w;
+		c->oldh = c->h;
+		XSetWindowBorderWidth(dpy, c->win, 0);
+		moveresizeclient(mon, c, 0, 0, mon->w, mon->h);
+		XRaiseWindow(dpy, c->win);
+	} else {
+		c->x = c->oldx;
+		c->y = c->oldy;
+		c->w = c->oldw;
+		c->h = c->oldh;
+		XSetWindowBorderWidth(dpy, c->win, BORDERWIDTH);
+		arrange(mon);
 	}
 }
 
@@ -1600,7 +1714,7 @@ setup(void)
 	/* events */
 	wa.event_mask = SubstructureNotifyMask|SubstructureRedirectMask|
 			KeyPressMask|StructureNotifyMask|ButtonPressMask|PointerMotionMask|
-			FocusChangeMask;
+			FocusChangeMask|PropertyChangeMask;
 	XChangeWindowAttributes(dpy, root, CWEventMask, &wa);
 
 	/* input: mouse, keyboard */
@@ -1628,17 +1742,17 @@ setup(void)
 void
 setupatoms(void)
 {
-	atom[WM_PROTOCOLS] = XInternAtom(dpy, "WM_PROTOCOLS", false);
-	atom[WM_DELETE_WINDOW] = XInternAtom(dpy, "WM_DELETE_WINDOW", false);
-	atom[WM_STATE] = XInternAtom(dpy, "WM_STATE", false);
-	atom[WM_TAKE_FOCUS] = XInternAtom(dpy, "WM_TAKE_FOCUS", false);
-	atom[_NET_ACTIVE_WINDOW] = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", false);
-	atom[_NET_SUPPORTED] = XInternAtom(dpy, "_NET_SUPPORTED", false);
-	atom[_NET_WM_NAME] = XInternAtom(dpy, "_NET_WM_NAME", false);
-	atom[_NET_WM_STATE] = XInternAtom(dpy, "_NET_WM_STATE", false);
-	atom[_NET_WM_STATE_FULLSCREEN] = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", false);
-	atom[_NET_WM_WINDOW_TYPE] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", false);
-	atom[_NET_WM_WINDOW_TYPE_DIALOG] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", false);
+	atoms[WM_PROTOCOLS] = XInternAtom(dpy, "WM_PROTOCOLS", false);
+	atoms[WM_DELETE_WINDOW] = XInternAtom(dpy, "WM_DELETE_WINDOW", false);
+	atoms[WM_STATE] = XInternAtom(dpy, "WM_STATE", false);
+	atoms[WM_TAKE_FOCUS] = XInternAtom(dpy, "WM_TAKE_FOCUS", false);
+	atoms[_NET_ACTIVE_WINDOW] = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", false);
+	atoms[_NET_SUPPORTED] = XInternAtom(dpy, "_NET_SUPPORTED", false);
+	atoms[_NET_WM_NAME] = XInternAtom(dpy, "_NET_WM_NAME", false);
+	atoms[_NET_WM_STATE] = XInternAtom(dpy, "_NET_WM_STATE", false);
+	atoms[_NET_WM_STATE_FULLSCREEN] = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", false);
+	atoms[_NET_WM_WINDOW_TYPE] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", false);
+	atoms[_NET_WM_WINDOW_TYPE_DIALOG] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", false);
 }
 
 void
@@ -2115,6 +2229,25 @@ updatebar(Monitor *mon)
 }
 
 void
+updateclient(Client *c)
+{
+	int di;
+	unsigned long dl;
+	unsigned char *p = NULL;
+	Atom da, state=None;
+
+	if (XGetWindowProperty(dpy, c->win, atoms[_NET_WM_STATE], 0, sizeof(da),
+			false, XA_ATOM, &da, &di, &dl, &dl, &p) == Success && p) {
+		state = (Atom) *p;
+		free(p);
+	}
+	if (state == atoms[_NET_WM_STATE_FULLSCREEN]) {
+		setfullscreen(c, true);
+	} else {
+	}
+}
+
+void
 updatefocus(void)
 {
 	unsigned int i, j;
@@ -2233,17 +2366,28 @@ updatesizehints(Client *c)
 		warn("XGetWMNormalHints() failed");
 		return;
 	}
+	/* base size */
 	if (hints.flags & PBaseSize) {
 		c->basew = hints.base_width;
 		c->baseh = hints.base_height;
 	} else {
 		c->basew = c->baseh = 0;
 	}
+
+	/* resize steps */
 	if (hints.flags & PResizeInc) {
 		c->incw = hints.width_inc;
 		c->inch = hints.height_inc;
 	} else {
 		c->incw = c->inch = 0;
+	}
+
+	/* minimum size */
+	if (hints.flags & PMinSize) {
+		c->minw = hints.min_width;
+		c->minh = hints.min_height;
+	} else {
+		c->minw = c->minh = 0;
 	}
 }
 
