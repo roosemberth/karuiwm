@@ -401,9 +401,7 @@ checksizehints(Client *c, int *w, int *h)
 	int u;
 	bool change = false;
 
-	debug("checksizehints: 1");
 	if ((!c->floating && FORCESIZE) || c->fullscreen) {
-		debug("checksizehints: 2");
 		return *w != c->w || *h != c->h;
 	}
 
@@ -412,33 +410,20 @@ checksizehints(Client *c, int *w, int *h)
 		return true;
 	}
 
-	debug("checksizehints: 3");
 	if (*w != c->w) {
-		debug("checksizehints: 4");
 		u = (*w-c->basew)/c->incw;
-		debug("checksizehints: 5");
 		*w = c->basew+u*c->incw;
-		debug("checksizehints: 6");
 		if (*w != c->w) {
-			debug("checksizehints: 7");
 			change = true;
 		}
-		debug("checksizehints: 8");
 	}
-	debug("checksizehints: 9");
 	if (*h != c->h) {
-		debug("checksizehints: 10");
 		u = (*h-c->baseh)/c->inch;
-		debug("checksizehints: 11");
 		*h = c->baseh+u*c->inch;
-		debug("checksizehints: 12");
 		if (*h != c->h) {
-			debug("checksizehints: 13");
 			change = true;
 		}
-		debug("checksizehints: 14");
 	}
-	debug("checksizehints: 15");
 	return change;
 }
 
@@ -515,7 +500,7 @@ cleanup(void)
 void
 clientmessage(XEvent *e)
 {
-	debug("\033[36mclientmessage(%d)\033[0m", e->xclient.window);
+	debug("clientmessage(%d)", e->xclient.window);
 
 	Client *c;
 	XClientMessageEvent *ev = &e->xclient;
@@ -525,10 +510,8 @@ clientmessage(XEvent *e)
 	}
 
 	if (ev->message_type == atoms[_NET_WM_STATE]) {
-		debug("clientmessage: \033[33m_NET_WM_STATE\033[0m");
 		if (ev->data.l[1] == atoms[_NET_WM_STATE_FULLSCREEN] ||
 				ev->data.l[2] == atoms[_NET_WM_STATE_FULLSCREEN]) {
-			debug("clientmessage: \033[33m_NET_WM_STATE_FULLSCREEN\033[0m");
 			setfullscreen(c, ev->data.l[0] == 1 || /* _NET_WM_STATE_ADD */
 					(ev->data.l[0] == 2 /* _NET_WM_STATE_TOGGLE */ &&
 					 !c->fullscreen));
@@ -556,11 +539,9 @@ configurerequest(XEvent *e)
 	XConfigureRequestEvent *ev = &e->xconfigurerequest;
 
 	/* forward configuration if not managed (or if we don't force the size) */
-	debug("configurerequest: 1");
 	if (!FORCESIZE || (pad && ev->window == pad->win) ||
 			!locateclient(NULL, &c, NULL, ev->window) || c->fullscreen ||
 			c->floating) {
-		debug("configurerequest: 2");
 		wc = (XWindowChanges) {
 			.x = ev->x,
 			.y = ev->y,
@@ -570,12 +551,9 @@ configurerequest(XEvent *e)
 			.sibling = ev->above,
 			.stack_mode = ev->detail
 		};
-		debug("configurerequest: 3");
 		XConfigureWindow(dpy, ev->window, ev->value_mask, &wc);
-		debug("configurerequest: 4");
 		return;
 	}
-	debug("configurerequest: 5");
 
 	/* force size with XSendEvent() instead of ordinary XConfigureWindow() */
 	cev = (XConfigureEvent) {
@@ -591,9 +569,7 @@ configurerequest(XEvent *e)
 		.above = None,
 		.override_redirect = False,
 	};
-	debug("configurerequest: 6");
 	XSendEvent(dpy, c->win, false, StructureNotifyMask, (XEvent *) &cev);
-	debug("configurerequest: 7");
 }
 
 void
@@ -851,7 +827,6 @@ gettiled(Client ***tiled, Monitor *mon)
 		if (!c->floating && !c->fullscreen) {
 			(*tiled)[n++] = mon->selws->clients[i];
 		} else {
-			debug("c->fullscreen = %d", c->fullscreen);
 		}
 	}
 	*tiled = realloc(*tiled, n*sizeof(Client *));
@@ -1339,27 +1314,19 @@ propertynotify(XEvent *e)
 	}
 	switch (ev->atom) {
 		case XA_WM_TRANSIENT_FOR:
-			debug("propertynotify: XA_WM_TRANSIENT_FOR");
 			/* TODO */
 			break;
 		case XA_WM_NORMAL_HINTS:
-			debug("propertynotify: XA_WM_NORMAL_HINTS");
 			updatesizehints(c);
 			break;
 		case XA_WM_HINTS:
-			debug("propertynotify: XA_WM_HINTS");
 			/* TODO urgency hint */
 			break;
-		default:
-			debug("propertynotify: no XA_...");
-			/* TODO check whether this needs to be handled */
 	}
 	if (ev->atom == XA_WM_NAME || ev->atom == atoms[_NET_WM_NAME]) {
-		debug("propertynotify: WM_NAME");
 		/* TODO */
 	}
 	if (ev->atom == atoms[_NET_WM_WINDOW_TYPE]) {
-		debug("propertynotify: \033[34m_NET_WM_WINDOW_TYPE\033[0m");
 		updateclient(c);
 	}
 }
@@ -1456,20 +1423,14 @@ renderwsmbox(Workspace *ws)
 void
 resizeclient(Client *c, int w, int h)
 {
-	debug("resizeclient: 1");
 	if (checksizehints(c, &w, &h)) {
-		debug("resizeclient: 2");
 		XResizeWindow(dpy, c->win, c->w = MAX(w, 1), c->h = MAX(h, 1));
-	} else {
-		debug("resizeclient: 3");
 	}
 }
 
 void
 resizemouse(Arg const *arg)
 {
-	debug("resizemouse");
-
 	XEvent ev;
 	Client *c = selmon->selws->selcli;
 	int x, y;
@@ -1497,7 +1458,7 @@ resizemouse(Arg const *arg)
 	/* handle motions */
 	do {
 		XMaskEvent(dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
-		debug("\033[38;5;238m[resizemouse] run(): e.type=%d\033[0m", ev.type);
+		//debug("\033[38;5;238m[resizemouse] run(): e.type=%d\033[0m", ev.type);
 		switch (ev.type) {
 			case ConfigureRequest:
 			case Expose:
@@ -1505,22 +1466,14 @@ resizemouse(Arg const *arg)
 				handle[ev.type](&ev);
 				break;
 			case MotionNotify:
-				debug("resizemouse: 1");
 				if (!c->floating) {
-					debug("resizemouse: 2");
 					togglefloat(NULL);
 				}
-				debug("resizemouse: 3");
 				cw = cw+(ev.xmotion.x_root-x);
-				debug("resizemouse: 4");
 				ch = ch+(ev.xmotion.y_root-y);
-				debug("resizemouse: 5");
 				x = ev.xmotion.x_root;
-				debug("resizemouse: 6");
 				y = ev.xmotion.y_root;
-				debug("resizemouse: 7");
 				resizeclient(c, cw, ch);
-				debug("resizemouse: 8");
 				break;
 		}
 	} while (ev.type != ButtonRelease);
@@ -1548,7 +1501,7 @@ run(void)
 
 	running = true;
 	while (running && !XNextEvent(dpy, &e)) {
-		debug("\033[38;5;238mrun(): e.type=%d\033[0m", e.type);
+		//debug("\033[38;5;238mrun(): e.type=%d\033[0m", e.type);
 		if (handle[e.type]) {
 			handle[e.type](&e);
 		}
@@ -1679,7 +1632,7 @@ setclientmask(Monitor *mon, bool set)
 void
 setfullscreen(Client *c, bool fullscreen)
 {
-	debug("\033[1msetfullscreen => %d\033[0m", fullscreen);
+	debug("setfullscreen(%d) %d", c->win, fullscreen);
 
 	Monitor *mon=NULL;
 	Workspace *ws;
@@ -2278,31 +2231,19 @@ updatebar(Monitor *mon)
 void
 updateclient(Client *c)
 {
-	debug("\033[35mupdateclient(%d)\033[0m", c->win);
-
 	int di;
 	unsigned long dl;
 	unsigned char *p = NULL;
 	Atom da, state=None;
 
 	if (XGetWindowProperty(dpy, c->win, atoms[_NET_WM_STATE], 0, sizeof(da),
-			false, XA_ATOM, &da, &di, &dl, &dl, (unsigned char **) &p) == Success) {
-		debug("updateclient: \033[35mXGetWindowProperty() == Success\033[0m");
-		if (p) {
-			debug("updateclient: p!");
-			state = (Atom) *p;
-			free(p);
-		} else {
-			debug("updateclient: no p...");
-		}
-	} else {
-		debug("updateclient: \033[31mXGetWindowProperty() != Success\033[0m");
+			false, XA_ATOM, &da, &di, &dl, &dl, &p) == Success && p) {
+		state = (Atom) *p;
+		free(p);
 	}
 	if (state == atoms[_NET_WM_STATE_FULLSCREEN]) {
-		debug("updateclient: \033[32m_NET_WM_STATE_FULLSCREEN\033[0m");
 		setfullscreen(c, true);
 	} else {
-		debug("updateclient: \033[31mno fullscreen state\033[0m");
 	}
 }
 
@@ -2425,34 +2366,26 @@ updatesizehints(Client *c)
 		warn("XGetWMNormalHints() failed");
 		return;
 	}
-	debug("updatesizehints:\n"
-			"hints.flags=%08X\n"
-			"PBaseSize=  %08X\n"
-			"PAspect=    %08X\n"
-			"PResizeInc= %08X\n"
-			"PMaxSize=   %08X\n"
-			"PMinSize=   %08X",
-			hints.flags, PBaseSize, PAspect, PResizeInc, PMaxSize, PMinSize);
 	/* base size */
 	if (hints.flags & PBaseSize) {
-		debug("basew=%d", c->basew = hints.base_width);
-		debug("baseh=%d", c->baseh = hints.base_height);
+		c->basew = hints.base_width;
+		c->baseh = hints.base_height;
 	} else {
 		c->basew = c->baseh = 0;
 	}
 
 	/* resize steps */
 	if (hints.flags & PResizeInc) {
-		debug("incw=%d", c->incw = hints.width_inc);
-		debug("inch=%d", c->inch = hints.height_inc);
+		c->incw = hints.width_inc;
+		c->inch = hints.height_inc;
 	} else {
 		c->incw = c->inch = 0;
 	}
 
 	/* minimum size */
 	if (hints.flags & PMinSize) {
-		debug("minw=%d", c->minw = hints.min_width);
-		debug("minh=%d", c->minh = hints.min_height);
+		c->minw = hints.min_width;
+		c->minh = hints.min_height;
 	} else {
 		c->minw = c->minh = 0;
 	}

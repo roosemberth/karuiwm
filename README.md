@@ -47,9 +47,9 @@ run
 ---
 
 Follow the standard procedure for launching a WM; add an <code>.xinitrc</code>
-to your home directory.
+to your home directory, then launch <code>xinit</code>.
 
-Here is an example <code>.xinitrc</code>.
+Here is an example <code>.xinitrc</code>:
 
 	#!/bin/sh
 	# xinitrc to launch stwm
@@ -141,10 +141,10 @@ These are the default settings defined by the <code>keys</code> array:
 * <code>Mod</code>+<code>Shift</code>+<code>q</code>
   quit stwm
 
-The <code>Mod</code> key is set to Mod1 (<code>Alt</code>):
+By default, the <code>Mod</code> key is set to Mod1 (<code>Alt</code>).
 
 The mouse can be configured via the <code>buttons</code> array and currently
-support following actions:
+supports following actions:
 
 * <code>Mod</code>+<code>Button1</code>
   grab and move window, make it floating
@@ -157,9 +157,8 @@ develop
 
 	make dev
 
-will compile stwm as in <code>make debug</code>, then start stwm in Xephyr. It
-is recommended to change <code>MODMASK</code> to a value different from your
-native stwm/dwm/xmonad/whatever instance to avoid keycode conflicts.
+will compile stwm as in <code>make debug</code>, then start stwm on an
+alternative X display.
 
 
 appendix A: workspaces
