@@ -78,6 +78,7 @@ struct Client {
 	bool floating, fullscreen;
 	int basew, baseh, incw, inch;
 	int minw, minh;
+	int border;
 };
 
 struct {
@@ -238,10 +239,6 @@ static int xerror(Display *, XErrorEvent *);
 static int (*xerrorxlib)(Display *, XErrorEvent *);
 static void zoom(Arg const *);
 
-/* layouts */
-static void bstack(Monitor *);
-static void rstack(Monitor *);
-
 /* event handlers, as array to allow O(1) access; codes in X.h */
 static void (*handle[LASTEvent])(XEvent *) = {
 	[ButtonPress]      = buttonpress,      /* 4*/
@@ -278,6 +275,7 @@ static Monitor *pad_mon;            /* monitor the scratchpad is currently on */
 static Atom atoms[ATOM_LAST];       /* atoms */
 
 /* configuration */
+#include "layout.h"
 #include "config.h"
 
 /* function implementation */
@@ -569,7 +567,7 @@ configurerequest(XEvent *e)
 		.y = c->y,
 		.width = c->w,
 		.height = c->h,
-		.border_width = BORDERWIDTH,
+		.border_width = c->border,
 		.above = None,
 		.override_redirect = False,
 	};
@@ -928,7 +926,8 @@ initclient(Window win, bool viewable)
 		c->w = wa.width;
 		c->h = wa.height;
 	}
-	XSetWindowBorderWidth(dpy, c->win, BORDERWIDTH);
+	c->border = BORDERWIDTH;
+	XSetWindowBorderWidth(dpy, c->win, c->border);
 	updatesizehints(c);
 	grabbuttons(c, false);
 	return c;
@@ -1440,9 +1439,9 @@ resizemouse(Arg const *arg)
 
 	/* set pointer position to lower right */
 	XWarpPointer(dpy, None, c->win, 0, 0, 0, 0,
-			c->w+2*BORDERWIDTH-1, c->h+2*BORDERWIDTH-1);
-	x = selmon->x+c->x+c->w+2*BORDERWIDTH-1;
-	y = selmon->y+c->y+c->h+2*BORDERWIDTH-1;
+			c->w+2*c->border-1, c->h+2*c->border-1);
+	x = selmon->x+c->x+c->w+2*c->border-1;
+	y = selmon->y+c->y+c->h+2*c->border-1;
 
 	/* handle motions */
 	do {
@@ -1641,7 +1640,7 @@ setfullscreen(Client *c, bool fullscreen)
 		c->y = c->oldy;
 		c->w = c->oldw;
 		c->h = c->oldh;
-		XSetWindowBorderWidth(dpy, c->win, BORDERWIDTH);
+		XSetWindowBorderWidth(dpy, c->win, c->border);
 		arrange(mon);
 	}
 }
@@ -1931,7 +1930,7 @@ showclient(Monitor *mon, Client *c)
 	if (mon) {
 		XMoveWindow(dpy, c->win, mon->x + c->x, mon->y + c->y);
 	} else {
-		XMoveWindow(dpy, c->win, -c->w-2*BORDERWIDTH, c->y);
+		XMoveWindow(dpy, c->win, -c->w-2*c->border, c->y);
 	}
 }
 
@@ -2520,88 +2519,6 @@ zoom(Arg const *arg)
 	}
 	arrange(selmon);
 }
-
-/* layouts */
-
-void
-bstack(Monitor *mon)
-{
-	Client **tiled;
-	unsigned int i, ncm, nct, w, h;
-	int y;
-
-	/* get tiled clients */
-	if (!mon->selws->nc || !(nct = gettiled(&tiled, mon))) {
-		return;
-	}
-
-	/* draw master area */
-	ncm = MIN(mon->selws->nmaster, nct);
-	if (ncm) {
-		y = mon->wy;
-		w = mon->ww/ncm;
-		h = ncm == nct ? mon->wh : mon->selws->mfact*mon->wh;
-		for (i = 0; i < ncm; i++) {
-			moveresizeclient(mon, tiled[i], mon->wx+i*w, y,
-					w-2*BORDERWIDTH, h-2*BORDERWIDTH);
-		}
-	}
-	if (ncm == nct) {
-		free(tiled);
-		return;
-	}
-
-	/* draw stack area */
-	y = mon->wy+(ncm ? mon->selws->mfact*mon->wh : mon->wy);
-	w = mon->ww/(nct-ncm);
-	h = ncm ? mon->h-y : mon->wh;
-	for (i = ncm; i < nct; i++) {
-		moveresizeclient(mon, tiled[i], mon->wx+(i-ncm)*w, y,
-				w-2*BORDERWIDTH, h-2*BORDERWIDTH);
-	}
-	free(tiled);
-}
-
-void
-rstack(Monitor *mon)
-{
-	Client **tiled;
-	unsigned int i, ncm, nct, w, h;
-	int x;
-
-	/* get tiled clients */
-	if (!mon->selws->nc || !(nct = gettiled(&tiled, mon))) {
-		return;
-	}
-
-	/* draw master area */
-	ncm = MIN(mon->selws->nmaster, nct);
-	if (ncm) {
-		x = mon->wx;
-		w = ncm == nct ? mon->ww : mon->selws->mfact*mon->ww;
-		h = mon->wh/ncm;
-		for (i = 0; i < ncm; i++) {
-			moveresizeclient(mon, tiled[i], x, mon->wy+i*h,
-					w-2*BORDERWIDTH, h-2*BORDERWIDTH);
-		}
-	}
-	if (ncm == nct) {
-		free(tiled);
-		return;
-	}
-
-	/* draw stack area */
-	x = mon->wx+(ncm ? mon->selws->mfact*mon->ww : mon->wx);
-	w = ncm ? mon->w-x : mon->ww;
-	h = mon->wh/(nct-ncm);
-	for (i = ncm; i < nct; i++) {
-		moveresizeclient(mon, tiled[i], x, mon->wy+(i-ncm)*h,
-				w-2*BORDERWIDTH, h-2*BORDERWIDTH);
-	}
-	free(tiled);
-}
-
-/* main */
 
 int
 main(int argc, char **argv)

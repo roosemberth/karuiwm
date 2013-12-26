@@ -162,9 +162,40 @@ The mouse can be configured via the <code>buttons</code> array and currently
 supports following actions:
 
 * <code>Mod</code>+<code>Button1</code>
-  grab and move window, make it floating
+  grab and move client, make it floating
 * <code>Mod</code>+<code>Button3</code>
-  resize window, make it floating
+  resize client, make it floating
+
+
+layouts
+-------
+
+stwm is a *dynamically tiling window manager*, this means that it automatically
+arranges windows following certain dynamically changable rules, called
+*layouts*. This allows the user to focus on the workflow instead of having to
+arrange windows manually.
+
+You can cycle through the layouts with <code>Mod</code>+<code>Space</code>; the
+windows will get arranged automatically.
+
+The layouts are defined in <code>layout.h</code>; the array at the end of the
+file contains the layouts that will be actually used in your personal stwm
+setup. Every layout below the <code>NULL</code> entry will not be accessible
+through the usual layout cycling, but will need an separate setup.
+
+This may be useful with a monocle layout (only displays one maximised window):
+As you cycle through your layouts, you seldom need the monocle layout; however
+in case you *need* the monocle layout, you may not want to cycle through all
+your other layouts. In this case it is more appropriate to define a keyboard
+shortcut that toggles the monocle layout.
+
+*(Note: monocle layout and layout toggling has not yet been implemented)*
+
+Every layout is assigned a bitfield that describes an icon that will get
+displayed in the statusbar to indicate the current layout. Every hexadecimal
+<code>long</code> entry in the array corresponds to a row in the icon (thus an
+icon cannot be larger than <code>sizeof(long)\*8</code>, but that shouldn't be a
+problem).
 
 
 appendix A: workspaces

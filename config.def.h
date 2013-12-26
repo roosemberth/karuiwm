@@ -31,53 +31,6 @@
 #define WSMCBGTARGET     CBGSEL
 #define WSMCBORDERTARGET CBORDERSEL
 
-/* icon for rstack layout */
-static long const icon_rstack[] = {
-	17, 15,
-	0x00000,
-	0x00000,
-	0x1FEFF,
-	0x1FEFF,
-	0x1FEFF,
-	0x1FE00,
-	0x1FEFF,
-	0x1FEFF,
-	0x1FEFF,
-	0x1FE00,
-	0x1FEFF,
-	0x1FEFF,
-	0x1FEFF,
-	0x00000,
-	0x00000,
-};
-
-/* icon for bstack layout */
-static long const icon_bstack[] = {
-	17, 15,
-	0x00000,
-	0x00000,
-	0x1FFFF,
-	0x1FFFF,
-	0x1FFFF,
-	0x1FFFF,
-	0x1FFFF,
-	0x00000,
-	0x1F7DF,
-	0x1F7DF,
-	0x1F7DF,
-	0x1F7DF,
-	0x1F7DF,
-	0x00000,
-	0x00000,
-};
-
-/* layouts */
-static Layout layouts[] = {
-	{ icon_rstack, rstack },
-	{ icon_bstack, bstack },
-	{ NULL,        NULL },
-};
-
 /* dmenu arguments (see man dmenu) */
 #define PROMPT_RENAME "rename"
 #define PROMPT_CHANGE "workspace"
