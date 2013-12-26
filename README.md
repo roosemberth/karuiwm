@@ -23,6 +23,14 @@ you may run:
 
 	make debug
 
+This is especially useful when developing stwm; for starting stwm directly in
+the current directory without installing it, run
+
+	make dev
+
+This will compile stwm as in <code>make debug</code>, then launch the created
+stwm binary on an alternative X display.
+
 
 install
 -------
@@ -87,6 +95,13 @@ These are the default settings defined by the <code>keys</code> array:
 * <code>PrtSc</code>
   launch scrot (screenshot)
 
+**Hardware**
+
+* <code>VolUp</code>|<code>VolDown</code>
+  increase/decrease ALSA's Master sound level by 2%
+* <code>VolMute</code>
+  toggle ALSA's Master sound (mute/unmute)
+
 **Clients**
 
 * <code>Mod</code>+<code>j</code>|<code>k</code>
@@ -150,15 +165,6 @@ supports following actions:
   grab and move window, make it floating
 * <code>Mod</code>+<code>Button3</code>
   resize window, make it floating
-
-
-develop
--------
-
-	make dev
-
-will compile stwm as in <code>make debug</code>, then start stwm on an
-alternative X display.
 
 
 appendix A: workspaces

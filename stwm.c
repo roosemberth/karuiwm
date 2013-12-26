@@ -124,6 +124,7 @@ struct Workspace {
 	char name[256];
 	int x, y;
 	int ilayout;
+	bool dirty;
 };
 
 struct {
@@ -157,8 +158,6 @@ static void focusin(XEvent *);
 static int gettiled(Client ***, Monitor *);
 static void grabbuttons(Client *, bool);
 static void grabkeys(void);
-static void hideclient(Client *);
-static void hidews(Workspace *);
 static void initbar(Monitor *);
 static Client *initclient(Window, bool);
 static Monitor *initmon(void);
@@ -206,6 +205,8 @@ static void setnmaster(Arg const *);
 static void setws(Monitor *, int, int);
 static void shiftclient(Arg const *);
 static void shiftws(Arg const *);
+static void showclient(Monitor *, Client *);
+static void showws(Monitor *, Workspace *);
 static void sigchld(int);
 static void spawn(Arg const *);
 static void stdlog(FILE *, char const *, ...);
@@ -300,6 +301,7 @@ arrange(Monitor *mon)
 		}
 	}
 	setclientmask(mon, true);
+	mon->selws->dirty = false;
 }
 
 void
@@ -345,6 +347,8 @@ attachclient(Workspace *ws, Client *c)
 			}
 		}
 		arrange(mon);
+	} else if (!c->floating) {
+		ws->dirty = true;
 	}
 }
 
@@ -869,21 +873,6 @@ grabkeys(void)
 			XGrabKey(dpy, XKeysymToKeycode(dpy, keys[i].key), keys[i].mod, root,
 					true, GrabModeAsync, GrabModeAsync);
 		}
-	}
-}
-
-void
-hideclient(Client *c)
-{
-	XMoveWindow(dpy, c->win, -c->w-2*BORDERWIDTH, c->y);
-}
-
-void
-hidews(Workspace *ws)
-{
-	unsigned int i;
-	for (i = 0; i < ws->nc; i++) {
-		hideclient(ws->clients[i]);
 	}
 }
 
@@ -1852,8 +1841,8 @@ setws(Monitor *mon, int x, int y)
 	if (locatemon(&othermon, NULL, next) && othermon != mon) {
 		othermon->selws = mon->selws;
 		mon->selws = next;
-		arrange(mon);
-		arrange(othermon);
+		showws(othermon, mon->selws);
+		showws(mon, next);
 		updatebar(mon);
 		updatebar(othermon);
 		updatefocus();
@@ -1862,7 +1851,7 @@ setws(Monitor *mon, int x, int y)
 
 	/* current workspace */
 	if (mon->selws->nc) {
-		hidews(mon->selws);
+		showws(NULL, mon->selws);
 	} else {
 		detachws(mon->selws);
 		termws(mon->selws);
@@ -1933,6 +1922,30 @@ shiftws(Arg const *arg)
 	if (wsm.active) {
 		wsm.target->x = dx;
 		wsm.target->y = dy;
+	}
+}
+
+void
+showclient(Monitor *mon, Client *c)
+{
+	if (mon) {
+		XMoveWindow(dpy, c->win, mon->x + c->x, mon->y + c->y);
+	} else {
+		XMoveWindow(dpy, c->win, -c->w-2*BORDERWIDTH, c->y);
+	}
+}
+
+void
+showws(Monitor *mon, Workspace *ws)
+{
+	unsigned int i;
+
+	if (mon && ws->dirty) {
+		arrange(mon);
+	} else {
+		for (i = 0; i < ws->nc; i++) {
+			showclient(mon, ws->clients[i]);
+		}
 	}
 }
 
@@ -2099,7 +2112,7 @@ togglepad(Arg const *arg)
 	}
 	setclientmask(selmon, false);
 	if (pad_mon == selmon) {
-		hideclient(pad);
+		showclient(NULL, pad);
 		pad_mon = NULL;
 	} else {
 		pad_mon = selmon;
@@ -2205,14 +2218,21 @@ unmapnotify(XEvent *e)
 		}
 		pad_mon = NULL;
 		pad = NULL;
-	} else if (locateclient(&ws, &c, NULL, e->xunmap.window)) {
-		detachclient(c);
-		termclient(c);
-		if (locatemon(&mon, NULL, ws)) {
-			arrange(mon);
-			updatefocus();
-		}
+		return;
 	}
+
+	if (!locateclient(&ws, &c, NULL, e->xunmap.window)) {
+		return;
+	}
+
+	detachclient(c);
+	if (locatemon(&mon, NULL, ws)) {
+		arrange(mon);
+		updatefocus();
+	} else if (!c->floating) {
+		ws->dirty = true;
+	}
+	termclient(c);
 }
 
 void
@@ -2324,7 +2344,7 @@ updategeom(void)
 	if (n < nmon) { /* screen detached */
 		for (i = nmon-1; i >= n; i--) {
 			mon = monitors[i];
-			hidews(mon->selws);
+			showws(NULL, mon->selws);
 			detachmon(mon);
 			termmon(mon);
 		}
