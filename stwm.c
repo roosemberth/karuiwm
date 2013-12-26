@@ -607,6 +607,8 @@ detachclient(Client *c)
 	} else if (!ws->nc) {
 		detachws(ws);
 		termws(ws);
+	} else {
+		ws->dirty = true;
 	}
 }
 
@@ -999,6 +1001,7 @@ initws(int x, int y)
 	ws->nmaster = NMASTER;
 	ws->wsmbox = 0;
 	ws->ilayout = 0;
+	ws->dirty = false;
 	renamews(ws, NULL);
 	return ws;
 }
@@ -1829,42 +1832,40 @@ setupwsm(void)
 void
 setws(Monitor *mon, int x, int y)
 {
-	Workspace *next=NULL;
+	Workspace *srcws, *dstws=NULL;
 	Monitor *othermon=NULL;
 
-	if (locatews(&next, NULL, x, y, NULL) && mon->selws == next) {
+	/* get source and destination workspaces */
+	srcws = mon->selws;
+	if (locatews(&dstws, NULL, x, y, NULL) && srcws == dstws) {
 		return;
 	}
 
 	/* exchange monitors on collision */
-	if (locatemon(&othermon, NULL, next) && othermon != mon) {
-		othermon->selws = mon->selws;
-		mon->selws = next;
-		showws(othermon, mon->selws);
-		showws(mon, next);
+	if (dstws && locatemon(&othermon, NULL, dstws) && othermon != mon) {
+		showws(othermon, srcws);
+		showws(mon, dstws);
 		updatebar(mon);
 		updatebar(othermon);
 		updatefocus();
 		return;
 	}
 
-	/* current workspace */
-	if (mon->selws->nc) {
-		showws(NULL, mon->selws);
+	/* destination workspace */
+	if (!dstws) {
+		dstws = initws(x, y);
+		attachws(dstws);
+	}
+	showws(mon, dstws);
+
+	/* source workspace */
+	if (srcws->nc) {
+		showws(NULL, srcws);
 	} else {
-		detachws(mon->selws);
-		termws(mon->selws);
+		detachws(srcws);
+		termws(srcws);
 	}
 
-	/* next workspace */
-	if (next) {
-		mon->selws = next;
-	} else {
-		mon->selws = initws(x, y);
-		attachws(mon->selws);
-	}
-
-	arrange(mon);
 	updatebar(mon);
 	updatefocus();
 }
@@ -1939,6 +1940,9 @@ showws(Monitor *mon, Workspace *ws)
 {
 	unsigned int i;
 
+	if (mon) {
+		mon->selws = ws;
+	}
 	if (mon && ws->dirty) {
 		arrange(mon);
 	} else {

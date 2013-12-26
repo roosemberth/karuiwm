@@ -263,7 +263,7 @@ Bug reports are welcome, especially since this is still in a quite early
 development state.
 
 Feature requests are welcome too, as long as they do not require me to add a
-thousand lines of code or change the programming language).
+thousand lines of code or change the programming language.
 
 In the unlikely case there is any need for support, visit
 <code>irc.freenode.net#stwm</code>.
