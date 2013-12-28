@@ -1886,6 +1886,7 @@ setws(Monitor *mon, int x, int y)
 
 	/* exchange monitors on collision */
 	if (dstws && locatemon(&othermon, NULL, dstws) && othermon != mon) {
+		srcws->dirty = dstws->dirty = true; /* for different screen sizes */
 		showws(othermon, srcws);
 		showws(mon, dstws);
 		updatebar(mon);
@@ -1985,6 +1986,10 @@ showws(Monitor *mon, Workspace *ws)
 
 	if (mon) {
 		mon->selws = ws;
+	} else if (!ws->nc) {
+		detachws(ws);
+		termws(ws);
+		return;
 	}
 	if (mon && ws->dirty) {
 		arrange(mon);
