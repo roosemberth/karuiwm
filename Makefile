@@ -7,9 +7,6 @@ build:
 	@[ -f config.h ] || cp config.def.h config.h
 	${CC} ${CFLAGS} stwm.c ${LFLAGS} -o stwm
 
-debug: CFLAGS += -g -DDEBUG
-debug: build
-
 scan:
 	scan-build make debug
 
@@ -20,7 +17,9 @@ uninstall:
 	rm ${INSTALLDIR}/bin/stwm
 
 # for ayekat, for developing
-dev:
-	make debug
-	xinit ./stwm -- :1
+devbuild: CFLAGS += -g -DDEBUG
+devbuild: build
+devrun:
+	PATH="${PWD}:${PATH}" xinit ./stwm -- :1
+dev: devbuild devrun
 

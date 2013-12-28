@@ -19,6 +19,7 @@
 
 /* macros */
 #define APPNAME "stwm"
+#define APPVERSION "0.1"
 #define BUTTONMASK (ButtonPressMask|ButtonReleaseMask)
 #define CLIENTMASK (EnterWindowMask|PropertyChangeMask|StructureNotifyMask)
 #define INTERSECT(MON, X, Y, W, H) \
@@ -79,6 +80,7 @@ struct Client {
 	int basew, baseh, incw, inch;
 	int minw, minh;
 	int border;
+	bool dirty;
 };
 
 struct {
@@ -144,7 +146,7 @@ static void attachclient(Workspace *, Client *);
 static void attachws(Workspace *);
 static void buttonpress(XEvent *);
 static bool checksizehints(Client *, int *, int *);
-static void cleanup(void);
+static void cleanup(char **);
 static void clientmessage(XEvent *);
 static void configurerequest(XEvent *);
 static void configurenotify(XEvent *);
@@ -188,19 +190,20 @@ static void renderwsmbox(Workspace *);
 static void resizeclient(Client *, int, int);
 static void resizemouse(Arg const *);
 static void restart(Arg const *);
+static void restoresession(char const *sessionfile);
 static void run(void);
-static void savesession(Arg const *arg);
-static void scan(void);
+static void savesession(char **sessionfile);
 static bool sendevent(Client *, Atom);
 static void sendfollowclient(Arg const *);
 static void setclientmask(Monitor *, bool);
 static void setfullscreen(Client *, bool);
 static void setmfact(Arg const *);
 static void setpad(Arg const *);
-static void setup(void);
+static void setup(char const *sessionfile);
 static void setupatoms(void);
 static void setupfont(void);
 static void setuplayouts(void);
+static void setupsession(char const *sessionfile);
 static void setupwsm(void);
 static void setnmaster(Arg const *);
 static void setws(Monitor *, int, int);
@@ -283,12 +286,8 @@ static Atom atoms[ATOM_LAST];       /* atoms */
 void
 arrange(Monitor *mon)
 {
-	unsigned int i;
 	Client *c;
-
-	if (!mon) {
-		return;
-	}
+	unsigned int i;
 
 	setclientmask(mon, false);
 	layouts[mon->selws->ilayout].func(mon);
@@ -306,8 +305,6 @@ void
 attachclient(Workspace *ws, Client *c)
 {
 	unsigned int i, pos;
-	Monitor *mon;
-	XWindowAttributes wa;
 
 	/* add to list */
 	ws->clients = realloc(ws->clients, ++ws->nc*sizeof(Client *));
@@ -333,19 +330,7 @@ attachclient(Workspace *ws, Client *c)
 	push(ws, c);
 
 	/* update layout if on a selected workspace */
-	if (locatemon(&mon, NULL, ws)) {
-		/* update coordinates if floating */
-		if (c->floating) {
-			XRaiseWindow(dpy, c->win);
-			if (!XGetWindowAttributes(dpy, c->win, &wa)) {
-				warn("XGetWindowAttributes() failed for window %d", c->win);
-			} else {
-				c->x = wa.x - mon->x;
-				c->y = wa.y - mon->y;
-			}
-		}
-		arrange(mon);
-	} else if (!c->floating) {
+	if (!c->floating) {
 		ws->dirty = true;
 	}
 }
@@ -430,10 +415,8 @@ checksizehints(Client *c, int *w, int *h)
 }
 
 void
-cleanup(void)
+cleanup(char **savefile)
 {
-	debug("cleanup");
-
 	unsigned int i;
 	Monitor *mon;
 	Workspace *ws;
@@ -456,8 +439,15 @@ cleanup(void)
 		if (!mon->selws->nc) {
 			detachws(mon->selws);
 			termws(mon->selws);
+		} else {
+			showws(NULL, mon->selws);
 		}
 		monitors[i]->selws = NULL;
+	}
+
+	/* if restarting, save the session before removing everything */
+	if (restarting) {
+		savesession(savefile);
 	}
 
 	/* remove workspaces and their clients */
@@ -502,7 +492,7 @@ cleanup(void)
 void
 clientmessage(XEvent *e)
 {
-	debug("clientmessage(%d)", e->xclient.window);
+	debug("clientmessage(%lu)", e->xclient.window);
 
 	Client *c;
 	XClientMessageEvent *ev = &e->xclient;
@@ -524,7 +514,7 @@ clientmessage(XEvent *e)
 void
 configurenotify(XEvent *e)
 {
-	//debug("configurenotify(%d)", e->xconfigure.window);
+	//debug("configurenotify(%lu)", e->xconfigure.window);
 	if (e->xconfigure.window == root) {
 		updategeom();
 	}
@@ -533,7 +523,7 @@ configurenotify(XEvent *e)
 void
 configurerequest(XEvent *e)
 {
-	debug("configurerequest(%d)", e->xconfigurerequest.window);
+	debug("configurerequest(%lu)", e->xconfigurerequest.window);
 
 	Client *c = NULL;
 	XWindowChanges wc;
@@ -600,11 +590,8 @@ detachclient(Client *c)
 				ws->nc*sizeof(Client *));
 	}
 
-	/* update layout if selected workspace; otherwise remove if last client  */
-	if (locatemon(&mon, NULL, ws)) {
-		arrange(mon);
-		updatefocus();
-	} else if (!ws->nc) {
+	/* remove workspace if last client and not focused */
+	if (!ws->nc && !locatemon(&mon, NULL, ws)) {
 		detachws(ws);
 		termws(ws);
 	} else {
@@ -750,7 +737,7 @@ dmenueval(void)
 void
 enternotify(XEvent *e)
 {
-	debug("enternotify(%d)", e->xcrossing.window);
+	debug("enternotify(%lu)", e->xcrossing.window);
 
 	unsigned int pos;
 	Workspace *ws;
@@ -776,7 +763,7 @@ enternotify(XEvent *e)
 void
 expose(XEvent *e)
 {
-	debug("expose(%d)", e->xexpose.window);
+	debug("expose(%lu)", e->xexpose.window);
 
 	unsigned int i;
 
@@ -929,6 +916,7 @@ initclient(Window win, bool viewable)
 		c->h = wa.height;
 	}
 	c->border = BORDERWIDTH;
+	c->dirty = false;
 	XSetWindowBorderWidth(dpy, c->win, c->border);
 	updatesizehints(c);
 	grabbuttons(c, false);
@@ -1159,7 +1147,7 @@ locatews(Workspace **ws, unsigned int *pos, int x, int y, char const *name)
 void
 maprequest(XEvent *e)
 {
-	debug("maprequest(%d)", e->xmaprequest.window);
+	debug("maprequest(%lu)", e->xmaprequest.window);
 
 	Client *c = initclient(e->xmap.window, false);
 	if (!c) {
@@ -1167,6 +1155,7 @@ maprequest(XEvent *e)
 	}
 
 	attachclient(selmon->selws, c);
+	arrange(selmon);
 	XMapWindow(dpy, c->win);
 
 	/* floating */
@@ -1185,7 +1174,7 @@ maprequest(XEvent *e)
 void
 mappingnotify(XEvent *e)
 {
-	debug("mappingnotify(%d)", e->xmapping.window);
+	debug("mappingnotify(%lu)", e->xmapping.window);
 	/* TODO */
 }
 
@@ -1242,6 +1231,8 @@ movemouse(Arg const *arg)
 	/* check if it has been moved to another monitor */
 	mon = locaterect(selmon->x+c->x, selmon->y+c->y, c->w, c->h);
 	if (mon != selmon) {
+		c->x = selmon->x+c->x-mon->x;
+		c->y = selmon->y+c->y-mon->y;
 		detachclient(c);
 		attachclient(mon->selws, c);
 		viewmon(mon);
@@ -1289,12 +1280,13 @@ pop(Workspace *ws, Client *c)
 			break;
 		}
 	}
+	ws->selcli = ws->ns ? ws->stack[ws->ns-1] : NULL;
 }
 
 void
 propertynotify(XEvent *e)
 {
-	debug("propertynotify(%d)", e->xproperty.window);
+	//debug("propertynotify(%lu)", e->xproperty.window);
 
 	XPropertyEvent *ev;
 	Client *c;
@@ -1334,14 +1326,12 @@ push(Workspace *ws, Client *c)
 	if (!ws->stack) {
 		die("could not allocated %u bytes for stack", ws->ns*sizeof(Client *));
 	}
-	ws->stack[ws->ns-1] = c;
+	ws->selcli = ws->stack[ws->ns-1] = c;
 }
 
 void
 quit(Arg const *arg)
 {
-	debug("quit()");
-
 	restarting = false;
 	running = false;
 }
@@ -1475,10 +1465,54 @@ resizemouse(Arg const *arg)
 void
 restart(Arg const *arg)
 {
-	debug("restart()");
-
 	restarting = true;
 	running = false;
+}
+
+void
+restoresession(char const *sessionfile)
+{
+	FILE *f;
+	unsigned int i, j, _nc, _nws;
+	Window win;
+	int x, y;
+	Workspace *ws;
+	Client *c;
+
+	f = fopen(sessionfile, "r");
+	if (!f) {
+		note("could not find session file %s", sessionfile);
+		return;
+	}
+
+	fscanf(f, "%u\n", &_nws);
+	debug("restoring %u workspaces", _nws);
+	for (i = 0; i < _nws; i++) {
+		fscanf(f, "%d:%d:", &x, &y);
+		attachws(ws=initws(x, y));
+		fscanf(f, "%u:%u:%f:%d:%s\n", &ws->nmaster, &_nc, &ws->mfact,
+				&ws->ilayout, ws->name);
+		debug("  workspace[%u]: '%s' at [%d,%d], %u clients:",
+				i, ws->name, ws->x, ws->y, _nc);
+		for (j = 0; j < _nc; j++) {
+			fscanf(f, "  %lu:", &win);
+			c = initclient(win, true);
+			if (!c) {
+				fscanf(f, "[^\n]\n");
+				continue;
+			}
+			attachclient(ws, c);
+			fscanf(f, "%d:%d:%d:%d:%d:%d\n", &c->x, &c->y, &c->w, &c->h,
+					(int *) &c->floating, (int *) &c->fullscreen);
+			c->dirty = true;
+			debug("    client[%u]: %lu at %dx%d%+d%+d%s%s",
+					j, c->win, c->w, c->h, c->x, c->y,
+					c->floating?", floating":"", c->fullscreen?", fullscreen":"");
+		}
+	}
+
+	fclose(f);
+	remove(sessionfile);
 }
 
 void
@@ -1508,60 +1542,34 @@ run(void)
 }
 
 void
-savesession(Arg const *arg)
+savesession(char **sessionfile)
 {
 	FILE *f;
-	char fname[256];
 	unsigned int i, j;
 	Client *c;
 	Workspace *ws;
 
-	/* TODO check if file exists already (unlikely but possible) */
+	*sessionfile = malloc(strlen(SESSIONFILE+1+(sizeof(int)<<1)));
 	srand(time(NULL));
-	snprintf(fname, 256, "/tmp/%s_session_%d", APPNAME, rand());
-	f = fopen(fname, "w");
-
-	/* save monitors */
-	fprintf(f, "%u\n", nmon);
-	for (i = 0; i < nmon; i++) {
-		fprintf(f, "%d:%d\n", monitors[i]->selws->x, monitors[i]->selws->y);
+	sprintf(*sessionfile, "%s-%0*X", SESSIONFILE, (int) sizeof(int)<<1, rand());
+	f = fopen(*sessionfile, "w");
+	if (!f) {
+		die("could not open session file %s", *sessionfile);
 	}
 
-	/* save workspaces and their clients */
 	fprintf(f, "%u\n", nws);
 	for (i = 0; i < nws; i++) {
 		ws = workspaces[i];
-		fprintf(f, "%d:%u:%f:%d:%d:%d:%s\n",
-				ws->nmaster, ws->nc, ws->mfact, ws->x, ws->y, ws->ilayout, ws->name);
-		for (j = 0; j < workspaces[i]->nc; j++) {
-			c = workspaces[i]->clients[j];
-			fprintf(f, "  %lu:%d:%d:%u:%u:%d:%d:%d:%d:%d\n",
-					c->win, c->x, c->y, c->w, c->h, c->floating,
-					c->basew, c->baseh, c->incw, c->inch);
+		fprintf(f, "%d:%d:%u:%u:%f:%d:%s\n", ws->x, ws->y, ws->nmaster, ws->nc,
+				ws->mfact, ws->ilayout, ws->name);
+		for (j = 0; j < ws->nc; j++) {
+			c = ws->clients[j];
+			fprintf(f, "  %lu:%d:%d:%d:%d:%d:%d\n",
+					c->win, c->x, c->y, c->w, c->h, c->floating, c->fullscreen);
 		}
 	}
 
 	fclose(f);
-}
-
-void
-scan(void)
-{
-	unsigned int i, nwins;
-	Window p, r, *wins = NULL;
-	Client *c;
-
-	if (!XQueryTree(dpy, root, &r, &p, &wins, &nwins)) {
-		warn("XQueryTree() failed");
-		return;
-	}
-	for (i = 0; i < nwins; i++) {
-		c = initclient(wins[i], true);
-		if (c) {
-			attachclient(selmon->selws, c);
-			updatefocus();
-		}
-	}
 }
 
 bool
@@ -1598,6 +1606,7 @@ sendfollowclient(Arg const *arg)
 	detachclient(c);
 	stepws(arg);
 	attachclient(selmon->selws, c);
+	arrange(selmon);
 	updatefocus();
 }
 
@@ -1623,8 +1632,6 @@ setclientmask(Monitor *mon, bool set)
 void
 setfullscreen(Client *c, bool fullscreen)
 {
-	debug("setfullscreen(%d) %d", c->win, fullscreen);
-
 	Monitor *mon=NULL;
 	Workspace *ws;
 	locateclient(&ws, NULL, NULL, c->win) && locatemon(&mon, NULL, ws);
@@ -1644,7 +1651,9 @@ setfullscreen(Client *c, bool fullscreen)
 		c->w = c->oldw;
 		c->h = c->oldh;
 		XSetWindowBorderWidth(dpy, c->win, c->border);
-		arrange(mon);
+		if (!c->floating) {
+			arrange(mon);
+		}
 	}
 }
 
@@ -1685,7 +1694,7 @@ setpad(Arg const *arg)
 }
 
 void
-setup(void)
+setup(char const *sessionfile)
 {
 	XSetWindowAttributes wa;
 
@@ -1716,18 +1725,16 @@ setup(void)
 	XChangeWindowAttributes(dpy, root, CWCursor, &wa);
 	grabkeys();
 
-	/* high: layouts (needed here, for updategeom() below) */
+	/* layouts, fonts, workspace map, scratchpad, dmenu */
 	setuplayouts();
-
-	/* output: font, monitors */
 	setupfont();
-	updategeom();
-
-	/* high: workspace map, scratchpad, dmenu */
 	setupwsm();
 	pad = NULL;
 	pad_mon = NULL;
 	dmenu_state = DMENU_INACTIVE;
+
+	/* session */
+	setupsession(sessionfile);
 }
 
 void
@@ -1799,6 +1806,54 @@ setuplayouts()
 }
 
 void
+setupsession(char const *sessionfile)
+{
+	unsigned int i, j, nwins;
+	Window p, r, *wins = NULL;
+	Client *c;
+
+	/* check for an old session, otherwise setup initial workspace */
+	restoresession(sessionfile);
+	if (!workspaces) {
+		attachws(initws(0, 0));
+	}
+
+	/* scan existing windows */
+	if (!XQueryTree(dpy, root, &r, &p, &wins, &nwins)) {
+		warn("XQueryTree() failed");
+		return;
+	}
+
+	/* create clients if they do not already exist */
+	for (i = 0; i < nwins; i++) {
+		if (!locateclient(NULL, &c, NULL, wins[i])) {
+			c = initclient(wins[i], true);
+			if (c) {
+				warn("scanned unhandled window %lu", c->win);
+				attachclient(workspaces[0], c);
+			}
+		} else {
+			c->dirty = false;
+		}
+	}
+
+	/* delete clients that do not have any windows assigned to them */
+	for (i = 0; i < nws; i++) {
+		for (j = 0; j < workspaces[i]->nc; j++) {
+			c = workspaces[i]->clients[j];
+			if (c->dirty) {
+				warn("restored client for non-existing window %lu", c->win);
+				detachclient(c);
+				termclient(c);
+			}
+		}
+	}
+
+	/* setup monitors */
+	updategeom();
+}
+
+void
 setupwsm(void)
 {
 	/* WSM data */
@@ -1815,18 +1870,6 @@ setupwsm(void)
 	/* dummy workspace for target box */
 	wsm.target = initws(0, 0);
 	wsm.target->name[0] = 0;
-
-	/* bar input */
-	wsm.im = XOpenIM(dpy, NULL, NULL, NULL);
-	if (!wsm.im) {
-		die("could not open input method");
-	}
-	wsm.ic = XCreateIC(wsm.im, XNInputStyle, XIMPreeditNothing|XIMStatusNothing,
-			XNClientWindow, root, NULL);
-	if (!wsm.ic) {
-		die("could not open input context");
-	}
-	XSetICFocus(wsm.ic);
 }
 
 void
@@ -2207,7 +2250,7 @@ unifyscreens(XineramaScreenInfo **list, size_t len)
 void
 unmapnotify(XEvent *e)
 {
-	debug("unmapnotify(%d)", e->xunmap.window);
+	debug("unmapnotify(%lu)", e->xunmap.window);
 
 	Client *c;
 	Workspace *ws;
@@ -2288,9 +2331,6 @@ updatefocus(void)
 			}
 			continue;
 		}
-
-		/* update selected client */
-		mon->selws->selcli = mon->selws->stack[mon->selws->ns-1];
 
 		/* draw borders and restack */
 		for (j = 0; j < (sel ? mon->selws->ns-1 : mon->selws->ns); j++) {
@@ -2527,21 +2567,43 @@ zoom(Arg const *arg)
 int
 main(int argc, char **argv)
 {
+	char *sessionfile=NULL;
+
+	if (argc == 2) {
+		if (argv[1][0] == '-') {
+			if (!strcmp("-v", argv[1]) || !strcmp("--version", argv[1])) {
+				note("%s-%s (c) 2013 ayekat, see LICENSE for details",
+						APPNAME, APPVERSION);
+			} else {
+				note("usage: %s [option|sessionfile]", APPNAME);
+				note("");
+				note("options:");
+				note("  -v, --version   display %s version", APPNAME);
+				note("  -h, --help      display this help");
+				note("");
+				note("savefile:         savefile for last session");
+				note("                  WARNING: deleted after reading");
+				note("                  (do not use this!)");
+			}
+			exit(EXIT_FAILURE);
+		}
+		sessionfile = argv[1];
+	}
 	if (!(dpy = XOpenDisplay(NULL))) {
 		die("could not open X");
 	}
-	note("starting ...");
-	setup();
-	scan();
+	note("starting %s...", APPNAME);
+	setup(sessionfile);
 	custom_startup();
 	run();
 	custom_shutdown();
-	cleanup();
+	cleanup(&sessionfile);
 	XCloseDisplay(dpy);
-	note("shutting down ...");
 	if (restarting) {
-		execlp(APPNAME, APPNAME, NULL);
+		note("restarting %s...", APPNAME);
+		execlp(APPNAME, APPNAME, sessionfile, NULL);
 	}
+	note("shutting down %s...", APPNAME);
 	return EXIT_SUCCESS;
 }
 
