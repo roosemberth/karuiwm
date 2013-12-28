@@ -17,19 +17,22 @@ This will create the binary <code>stwm</code>:
 
 	make
 
-Alternatively, if you want to add debug output (all the <code>debug()</code>
-calls in stwm, additional debug symbols through GCCs <code>-g</code> option),
-you may run:
+If you want to add debug output (all the <code>debug()</code> calls in stwm,
+additional debug symbols through GCCs <code>-g</code> option), you may run:
 
-	make debug
+	make devbuild
 
 This is especially useful when developing stwm; for starting stwm directly in
 the current directory without installing it, run
 
+	make devrun
+
+This will launch the created stwm binary on the X display :1 (modify the
+Makefile to change). To speed up things a little,
+
 	make dev
 
-This will compile stwm as in <code>make debug</code>, then launch the created
-stwm binary on an alternative X display.
+runs both <code>devbuild</code> and <code>devrun</code>.
 
 
 install
@@ -111,7 +114,7 @@ These are the default settings defined by the <code>keys</code> array:
 * <code>Mod</code>+<code>Shift</code>+<code>c</code>
   close selected client
 
-**Layout**
+**Layout** (see appendix A)
 
 * <code>Mod</code>+<code>l</code>|<code>h</code>
   increase/decrease master area size
@@ -124,7 +127,7 @@ These are the default settings defined by the <code>keys</code> array:
 * <code>Mod</code>+<code>Return</code>
   move selected client to master area
 
-**Workspaces**
+**Workspaces** (see appendix B)
 
 * <code>Mod</code>+<code>Ctrl</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
   set view to left/below/above/right workspace
@@ -144,7 +147,7 @@ These are the default settings defined by the <code>keys</code> array:
 * <code>Mod</code>+<code>Shift</code>+<code>Tab</code>
   set focused client as scratchpad, or unset scratchpad if it is focused
 
-**Monitors** (see appendix B)
+**Monitors** (see appendix D)
 
 * <code>Mod</code>+<code>m</code>
   set focus to next monitor
@@ -167,8 +170,8 @@ supports following actions:
   resize client, make it floating
 
 
-layouts
--------
+appendix A: layouts
+-------------------
 
 stwm is a *dynamically tiling window manager*, this means that it automatically
 arranges windows following certain dynamically changable rules, called
@@ -198,7 +201,7 @@ icon cannot be larger than <code>sizeof(long)\*8</code>, but that shouldn't be a
 problem).
 
 
-appendix A: workspaces
+appendix B: workspaces
 ----------------------
 
 Workspaces in stwm are arranged in a two-dimensional grid, and they are created
@@ -231,19 +234,6 @@ Renaming and switching workspaces happens through the key combinations
 <code>Mod</code>(+<code>Shift</code>)+<code>i</code> (see above).
 
 
-appendix B: Xinerama (aka multi-monitor)
-----------------------------------------
-
-stwm comes with Xinerama support and is thus capable of handling a multi-monitor
-setup. Unlike its parent dwm however (which assigns a separate tag set to each
-monitor), stwm uses a unified workspace set for all monitors.
-
-Once a monitor is added, it will attempt to display the next undisplayed
-workspace; if there is none, it will create a new workspace nearby and move its
-view there. If a monitor moves its view to a workspace that is already displayed
-on another monitor, the workspace view is swapped.
-
-
 appendix C: scratchpad
 ----------------------
 
@@ -254,6 +244,19 @@ be toggled by hitting <code>Mod</code>+<code>Tab</code>.
 At startup, no client is defined as the scratchpad (thus toggling it won't have
 any effect); one first needs to define a client as the scratchpad by hitting
 <code>Mod</code>+<code>Shift</code>+<code>Tab</code>.
+
+
+appendix D: Xinerama (aka multi-monitor)
+----------------------------------------
+
+stwm comes with Xinerama support and is thus capable of handling a multi-monitor
+setup. Unlike its parent dwm however (which assigns a separate tag set to each
+monitor), stwm uses a unified workspace set for all monitors.
+
+Once a monitor is added, it will attempt to display the next undisplayed
+workspace; if there is none, it will create a new workspace nearby and move its
+view there. If a monitor moves its view to a workspace that is already displayed
+on another monitor, the workspace view is swapped.
 
 
 meta

@@ -8,6 +8,7 @@
 #define WSMBORDERWIDTH 1 /* WSM box border width */
 #define WSMRADIUS 4      /* number of workspaces around WSM centre */
 #define PADMARGIN 20     /* border gap for scratchpad workspace */
+#define SESSIONFILE "/tmp/"APPNAME /* file for saving session when restarting */
 
 /* colours */
 #define CBORDERNORM      0x222222   /* normal windows */
@@ -42,6 +43,7 @@ static char const *dmenuargs[] = { "-l", "10",
 /* commands */
 static char const *termcmd[] = { "xterm", NULL };
 static char const *scrotcmd[] = { "scrot", NULL };
+static char const *lockcmd[] = { "slock", NULL };
 static char const *volupcmd[] = { "amixer", "set", "Master", "2+", "unmute", NULL };
 static char const *voldowncmd[] = { "amixer", "set", "Master", "2-", "unmute", NULL };
 static char const *volmutecmd[] = { "amixer", "set", "Master", "toggle", NULL };
@@ -111,6 +113,7 @@ static Key const keys[] = {
 	{ MODKEY,                       XK_m,       stepmon,          { 0 } },
 
 	/* session */
+	{ MODKEY,                       XK_z,       spawn,            { .v=lockcmd } },
 	{ MODKEY,                       XK_q,       restart,          { 0 } },
 	{ MODKEY|ShiftMask,             XK_q,       quit,             { 0 } },
 };
