@@ -136,8 +136,6 @@ struct {
 	int w, h; /* size of a box */
 	int rows, cols, rad;
 	bool active;
-	XIM im;
-	XIC ic;
 } wsm;
 
 /* functions */

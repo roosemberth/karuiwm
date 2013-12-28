@@ -87,7 +87,8 @@ configure
 that one doesn't exist yet. This protects your configuration from being
 overwritten by the default upon checking out the git repository.
 
-These are the default settings defined by the <code>keys</code> array:
+These are the default settings defined by the <code>keys</code> array;
+<code>Mod</code> is set to the Mod1 (<code>Alt</code>) key:
 
 **Applications**
 
@@ -138,7 +139,7 @@ These are the default settings defined by the <code>keys</code> array:
 * <code>Mod</code>+<code>Shift</code>+<code>i</code>
   rename current workspace using dmenu
 * <code>Mod</code>+<code>o</code>
-  open workspace map (see appendix A)
+  open workspace map
 
 **Scratchpad** (see appendix C)
 
@@ -158,8 +159,6 @@ These are the default settings defined by the <code>keys</code> array:
   restart stwm
 * <code>Mod</code>+<code>Shift</code>+<code>q</code>
   quit stwm
-
-By default, the <code>Mod</code> key is set to Mod1 (<code>Alt</code>).
 
 The mouse can be configured via the <code>buttons</code> array and currently
 supports following actions:
