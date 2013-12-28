@@ -15,4 +15,5 @@ stwm todo list
 * add rules for floating/fullscreen/scratchpad client(s)
 * fix scratchpad "unpadding" issue (#2)
 * multiple scratchpads (issue #3)
+* pass list elements to dmenu in alphabetical order
 

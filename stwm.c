@@ -1124,7 +1124,7 @@ locatews(Workspace **ws, unsigned int *pos, int x, int y, char const *name)
 
 	if (name) {
 		for (i = 0; i < nws; i++) {
-			if (!strncmp(name, workspaces[i]->name, strlen(name))) {
+			if (!strcmp(name, workspaces[i]->name)) {
 				if (ws) *ws = workspaces[i];
 				if (pos) *pos = i;
 				return true;
