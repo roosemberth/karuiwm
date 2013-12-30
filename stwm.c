@@ -538,7 +538,7 @@ configurerequest(XEvent *e)
 	XConfigureRequestEvent *ev = &e->xconfigurerequest;
 
 	/* forward configuration if not managed (or if we don't force the size) */
-	if (!FORCESIZE || (pad && ev->window == pad->win) ||
+	if ((pad && ev->window == pad->win) ||
 			!locateclient(NULL, &c, NULL, ev->window) || c->fullscreen ||
 			c->floating) {
 		wc = (XWindowChanges) {
