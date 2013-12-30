@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdarg.h>
 #include <string.h>
+#include <strings.h>
 #include <time.h>
 #include <locale.h>
 #include <signal.h>
@@ -346,12 +347,20 @@ attachmon(Monitor *mon)
 void
 attachws(Workspace *ws)
 {
+	unsigned int i;
+
 	workspaces = realloc(workspaces, ++nws*sizeof(Workspace *));
 	if (!workspaces) {
 		die("could not allocate %u bytes for workspace list",
 				nws*sizeof(Workspace *));
 	}
-	workspaces[nws-1] = ws;
+	for (i = nws-1; i >= 0; i--) {
+		if (!i || strcasecmp(workspaces[i-1]->name, ws->name) < 0) {
+			workspaces[i] = ws;
+			break;
+		}
+		workspaces[i] = workspaces[i-1];
+	}
 }
 
 void
@@ -717,6 +726,8 @@ dmenueval(void)
 		switch (dmenu_state) {
 			case DMENU_RENAME:
 				renamews(selmon->selws, buf);
+				detachws(selmon->selws);
+				attachws(selmon->selws);
 				updatebar(selmon);
 				break;
 			case DMENU_VIEW:
