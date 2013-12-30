@@ -1672,6 +1672,7 @@ setpad(Arg const *arg)
 		attachclient(selmon->selws, pad);
 		pad = NULL;
 		pad_mon = NULL;
+		arrange(selmon);
 		updatefocus();
 		return;
 	}
@@ -1688,6 +1689,7 @@ setpad(Arg const *arg)
 		attachclient(selmon->selws, pad);
 	}
 	pad = newpad;
+	arrange(selmon);
 	togglepad(NULL);
 }
 
