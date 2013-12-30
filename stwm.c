@@ -395,12 +395,12 @@ checksizehints(Client *c, int *w, int *h)
 	int u;
 	bool change = false;
 
-	if ((!c->floating && FORCESIZE) || c->fullscreen) {
+	if (!c->floating || c->fullscreen) {
 		return *w != c->w || *h != c->h;
 	}
 
 	/* if there are no resize limitations, don't limit anything */
-	if (!(c->basew && !c->incw)) {
+	if (!(c->basew && c->incw)) {
 		return true;
 	}
 

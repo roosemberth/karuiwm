@@ -3,7 +3,6 @@
 #define FONTSTR "-misc-fixed-medium-r-semicondensed--13-100-100-100-c-60-iso8859-1"
 #define NMASTER 1        /* number of clients in master area */
 #define MFACT 0.5        /* size of master area */
-#define FORCESIZE true   /* force terminals to fit the layout? */
 #define BORDERWIDTH 1    /* window border width */
 #define WSMBORDERWIDTH 1 /* WSM box border width */
 #define WSMRADIUS 4      /* number of workspaces around WSM centre */
