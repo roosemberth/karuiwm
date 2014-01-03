@@ -4,8 +4,8 @@
 #define NMASTER 1        /* number of clients in master area */
 #define MFACT 0.5        /* size of master area */
 #define BORDERWIDTH 1    /* window border width */
-#define WSMBORDERWIDTH 1 /* WSM box border width */
-#define WSMRADIUS 4      /* number of workspaces around WSM centre */
+#define WSMBOXWIDTH 136  /* WSM box width */
+#define WSMBOXHEIGHT 75  /* WSM box height */
 #define PADMARGIN 20     /* border gap for scratchpad workspace */
 #define SESSIONFILE "/tmp/"APPNAME /* file for saving session when restarting */
 
