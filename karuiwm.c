@@ -865,6 +865,8 @@ grabkeys(void)
 
 	XUngrabKey(dpy, AnyKey, AnyModifier, root);
 	if (wsm.active) {
+		XGrabKeyboard(dpy, wsm.target->wsmbox, true, GrabModeAsync,
+				GrabModeAsync, CurrentTime);
 		for (i = 0; i < LENGTH(wsmkeys); i++) {
 			XGrabKey(dpy, XKeysymToKeycode(dpy, wsmkeys[i].key), wsmkeys[i].mod,
 					root, true, GrabModeAsync, GrabModeAsync);
@@ -1028,7 +1030,6 @@ keypress(XEvent *e)
 	unsigned int i;
 	KeySym keysym = XLookupKeysym(&e->xkey, 0);
 
-	/* catch WSM keys if active */
 	if (wsm.active) {
 		for (i = 0; i < LENGTH(wsmkeys); i++) {
 			if (e->xkey.state == wsmkeys[i].mod && keysym == wsmkeys[i].key &&
@@ -1038,14 +1039,13 @@ keypress(XEvent *e)
 				return;
 			}
 		}
-	}
-
-	/* catch normal keys */
-	for (i = 0; i < LENGTH(keys); i++) {
-		if (e->xkey.state == keys[i].mod && keysym == keys[i].key &&
-				keys[i].func) {
-			keys[i].func(&keys[i].arg);
-			return;
+	} else {
+		for (i = 0; i < LENGTH(keys); i++) {
+			if (e->xkey.state == keys[i].mod && keysym == keys[i].key &&
+					keys[i].func) {
+				keys[i].func(&keys[i].arg);
+				return;
+			}
 		}
 	}
 }

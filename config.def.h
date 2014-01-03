@@ -125,22 +125,25 @@ static Key const keys[] = {
 
 /* WSM keys */
 static Key const wsmkeys[] = {
+	/* applications */
 	{ 0,                            XK_Print,   spawn,            { .v=scrotcmd } },
 
-	{ 0,                            XK_Escape,  togglewsm,        { 0 } },
-	{ 0,                            XK_Return,  viewws,           { 0 } },
+	/* hardware */
+	{ 0,                            0x1008FF11, spawn,            { .v=voldowncmd } },
+	{ 0,                            0x1008FF12, spawn,            { .v=volmutecmd } },
+	{ 0,                            0x1008FF13, spawn,            { .v=volupcmd } },
 
-	/* move view */
+	/* workspaces */
 	{ MODKEY,                       XK_h,       stepwsmbox,       { .i=LEFT } },
 	{ MODKEY,                       XK_l,       stepwsmbox,       { .i=RIGHT } },
 	{ MODKEY,                       XK_j,       stepwsmbox,       { .i=DOWN } },
 	{ MODKEY,                       XK_k,       stepwsmbox,       { .i=UP } },
-
-	/* move workspace */
 	{ MODKEY|ShiftMask,             XK_h,       shiftws,          { .i=LEFT } },
 	{ MODKEY|ShiftMask,             XK_l,       shiftws,          { .i=RIGHT } },
 	{ MODKEY|ShiftMask,             XK_j,       shiftws,          { .i=DOWN } },
 	{ MODKEY|ShiftMask,             XK_k,       shiftws,          { .i=UP } },
+	{ 0,                            XK_Escape,  togglewsm,        { 0 } },
+	{ 0,                            XK_Return,  viewws,           { 0 } },
 };
 
 /* mouse buttons */
