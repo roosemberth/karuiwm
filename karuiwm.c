@@ -261,23 +261,20 @@ static void (*handle[LASTEvent])(XEvent *) = {
 };
 
 /* variables */
-static bool running, restarting;    /* application state */
-static Display *dpy;                /* X display */
-static int screen;                  /* screen */
-static Window root;                 /* root window */
-static Workspace **workspaces;      /* list of workspaces */
-static unsigned int nws;            /* number of workspaces */
-static Cursor cursor[CurLAST];  /* cursors */
-static Monitor **monitors;          /* list of monitors */
-static Monitor *selmon;             /* selected monitor */
-static unsigned int nmon;           /* number of monitors */
-static int dmenu_out;               /* dmenu's output file descriptor */
-static enum DMenuState dmenu_state; /* dmenu's state */
-static int nlayouts;                /* number of cyclable layouts */
-static Client *pad;                 /* scratchpad window */
-static Monitor *pad_mon;            /* monitor the scratchpad is currently on */
-static Atom wmatom[WMLAST];         /* WM atoms */
-static Atom netatom[NetLAST];       /* _NET atoms */
+static bool running, restarting;              /* application state */
+static Display *dpy;                          /* X display */
+static int screen;                            /* screen */
+static Window root;                           /* root window */
+static Cursor cursor[CurLAST];                /* cursors */
+static Workspace **workspaces;                /* all workspaces */
+static Monitor **monitors, *selmon;           /* all/selected monitor(s) */
+static unsigned int nws, nmon;                /* # of workspaces/monitors */
+static int dmenu_out;                         /* dmenu output file descriptor */
+static enum DMenuState dmenu_state;           /* dmenu state */
+static int nlayouts;                          /* number of cyclable layouts */
+static Client *pad;                           /* scratchpad window */
+static Monitor *pad_mon;                      /* monitor with scratchpad */
+static Atom wmatom[WMLAST], netatom[NetLAST]; /* atoms */
 
 /* configuration */
 #include "layout.h"
@@ -1405,7 +1402,7 @@ renderbar(Monitor *mon)
 }
 
 void
-renderwsmbox(Workspace *ws)
+renderwsmbox(Workspace *ws) /* TODO prefix with wsm_ */
 {
 	XCopyArea(dpy, ws->wsmpm, ws->wsmbox, dc.gc, 0,0, WSMBOXWIDTH, WSMBOXHEIGHT,
 			0, 0);
@@ -2196,7 +2193,7 @@ togglepad(Arg const *arg)
 }
 
 void
-togglewsm(Arg const *arg)
+togglewsm(Arg const *arg) /* TODO prefix with wsm_ */
 {
 	unsigned int i;
 
@@ -2477,7 +2474,7 @@ updatesizehints(Client *c)
 }
 
 void
-updatewsm(void)
+updatewsm(void) /* TODO prefix with wsm_ */
 {
 	unsigned int i;
 
@@ -2493,7 +2490,7 @@ updatewsm(void)
 }
 
 void
-updatewsmbox(Workspace *ws)
+updatewsmbox(Workspace *ws) /* TODO prefix with wsm_ */
 {
 	int x, y, cx, cy;
 
@@ -2506,7 +2503,7 @@ updatewsmbox(Workspace *ws)
 }
 
 void
-updatewsmpixmap(Workspace *ws)
+updatewsmpixmap(Workspace *ws) /* TODO prefix with wsm_ */
 {
 	XSetForeground(dpy, dc.gc, ws == selmon->selws ? WSMCBGSEL
 			: ws == wsm.target ? WSMCBGTARGET : WSMCBGNORM);
@@ -2527,7 +2524,7 @@ viewmon(Monitor *mon)
 }
 
 void
-viewws(Arg const *arg)
+viewws(Arg const *arg) /* TODO prefix with wsm_ */
 {
 	if (!wsm.active) {
 		return;
@@ -2541,15 +2538,13 @@ xerror(Display *dpy, XErrorEvent *ee)
 {
 	char es[256];
 
-	/* only display error on this error instead of crashing */
+	/* catch certain errors */
 	if (ee->error_code == BadWindow) {
 		XGetErrorText(dpy, ee->error_code, es, 256);
 		warn("%s (ID %d) after request %d", es, ee->error_code, ee->error_code);
 		return 0;
 	}
-
-	/* call default error handler (might call exit) */
-	return xerrorxlib(dpy, ee);
+	return xerrorxlib(dpy, ee); /* default error handler (might call exit) */
 }
 
 void
@@ -2558,7 +2553,7 @@ zoom(Arg const *arg)
 	unsigned int i, pos;
 	Client *c;
 
-	if (!selmon->selws->nc) {
+	if (selmon->selws->nc == 0) {
 		return;
 	}
 
@@ -2568,7 +2563,7 @@ zoom(Arg const *arg)
 		return;
 	}
 
-	if (!pos) {
+	if (pos == 0) {
 		/* window is at the top */
 		if (selmon->selws->nc > 1) {
 			selmon->selws->clients[0] = selmon->selws->clients[1];
@@ -2595,21 +2590,8 @@ main(int argc, char **argv)
 
 	if (argc == 2) {
 		if (argv[1][0] == '-') {
-			if (!strcmp("-v", argv[1]) || !strcmp("--version", argv[1])) {
-				note("%s-%s (c) 2013 ayekat, see LICENSE for details",
-						APPNAME, APPVERSION);
-			} else {
-				note("usage: %s [option|sessionfile]", APPNAME);
-				note("");
-				note("options:");
-				note("  -v, --version   display %s version", APPNAME);
-				note("  -h, --help      display this help");
-				note("");
-				note("savefile:         savefile for last session");
-				note("                  WARNING: deleted after reading");
-				note("                  (do not use this!)");
-			}
-			exit(EXIT_FAILURE);
+			die("%s-%s (c) 2013 ayekat, see LICENSE for details", APPNAME,
+					APPVERSION);
 		}
 		sessionfile = argv[1];
 	}
@@ -2630,4 +2612,3 @@ main(int argc, char **argv)
 	note("shutting down %s...", APPNAME);
 	return EXIT_SUCCESS;
 }
-
