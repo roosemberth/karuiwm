@@ -1,9 +1,7 @@
-stwmx todo list
-===============
+karuiwm todo list
+=================
 
-* add pixmaps for rendering statusbar and WSM boxes
-* draw *all* WSM boxes (removes unnecessary calculations about which one to show
-  and which one to hide)
+* render statusbar with pixmap, not directly
 * handle window names => add window switching through dmenu (issue #5)
 * differ between verbose and debug messages
 * handle urgent hints
@@ -11,6 +9,6 @@ stwmx todo list
 * fix mplayer fullscreen state (also there was a buggy behaviour once that made
   it crash; will try to reproduce that) (issue #1)
 * add rules for floating/fullscreen/scratchpad client(s)
-* fix scratchpad "unpadding" issue (#2)
+* fix scratchpad "unpadding" to floating issue (#2)
 * multiple scratchpads (issue #3)
 

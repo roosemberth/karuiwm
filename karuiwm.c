@@ -86,6 +86,7 @@ struct Client {
 
 struct {
 	GC gc;
+	unsigned int sd; /* screen depth */
 	struct {
 		int ascent, descent, height;
 		XFontStruct *xfontstruct;
@@ -122,6 +123,7 @@ struct Workspace {
 	Client **clients, **stack;
 	Client *selcli;
 	Window wsmbox;
+	Pixmap wsmpm;
 	unsigned int nc, ns;
 	unsigned int nmaster;
 	float mfact;
@@ -134,8 +136,6 @@ struct Workspace {
 struct {
 	Workspace *target;
 	XSetWindowAttributes wa;
-	int w, h; /* size of a box */
-	int rows, cols, rad;
 	bool active;
 } wsm;
 
@@ -165,7 +165,7 @@ static Client *initclient(Window, bool);
 static Monitor *initmon(void);
 static Pixmap initpixmap(long const *, long const, long const);
 static Workspace *initws(int, int);
-static Window initwsmbox(void);
+static void initwsmbox(Workspace *);
 static void keypress(XEvent *);
 static void keyrelease(XEvent *);
 static void killclient(Arg const *);
@@ -222,6 +222,7 @@ static void termclient(Client *);
 static void termlayout(Layout *);
 static void termmon(Monitor *);
 static void termws(Workspace *);
+static void termwsmbox(Workspace *);
 static void togglefloat(Arg const *);
 static void togglepad(Arg const *);
 static void togglewsm(Arg const *);
@@ -235,6 +236,7 @@ static void updatemon(Monitor *, int, int, unsigned int, unsigned int);
 static void updatesizehints(Client *);
 static void updatewsm(void);
 static void updatewsmbox(Workspace *);
+static void updatewsmpixmap(Workspace *);
 static void viewmon(Monitor *);
 static void viewws(Arg const *);
 static int xerror(Display *, XErrorEvent *);
@@ -648,12 +650,6 @@ detachws(Workspace *ws)
 		die("could not allocate %u bytes for workspace list",
 				nws*sizeof(Workspace *));
 	}
-
-	if (ws->wsmbox) {
-		XDestroyWindow(dpy, ws->wsmbox);
-		ws->wsmbox = 0;
-		updatewsm();
-	}
 }
 
 void
@@ -891,7 +887,7 @@ initbar(Monitor *mon)
 	wa.background_pixmap = ParentRelative;
 	wa.event_mask = ExposureMask;
 	mon->bar.win = XCreateWindow(dpy, root, 0, -mon->bh, 10, mon->bh, 0,
-			DefaultDepth(dpy, screen), CopyFromParent,
+			dc.sd, CopyFromParent,
 			DefaultVisual(dpy, screen),
 			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
 	XMapWindow(dpy, mon->bar.win);
@@ -947,7 +943,7 @@ initpixmap(long const *bitfield, long const fg, long const bg)
 	long h = bitfield[1];
 	Pixmap icon;
 
-	icon = XCreatePixmap(dpy, root, w, h, DefaultDepth(dpy, screen));
+	icon = XCreatePixmap(dpy, root, w, h, dc.sd);
 	XSetForeground(dpy, dc.gc, bg);
 	XFillRectangle(dpy, icon, dc.gc, 0, 0, w, h);
 	XSetForeground(dpy, dc.gc, fg);
@@ -1003,23 +999,36 @@ initws(int x, int y)
 	ws->y = y;
 	ws->mfact = MFACT;
 	ws->nmaster = NMASTER;
-	ws->wsmbox = 0;
 	ws->ilayout = 0;
 	ws->dirty = false;
 	renamews(ws, NULL);
+	if (wsm.active) {
+		initwsmbox(ws);
+	} else {
+		ws->wsmbox = ws->wsmpm = 0;
+	}
 	return ws;
 }
 
-Window
-initwsmbox(void)
+void
+initwsmbox(Workspace *ws)
 {
-	Window box = XCreateWindow(dpy, root, -wsm.w, -wsm.h,
-			wsm.w-2*WSMBORDERWIDTH, wsm.h-2*WSMBORDERWIDTH, 0,
-			DefaultDepth(dpy, screen), CopyFromParent,
+	/* pixmap */
+	ws->wsmpm = XCreatePixmap(dpy, root, WSMBOXWIDTH, WSMBOXHEIGHT, dc.sd);
+	updatewsmpixmap(ws);
+
+	/* box */
+	ws->wsmbox = XCreateWindow(dpy, root, -WSMBOXWIDTH, 0,
+			WSMBOXWIDTH, WSMBOXHEIGHT, 0, dc.sd, CopyFromParent,
 			DefaultVisual(dpy, screen),
 			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wsm.wa);
-	XMapWindow(dpy, box);
-	return box;
+	XMapRaised(dpy, ws->wsmbox);
+	XSetWindowBorderWidth(dpy, ws->wsmbox, BORDERWIDTH);
+	XSetWindowBorder(dpy, ws->wsmbox, ws == selmon->selws ? WSMCBORDERSEL
+			: ws == wsm.target ? WSMCBORDERTARGET : WSMCBORDERNORM);
+
+	/* initial render */
+	renderwsmbox(ws);
 }
 
 void
@@ -1398,21 +1407,8 @@ renderbar(Monitor *mon)
 void
 renderwsmbox(Workspace *ws)
 {
-	/* border */
-	XSetWindowBorderWidth(dpy, ws->wsmbox, WSMBORDERWIDTH);
-	XSetWindowBorder(dpy, ws->wsmbox, ws == selmon->selws ? WSMCBORDERSEL
-			: ws == wsm.target ? WSMCBORDERTARGET : WSMCBORDERNORM);
-
-	/* background */
-	XSetForeground(dpy, dc.gc, ws == selmon->selws ? WSMCBGSEL
-			: ws == wsm.target ? WSMCBGTARGET : WSMCBGNORM);
-	XFillRectangle(dpy, ws->wsmbox, dc.gc, 0, 0, wsm.w, wsm.h);
-
-	/* text */
-	XSetForeground(dpy, dc.gc, ws == selmon->selws ? WSMCSEL
-			: ws == wsm.target ? WSMCTARGET : WSMCNORM);
-	Xutf8DrawString(dpy, ws->wsmbox, dc.font.xfontset, dc.gc, 2,
-			dc.font.ascent+1, ws->name, strlen(ws->name));
+	XCopyArea(dpy, ws->wsmpm, ws->wsmbox, dc.gc, 0,0, WSMBOXWIDTH, WSMBOXHEIGHT,
+			0, 0);
 }
 
 void
@@ -1720,6 +1716,7 @@ setup(char const *sessionfile)
 	screen = DefaultScreen(dpy);
 	root = RootWindow(dpy, screen);
 	dc.gc = XCreateGC(dpy, root, 0, NULL);
+	dc.sd = DefaultDepth(dpy, screen);
 	setupatoms();
 
 	/* events */
@@ -1868,9 +1865,6 @@ void
 setupwsm(void)
 {
 	/* WSM data */
-	wsm.rad = WSMRADIUS;
-	wsm.rows = 2*wsm.rad+1;
-	wsm.cols = 2*wsm.rad+1;
 	wsm.active = false;
 
 	/* WSM window informations */
@@ -2113,12 +2107,14 @@ void
 stepwsmbox(Arg const *arg)
 {
 	Workspace *ws;
+
+	wsm.target->name[0] = 0;
 	reltoxy(&wsm.target->x, &wsm.target->y, wsm.target, arg->i);
 	if (locatews(&ws, NULL, wsm.target->x, wsm.target->y, NULL)) {
 		strcpy(wsm.target->name, ws->name);
-	} else {
-		wsm.target->name[0] = 0;
 	}
+	updatewsmpixmap(wsm.target);
+	renderwsmbox(wsm.target);
 }
 
 void
@@ -2147,7 +2143,18 @@ termws(Workspace *ws)
 	if (ws->nc) {
 		warn("destroying non-empty workspace");
 	}
+	if (wsm.active) {
+		termwsmbox(ws);
+	}
 	free(ws);
+}
+
+void
+termwsmbox(Workspace *ws)
+{
+	XDestroyWindow(dpy, ws->wsmbox);
+	XFreePixmap(dpy, ws->wsmpm);
+	ws->wsmbox = ws->wsmpm = 0;
 }
 
 void
@@ -2197,33 +2204,31 @@ togglewsm(Arg const *arg)
 
 	if (!wsm.active) {
 		for (i = 0; i < nws; i++) {
-			if (workspaces[i]->wsmbox) {
-				XDestroyWindow(dpy, workspaces[i]->wsmbox);
-				workspaces[i]->wsmbox = 0;
-			}
+			termwsmbox(workspaces[i]);
 		}
-		XDestroyWindow(dpy, wsm.target->wsmbox);
-		wsm.target->wsmbox = 0;
+		termwsmbox(wsm.target);
 		updatebar(selmon);
 		grabkeys();
+		setclientmask(selmon, true);
 		return;
 	}
 
-	/* create a box for each workspace and hide it */
-	wsm.w = selmon->ww/wsm.cols;
-	wsm.h = selmon->h/wsm.rows;
+	/* grab input */
+	setclientmask(selmon, false);
+	grabkeys();
+
+	/* create a box for each workspace */
 	for (i = 0; i < nws; i++) {
-		workspaces[i]->wsmbox = initwsmbox();
+		initwsmbox(workspaces[i]);
 	}
-	wsm.target->wsmbox = initwsmbox();
+	initwsmbox(wsm.target);
 
 	/* initial target is the current workspace (make a "0-step") */
 	wsm.target->x = selmon->selws->x;
 	wsm.target->y = selmon->selws->y;
 	stepwsmbox(&((Arg const) { .i = NoDirection }));
 
-	/* grab WSM keys and give an initial update */
-	grabkeys();
+	/* initial update */
 	updatewsm();
 }
 
@@ -2490,24 +2495,26 @@ updatewsm(void)
 void
 updatewsmbox(Workspace *ws)
 {
-	int c, r, x, y;
+	int x, y, cx, cy;
 
-	/* hide box if not in range */
-	if (ws->x < wsm.target->x-wsm.rad || ws->x > wsm.target->x+wsm.rad ||
-			ws->y < wsm.target->y-wsm.rad || ws->y > wsm.target->y+wsm.rad) {
-		XMoveWindow(dpy, ws->wsmbox, -wsm.w, -wsm.h);
-		return;
-	}
+	cx = selmon->x + selmon->w/2;
+	cy = selmon->y + selmon->h/2;
+	x = cx + (ws->x - wsm.target->x) * (WSMBOXWIDTH + 2*BORDERWIDTH) - WSMBOXWIDTH/2 - BORDERWIDTH;
+	y = cy + (ws->y - wsm.target->y) * (WSMBOXHEIGHT + 2*BORDERWIDTH) - WSMBOXHEIGHT/2 - BORDERWIDTH;
 
-	/* show box */
-	c = ws->x + wsm.rad - wsm.target->x;
-	r = ws->y + wsm.rad - wsm.target->y;
-	x = selmon->x + selmon->wx + (selmon->ww/2 - wsm.w*wsm.rad - wsm.w/2 + c*wsm.w);
-	y = selmon->y + selmon->wy + (selmon->wh/2 - wsm.h*wsm.rad - wsm.h/2 + r*wsm.h);
 	XMoveWindow(dpy, ws->wsmbox, x, y);
-	XRaiseWindow(dpy, ws->wsmbox);
+}
 
-	renderwsmbox(ws);
+void
+updatewsmpixmap(Workspace *ws)
+{
+	XSetForeground(dpy, dc.gc, ws == selmon->selws ? WSMCBGSEL
+			: ws == wsm.target ? WSMCBGTARGET : WSMCBGNORM);
+	XFillRectangle(dpy, ws->wsmpm, dc.gc, 0, 0, WSMBOXWIDTH, WSMBOXHEIGHT);
+	XSetForeground(dpy, dc.gc, ws == selmon->selws ? WSMCSEL
+			: ws == wsm.target ? WSMCTARGET : WSMCNORM);
+	Xutf8DrawString(dpy, ws->wsmpm, dc.font.xfontset, dc.gc, 2,
+			dc.font.ascent+1, ws->name, strlen(ws->name));
 }
 
 void
