@@ -1,7 +1,7 @@
-stwm
-====
+karuiwm
+=======
 
-stwm is a small, dynamically tiling window manager for X.
+karuiwm is a lightweight, dynamically tiling window manager for X.
 
 It is based on [dwm](http://dwm.suckless.org/) and inspired by
 [xmonad](http://xmonad.org/).
@@ -10,10 +10,11 @@ It is based on [dwm](http://dwm.suckless.org/) and inspired by
 build
 -----
 
-stwm requires Xlib and Xinerama to be installed on the system. It is also highly
-recommended to install dmenu, since some workspace-related actions rely on it.
+karuiwm requires Xlib and Xinerama to be installed on the system. It is also
+highly recommended to install dmenu, since some workspace-related actions rely
+on it.
 
-This will create the binary <code>stwm</code>:
+This will create the binary <code>karuiwm</code>:
 
 	make
 
@@ -23,8 +24,8 @@ install
 
 	make install
 
-as root will install stwm to <code>/usr/local/bin</code> by default; modify the
-Makefile to change the installation directory.
+as root will install karuiwm to <code>/usr/local/bin</code> by default; modify
+the Makefile to change the installation directory.
 
 
 uninstall
@@ -32,9 +33,9 @@ uninstall
 
 	make uninstall
 
-as root will remove stwm from your system. Alternatively, you may simply delete
-the <code>stwm</code> binary from <code>/usr/local/bin</code> (or where ever you
-installed it to).
+as root will remove karuiwm from your system. Alternatively, you may simply
+delete the <code>karuiwm</code> binary from <code>/usr/local/bin</code> (or
+where ever you installed it to).
 
 
 run
@@ -46,29 +47,30 @@ to your home directory, then launch <code>xinit</code>.
 Here is an example <code>.xinitrc</code>:
 
 	#!/bin/sh
-	# xinitrc to launch stwm
+	# xinitrc to launch karuiwm
 	
 	# set sane keyboard layout:
 	setxkbmap -layout ch -option 'caps:swapescape' &
 	
-	# launch stwm:
-	exec stwm
+	# launch karuiwm:
+	exec karuiwm
 
 You may add other actions to <code>.xinitrc</code>, but make sure that
-<code>exec stwm</code> comes at last (since everything after that won't get
+<code>exec karuiwm</code> comes at last (since everything after that won't get
 executed).
 
 
 configure
 ---------
 
-<code>config.h</code> holds the configuration of stwm and gets included by
-<code>stwm.c</code> upon compilation.
+<code>config.h</code> holds the configuration of karuiwm and gets included by
+<code>karuiwm.c</code> upon compilation.
 
-<code>config.def.h</code> holds the default configuration of stwm. When running
-<code>make</code>, this file will be used to generate a <code>config.h</code> if
-that one doesn't exist yet. This protects your configuration from being
-overwritten by the default upon checking out the git repository.
+<code>config.def.h</code> holds the default configuration of karuiwm. When
+running <code>make</code>, this file will be used to generate a
+<code>config.h</code> if that one doesn't exist yet. This protects your
+configuration from being overwritten by the default upon checking out the git
+repository.
 
 These are the default settings defined by the <code>keys</code> array;
 <code>Mod</code> is set to the Mod1 (<code>Alt</code>) key:
@@ -143,9 +145,9 @@ These are the default settings defined by the <code>keys</code> array;
 **Session**
 
 * <code>Mod</code>+<code>q</code>
-  restart stwm
+  restart karuiwm
 * <code>Mod</code>+<code>Shift</code>+<code>q</code>
-  quit stwm
+  quit karuiwm
 
 The mouse can be configured via the <code>buttons</code> array and currently
 supports following actions:
@@ -159,16 +161,16 @@ supports following actions:
 appendix A: layouts
 -------------------
 
-stwm is a *dynamically tiling window manager*, this means that it automatically
-arranges windows following certain dynamically changable rules, called
-*layouts*. This allows the user to focus on the workflow instead of having to
-arrange windows manually.
+karuiwm is a *dynamically tiling window manager*, this means that it
+automatically arranges windows following certain dynamically changable rules,
+called *layouts*. This allows the user to focus on the workflow instead of
+having to arrange windows manually.
 
 You can cycle through the layouts with <code>Mod</code>+<code>Space</code>; the
 windows will get arranged automatically.
 
 The layouts are defined in <code>layout.h</code>; the array at the end of the
-file contains the layouts that will be actually used in your personal stwm
+file contains the layouts that will be actually used in your personal karuiwm
 setup. Every layout below the <code>NULL</code> entry will not be accessible
 through the usual layout cycling.
 
@@ -182,9 +184,9 @@ shouldn't be a problem).
 appendix B: workspaces
 ----------------------
 
-Workspaces in stwm are arranged in a two-dimensional grid, and they are created
-and destroyed dynamically. A workspace may be considered either *persistent*
-(it remains if left) or *temporary* (leaving it destroys it).
+Workspaces in karuiwm are arranged in a two-dimensional grid, and they are
+created and destroyed dynamically. A workspace may be considered either
+*persistent* (it remains if left) or *temporary* (leaving it destroys it).
 
 Whether a workspaces is temporary or persistent depends on the number of clients
 on that workspace; an empty workspace is considered temporary, whereas it
@@ -213,8 +215,8 @@ appendix C: scratchpad
 ----------------------
 
 A scratchpad is a window that can easily be displayed and dismissed, typically a
-terminal emulator to spontaneously type a command. In stwm, the scratchpad can
-be toggled by hitting <code>Mod</code>+<code>Tab</code>.
+terminal emulator to spontaneously type a command. In karuiwm, the scratchpad
+can be toggled by hitting <code>Mod</code>+<code>Tab</code>.
 
 At startup, no client is defined as the scratchpad (thus toggling it won't have
 any effect); one first needs to define a client as the scratchpad by hitting
@@ -224,9 +226,9 @@ any effect); one first needs to define a client as the scratchpad by hitting
 appendix D: Xinerama (aka multi-monitor)
 ----------------------------------------
 
-stwm comes with Xinerama support and is thus capable of handling a multi-monitor
-setup. Unlike its parent dwm however (which assigns a separate tag set to each
-monitor), stwm uses a unified workspace set for all monitors.
+karuiwm comes with Xinerama support and is thus capable of handling a
+multi-monitor setup. Unlike its parent dwm however (which assigns a separate tag
+set to each monitor), karuiwm uses a unified workspace set for all monitors.
 
 Once a monitor is added, it will attempt to display the next undisplayed
 workspace; if there is none, it will create a new workspace nearby and move its
@@ -244,5 +246,5 @@ Feature requests are welcome too, as long as they do not require me to add a
 thousand lines of code or change the programming language.
 
 In the unlikely case there is any need for support, visit
-<code>irc.freenode.net#stwm</code>.
+<code>irc.freenode.net#karuiwm</code>.
 

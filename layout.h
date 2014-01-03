@@ -1,4 +1,4 @@
-/* stwm layout definitions */
+/* karuiwm layout definitions */
 
 /* horizontally arranged master at top, horizontally arranged stack at bottom */
 void

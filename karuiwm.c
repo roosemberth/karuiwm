@@ -19,7 +19,7 @@
 #include <X11/extensions/Xinerama.h>
 
 /* macros */
-#define APPNAME "stwm"
+#define APPNAME "karuiwm"
 #define APPVERSION "0.1"
 #define BUTTONMASK (ButtonPressMask|ButtonReleaseMask)
 #define CLIENTMASK (EnterWindowMask|PropertyChangeMask|StructureNotifyMask)

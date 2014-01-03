@@ -1,4 +1,4 @@
-/* stwm configuration */
+/* karuiwm configuration */
 
 #define FONTSTR "-misc-fixed-medium-r-semicondensed--13-100-100-100-c-60-iso8859-1"
 #define NMASTER 1        /* number of clients in master area */
@@ -37,7 +37,7 @@ static char const *dmenuprompt[DMENU_LAST] = {
 	[DMENU_SEND]       = "send to",
 	[DMENU_SENDFOLLOW] = "follow to",
 	[DMENU_SPAWN]      = "spawn",
-	[DMENU_VIEW]       = "view workspace",
+	[DMENU_VIEW]       = "workspace",
 };
 static char const *dmenuargs[] = { "-l", "10",
                                    "-nf", "#888888", "-nb", "#222222",

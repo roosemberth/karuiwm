@@ -1,5 +1,5 @@
-stwm todo list
-==============
+stwmx todo list
+===============
 
 * add pixmaps for rendering statusbar and WSM boxes
 * draw *all* WSM boxes (removes unnecessary calculations about which one to show
