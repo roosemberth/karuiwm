@@ -1500,14 +1500,12 @@ restoresession(char const *sessionfile)
 	}
 
 	fscanf(f, "%u\n", &_nws);
-	debug("restoring %u workspaces", _nws);
 	for (i = 0; i < _nws; i++) {
 		fscanf(f, "%d:%d:", &x, &y);
-		attachws(ws=initws(x, y));
+		ws=initws(x, y);
 		fscanf(f, "%u:%u:%f:%d:%s\n", &ws->nmaster, &_nc, &ws->mfact,
 				&ws->ilayout, ws->name);
-		debug("  workspace[%u]: '%s' at [%d,%d], %u clients:",
-				i, ws->name, ws->x, ws->y, _nc);
+		attachws(ws);
 		for (j = 0; j < _nc; j++) {
 			fscanf(f, "  %lu:", &win);
 			c = initclient(win, true);
@@ -1519,9 +1517,6 @@ restoresession(char const *sessionfile)
 			fscanf(f, "%d:%d:%d:%d:%d:%d\n", &c->x, &c->y, &c->w, &c->h,
 					(int *) &c->floating, (int *) &c->fullscreen);
 			c->dirty = true;
-			debug("    client[%u]: %lu at %dx%d%+d%+d%s%s",
-					j, c->win, c->w, c->h, c->x, c->y,
-					c->floating?", floating":"", c->fullscreen?", fullscreen":"");
 		}
 	}
 

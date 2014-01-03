@@ -4,8 +4,6 @@ stwmx todo list
 * add pixmaps for rendering statusbar and WSM boxes
 * draw *all* WSM boxes (removes unnecessary calculations about which one to show
   and which one to hide)
-* fix WSM to grab keyboard (currently the unhandled keystrokes get passed
-  through to the underlying clients)
 * handle window names => add window switching through dmenu (issue #5)
 * differ between verbose and debug messages
 * handle urgent hints
@@ -15,5 +13,4 @@ stwmx todo list
 * add rules for floating/fullscreen/scratchpad client(s)
 * fix scratchpad "unpadding" issue (#2)
 * multiple scratchpads (issue #3)
-* pass list elements to dmenu in alphabetical order
 
