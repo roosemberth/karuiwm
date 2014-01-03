@@ -43,14 +43,13 @@
 #endif
 
 /* enums */
-enum { CURSOR_NORMAL, CURSOR_RESIZE, CURSOR_MOVE, CURSOR_LAST };
-enum { LEFT, RIGHT, UP, DOWN, NO_DIRECTION };
-enum DMenuState { DMENU_INACTIVE, DMENU_SPAWN, DMENU_RENAME, DMENU_VIEW,
-		DMENU_SEND, DMENU_SENDFOLLOW, DMENU_LAST };
-enum { WM_PROTOCOLS, WM_DELETE_WINDOW, WM_STATE, WM_TAKE_FOCUS,
-		_NET_ACTIVE_WINDOW, _NET_SUPPORTED, _NET_WM_NAME, _NET_WM_STATE,
-		_NET_WM_STATE_FULLSCREEN, _NET_WM_WINDOW_TYPE,
-		_NET_WM_WINDOW_TYPE_DIALOG, ATOM_LAST };
+enum { CurNormal, CurResize, CurMove, CurLAST };
+enum { Left, Right, Up, Down, NoDirection };
+enum DMenuState { DMenuInactive, DMenuSpawn, DMenuRename, DMenuView, DMenuSend,
+		DMenuSendFollow, DMenuLAST };
+enum { WMProtocols, WMDeleteWindow, WMState, WMTakeFocus, WMLAST };
+enum { NetActiveWindow, NetSupported, NetWMName, NetWMState,
+		NetWMStateFullscreen, NetWMWindowType, NetWMWindowTypeDialog, NetLAST };
 
 typedef union Arg Arg;
 typedef struct Button Button;
@@ -266,7 +265,7 @@ static int screen;                  /* screen */
 static Window root;                 /* root window */
 static Workspace **workspaces;      /* list of workspaces */
 static unsigned int nws;            /* number of workspaces */
-static Cursor cursor[CURSOR_LAST];  /* cursors */
+static Cursor cursor[CurLAST];  /* cursors */
 static Monitor **monitors;          /* list of monitors */
 static Monitor *selmon;             /* selected monitor */
 static unsigned int nmon;           /* number of monitors */
@@ -275,7 +274,8 @@ static enum DMenuState dmenu_state; /* dmenu's state */
 static int nlayouts;                /* number of cyclable layouts */
 static Client *pad;                 /* scratchpad window */
 static Monitor *pad_mon;            /* monitor the scratchpad is currently on */
-static Atom atoms[ATOM_LAST];       /* atoms */
+static Atom wmatom[WMLAST];         /* WM atoms */
+static Atom netatom[NetLAST];       /* _NET atoms */
 
 /* configuration */
 #include "layout.h"
@@ -491,9 +491,9 @@ cleanup(char **savefile)
 	}
 	XFreeGC(dpy, dc.gc);
 	XUngrabKey(dpy, AnyKey, AnyModifier, root);
-	XFreeCursor(dpy, cursor[CURSOR_NORMAL]);
-	XFreeCursor(dpy, cursor[CURSOR_RESIZE]);
-	XFreeCursor(dpy, cursor[CURSOR_MOVE]);
+	XFreeCursor(dpy, cursor[CurNormal]);
+	XFreeCursor(dpy, cursor[CurResize]);
+	XFreeCursor(dpy, cursor[CurMove]);
 	XSetInputFocus(dpy, PointerRoot, RevertToPointerRoot, CurrentTime);
 }
 
@@ -509,9 +509,9 @@ clientmessage(XEvent *e)
 		return;
 	}
 
-	if (ev->message_type == atoms[_NET_WM_STATE]) {
-		if (ev->data.l[1] == atoms[_NET_WM_STATE_FULLSCREEN] ||
-				ev->data.l[2] == atoms[_NET_WM_STATE_FULLSCREEN]) {
+	if (ev->message_type == netatom[NetWMState]) {
+		if (ev->data.l[1] == netatom[NetWMStateFullscreen] ||
+				ev->data.l[2] == netatom[NetWMStateFullscreen]) {
 			setfullscreen(c, ev->data.l[0] == 1 || /* _NET_WM_STATE_ADD */
 					(ev->data.l[0] == 2 /* _NET_WM_STATE_TOGGLE */ &&
 					 !c->fullscreen));
@@ -663,7 +663,7 @@ dmenu(Arg const *arg)
 	char const *cmd[LENGTH(dmenuargs)+3];
 
 	/* assemble dmenu command */
-	cmd[0] = arg->i == DMENU_SPAWN ? "dmenu_run" : "dmenu";
+	cmd[0] = arg->i == DMenuSpawn ? "dmenu_run" : "dmenu";
 	for (i = 0; i < LENGTH(dmenuargs); i++) {
 		cmd[i+1] = dmenuargs[i];
 	}
@@ -672,13 +672,13 @@ dmenu(Arg const *arg)
 	cmd[i+2] = NULL;
 
 	/* create pipes */
-	if (arg->i != DMENU_SPAWN && (pipe(in) < 0 || pipe(out) < 0)) {
+	if (arg->i != DMenuSpawn && (pipe(in) < 0 || pipe(out) < 0)) {
 		die("could not create pipes for dmenu");
 	}
 
 	/* child */
 	if (fork() == 0) {
-		if (arg->i != DMENU_SPAWN) {
+		if (arg->i != DMenuSpawn) {
 			close(in[1]);
 			close(out[0]);
 			dup2(in[0], STDIN_FILENO);
@@ -691,12 +691,12 @@ dmenu(Arg const *arg)
 	}
 
 	/* parent */
-	if (arg->i == DMENU_SPAWN) {
+	if (arg->i == DMenuSpawn) {
 		return;
 	}
 	close(in[0]);
 	close(out[1]);
-	if (arg->i != DMENU_RENAME) {
+	if (arg->i != DMenuRename) {
 		for (i = 0; i < nws; i++) {
 			write(in[1], workspaces[i]->name, strlen(workspaces[i]->name));
 			write(in[1], "\n", 1);
@@ -722,13 +722,13 @@ dmenueval(void)
 	}
 	if (ret > 0) {
 		buf[ret-1] = 0;
-		if (dmenu_state == DMENU_RENAME) {
+		if (dmenu_state == DMenuRename) {
 			renamews(selmon->selws, buf);
 			detachws(selmon->selws);
 			attachws(selmon->selws);
 			updatebar(selmon);
 		} else if (locatews(&ws, NULL, 0, 0, buf)) {
-			if (dmenu_state == DMENU_SEND || dmenu_state == DMENU_SENDFOLLOW) {
+			if (dmenu_state == DMenuSend || dmenu_state == DMenuSendFollow) {
 				if (selmon->selws->nc) {
 					c = selmon->selws->selcli;
 					detachclient(c);
@@ -739,13 +739,13 @@ dmenueval(void)
 					updatefocus();
 				}
 			}
-			if (dmenu_state == DMENU_SENDFOLLOW || dmenu_state == DMENU_VIEW) {
+			if (dmenu_state == DMenuSendFollow || dmenu_state == DMenuView) {
 				setws(selmon, ws->x, ws->y);
 			}
 		}
 	}
 	close(dmenu_out);
-	dmenu_state = DMENU_INACTIVE;
+	dmenu_state = DMenuInactive;
 }
 
 void
@@ -1069,7 +1069,7 @@ killclient(Arg const *arg)
 
 	/* try to kill the client via the atom WM_DELETE_WINDOW atom */
 	c = selmon->selws->selcli;
-	if (sendevent(c, atoms[WM_DELETE_WINDOW])) {
+	if (sendevent(c, wmatom[WMDeleteWindow])) {
 		return;
 	}
 
@@ -1209,7 +1209,7 @@ movemouse(Arg const *arg)
 
 	/* grab the pointer and change the cursor appearance */
 	if (XGrabPointer(dpy, root, true, MOUSEMASK, GrabModeAsync, GrabModeAsync,
-			None, cursor[CURSOR_MOVE], CurrentTime) != GrabSuccess) {
+			None, cursor[CurMove], CurrentTime) != GrabSuccess) {
 		warn("XGrabPointer() failed");
 		return;
 	}
@@ -1320,10 +1320,10 @@ propertynotify(XEvent *e)
 			/* TODO urgency hint */
 			break;
 	}
-	if (ev->atom == XA_WM_NAME || ev->atom == atoms[_NET_WM_NAME]) {
+	if (ev->atom == XA_WM_NAME || ev->atom == netatom[NetWMName]) {
 		/* TODO */
 	}
-	if (ev->atom == atoms[_NET_WM_WINDOW_TYPE]) {
+	if (ev->atom == netatom[NetWMWindowType]) {
 		updateclient(c);
 	}
 }
@@ -1356,10 +1356,10 @@ reltoxy(int *x, int *y, Workspace *ws, int direction)
 	if (x) *x = ws->x;
 	if (y) *y = ws->y;
 	switch (direction) {
-		case LEFT:  if (x) (*x)--; break;
-		case RIGHT: if (x) (*x)++; break;
-		case UP:    if (y) (*y)--; break;
-		case DOWN:  if (y) (*y)++; break;
+		case Left:  if (x) (*x)--; break;
+		case Right: if (x) (*x)++; break;
+		case Up:    if (y) (*y)--; break;
+		case Down:  if (y) (*y)++; break;
 	}
 }
 
@@ -1439,7 +1439,7 @@ resizemouse(Arg const *arg)
 
 	/* grab the pointer and change the cursor appearance */
 	if (XGrabPointer(dpy, root, false, MOUSEMASK, GrabModeAsync, GrabModeAsync,
-			None, cursor[CURSOR_RESIZE], CurrentTime) != GrabSuccess) {
+			None, cursor[CurResize], CurrentTime) != GrabSuccess) {
 		warn("XGrabPointer() failed");
 		return;
 	}
@@ -1544,7 +1544,7 @@ run(void)
 		if (handle[e.type]) {
 			handle[e.type](&e);
 		}
-		if (dmenu_state != DMENU_INACTIVE) {
+		if (dmenu_state != DMenuInactive) {
 			FD_ZERO(&fds);
 			FD_SET(dmenu_out, &fds);
 			ret = select(FD_SETSIZE, &fds, NULL, NULL, &timeout);
@@ -1605,7 +1605,7 @@ sendevent(Client *c, Atom atom)
 	}
 	ev.type = ClientMessage;
 	ev.xclient.window = c->win;
-	ev.xclient.message_type = atoms[WM_PROTOCOLS];
+	ev.xclient.message_type = wmatom[WMProtocols];
 	ev.xclient.format = 32;
 	ev.xclient.data.l[0] = atom;
 	ev.xclient.data.l[1] = CurrentTime;
@@ -1734,10 +1734,10 @@ setup(char const *sessionfile)
 	XChangeWindowAttributes(dpy, root, CWEventMask, &wa);
 
 	/* input: mouse, keyboard */
-	cursor[CURSOR_NORMAL] = XCreateFontCursor(dpy, XC_left_ptr);
-	cursor[CURSOR_RESIZE] = XCreateFontCursor(dpy, XC_sizing);
-	cursor[CURSOR_MOVE] = XCreateFontCursor(dpy, XC_fleur);
-	wa.cursor = cursor[CURSOR_NORMAL];
+	cursor[CurNormal] = XCreateFontCursor(dpy, XC_left_ptr);
+	cursor[CurResize] = XCreateFontCursor(dpy, XC_sizing);
+	cursor[CurMove] = XCreateFontCursor(dpy, XC_fleur);
+	wa.cursor = cursor[CurNormal];
 	XChangeWindowAttributes(dpy, root, CWCursor, &wa);
 	grabkeys();
 
@@ -1747,7 +1747,7 @@ setup(char const *sessionfile)
 	setupwsm();
 	pad = NULL;
 	pad_mon = NULL;
-	dmenu_state = DMENU_INACTIVE;
+	dmenu_state = DMenuInactive;
 
 	/* session */
 	setupsession(sessionfile);
@@ -1756,17 +1756,17 @@ setup(char const *sessionfile)
 void
 setupatoms(void)
 {
-	atoms[WM_PROTOCOLS] = XInternAtom(dpy, "WM_PROTOCOLS", false);
-	atoms[WM_DELETE_WINDOW] = XInternAtom(dpy, "WM_DELETE_WINDOW", false);
-	atoms[WM_STATE] = XInternAtom(dpy, "WM_STATE", false);
-	atoms[WM_TAKE_FOCUS] = XInternAtom(dpy, "WM_TAKE_FOCUS", false);
-	atoms[_NET_ACTIVE_WINDOW] = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", false);
-	atoms[_NET_SUPPORTED] = XInternAtom(dpy, "_NET_SUPPORTED", false);
-	atoms[_NET_WM_NAME] = XInternAtom(dpy, "_NET_WM_NAME", false);
-	atoms[_NET_WM_STATE] = XInternAtom(dpy, "_NET_WM_STATE", false);
-	atoms[_NET_WM_STATE_FULLSCREEN] = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", false);
-	atoms[_NET_WM_WINDOW_TYPE] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", false);
-	atoms[_NET_WM_WINDOW_TYPE_DIALOG] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", false);
+	wmatom[WMProtocols] = XInternAtom(dpy, "WM_PROTOCOLS", false);
+	wmatom[WMDeleteWindow] = XInternAtom(dpy, "WM_DELETE_WINDOW", false);
+	wmatom[WMState] = XInternAtom(dpy, "WM_STATE", false);
+	wmatom[WMTakeFocus] = XInternAtom(dpy, "WM_TAKE_FOCUS", false);
+	netatom[NetActiveWindow] = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", false);
+	netatom[NetSupported] = XInternAtom(dpy, "_NET_SUPPORTED", false);
+	netatom[NetWMName] = XInternAtom(dpy, "_NET_WM_NAME", false);
+	netatom[NetWMState] = XInternAtom(dpy, "_NET_WM_STATE", false);
+	netatom[NetWMStateFullscreen] = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", false);
+	netatom[NetWMWindowType] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", false);
+	netatom[NetWMWindowTypeDialog] = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", false);
 }
 
 void
@@ -2225,7 +2225,7 @@ togglewsm(Arg const *arg)
 	/* initial target is the current workspace (make a "0-step") */
 	wsm.target->x = selmon->selws->x;
 	wsm.target->y = selmon->selws->y;
-	stepwsmbox(&((Arg const) { .i = NO_DIRECTION }));
+	stepwsmbox(&((Arg const) { .i = NoDirection }));
 
 	/* grab WSM keys and give an initial update */
 	grabkeys();
@@ -2325,14 +2325,13 @@ updateclient(Client *c)
 	unsigned char *p = NULL;
 	Atom da, state=None;
 
-	if (XGetWindowProperty(dpy, c->win, atoms[_NET_WM_STATE], 0, sizeof(da),
+	if (XGetWindowProperty(dpy, c->win, netatom[NetWMState], 0, sizeof(da),
 			false, XA_ATOM, &da, &di, &dl, &dl, &p) == Success && p) {
 		state = (Atom) *p;
 		free(p);
 	}
-	if (state == atoms[_NET_WM_STATE_FULLSCREEN]) {
+	if (state == netatom[NetWMStateFullscreen]) {
 		setfullscreen(c, true);
-	} else {
 	}
 }
 
