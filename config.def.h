@@ -31,13 +31,17 @@
 #define WSMCBGTARGET     CBGSEL
 #define WSMCBORDERTARGET CBORDERSEL
 
-/* dmenu arguments (see man dmenu) */
-#define PROMPT_RENAME "rename"
-#define PROMPT_CHANGE "workspace"
-#define PROMPT_SPAWN  "spawn"
+/* dmenu */
+static char const *dmenuprompt[DMENU_LAST] = {
+	[DMENU_RENAME]     = "rename",
+	[DMENU_SEND]       = "send to",
+	[DMENU_SENDFOLLOW] = "follow to",
+	[DMENU_SPAWN]      = "spawn",
+	[DMENU_VIEW]       = "view workspace",
+};
 static char const *dmenuargs[] = { "-l", "10",
-	                               "-nf", "#888888", "-nb", "#222222",
-	                               "-sf", "#AFD800", "-sb", "#444444", NULL };
+                                   "-nf", "#888888", "-nb", "#222222",
+                                   "-sf", "#AFD800", "-sb", "#444444", NULL };
 
 /* commands */
 static char const *termcmd[] = { "xterm", NULL };
@@ -102,7 +106,9 @@ static Key const keys[] = {
 	{ MODKEY|ControlMask|ShiftMask, XK_k,       sendfollowclient, { .i=UP } },
 	{ MODKEY,                       XK_o,       togglewsm,        { 0 } },
 	{ MODKEY,                       XK_i,       dmenu,            { .i=DMENU_VIEW } },
-	{ MODKEY|ShiftMask,             XK_i,       dmenu,            { .i=DMENU_RENAME } },
+	{ MODKEY|ShiftMask,             XK_i,       dmenu,            { .i=DMENU_SEND } },
+	{ MODKEY|ShiftMask|ControlMask, XK_i,       dmenu,            { .i=DMENU_SENDFOLLOW } },
+	{ MODKEY,                       XK_r,       dmenu,            { .i=DMENU_RENAME } },
 
 	/* scratchpad */
 	{ MODKEY,                       XK_Tab,     togglepad,        { 0 } },

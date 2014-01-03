@@ -17,23 +17,6 @@ This will create the binary <code>stwm</code>:
 
 	make
 
-If you want to add debug output (all the <code>debug()</code> calls in stwm,
-additional debug symbols through GCCs <code>-g</code> option), you may run:
-
-	make devbuild
-
-This is especially useful when developing stwm; for starting stwm directly in
-the current directory without installing it, run
-
-	make devrun
-
-This will launch the created stwm binary on the X display :1 (modify the
-Makefile to change). To speed up things a little,
-
-	make dev
-
-runs both <code>devbuild</code> and <code>devrun</code>.
-
 
 install
 -------
@@ -71,7 +54,7 @@ Here is an example <code>.xinitrc</code>:
 	# launch stwm:
 	exec stwm
 
-You may add other actions to launch the WM, but make sure that
+You may add other actions to <code>.xinitrc</code>, but make sure that
 <code>exec stwm</code> comes at last (since everything after that won't get
 executed).
 
@@ -135,9 +118,13 @@ These are the default settings defined by the <code>keys</code> array;
 * <code>Mod</code>+<code>Ctrl</code>+<code>Shift</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
   move and follow client to left/below/above/right workspace
 * <code>Mod</code>+<code>i</code>
-  switch to a workspace by name using dmenu
+  switch to a workspace by name
 * <code>Mod</code>+<code>Shift</code>+<code>i</code>
-  rename current workspace using dmenu
+  send selected client to a workspace by name
+* <code>Mod</code>+<code>Shift</code>+<code>Ctrl</code>+<code>i</code>
+  send and follow selected client to a workspace by name
+* <code>Mod</code>+<code>r</code>
+  rename current workspace
 * <code>Mod</code>+<code>o</code>
   open workspace map
 
@@ -183,21 +170,13 @@ windows will get arranged automatically.
 The layouts are defined in <code>layout.h</code>; the array at the end of the
 file contains the layouts that will be actually used in your personal stwm
 setup. Every layout below the <code>NULL</code> entry will not be accessible
-through the usual layout cycling, but will need an separate setup.
-
-This may be useful with a monocle layout (only displays one maximised window):
-As you cycle through your layouts, you seldom need the monocle layout; however
-in case you *need* the monocle layout, you may not want to cycle through all
-your other layouts. In this case it is more appropriate to define a keyboard
-shortcut that toggles the monocle layout.
-
-*(Note: monocle layout and layout toggling has not yet been implemented)*
+through the usual layout cycling.
 
 Every layout is assigned a bitfield that describes an icon that will get
 displayed in the statusbar to indicate the current layout. Every hexadecimal
 <code>long</code> entry in the array corresponds to a row in the icon (thus an
-icon cannot be larger than <code>sizeof(long)\*8</code>, but that shouldn't be a
-problem).
+icon cannot be wider than <code>sizeof(long)\*8</code> pixels, but that
+shouldn't be a problem).
 
 
 appendix B: workspaces
@@ -228,9 +207,6 @@ Each workspace is assigned a unique name that can be used to switch workspaces
 by name using dmenu (see the dmenu manpage for further information how to use
 it). If no or an empty name is assigned to a workspace, it automatically
 takes the workspace structure's pointer value, preceded by <code>\*</code>.
-
-Renaming and switching workspaces happens through the key combinations
-<code>Mod</code>(+<code>Shift</code>)+<code>i</code> (see above).
 
 
 appendix C: scratchpad

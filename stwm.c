@@ -45,7 +45,8 @@
 /* enums */
 enum { CURSOR_NORMAL, CURSOR_RESIZE, CURSOR_MOVE, CURSOR_LAST };
 enum { LEFT, RIGHT, UP, DOWN, NO_DIRECTION };
-enum DMenuState { DMENU_INACTIVE, DMENU_SPAWN, DMENU_RENAME, DMENU_VIEW };
+enum DMenuState { DMENU_INACTIVE, DMENU_SPAWN, DMENU_RENAME, DMENU_VIEW,
+		DMENU_SEND, DMENU_SENDFOLLOW, DMENU_LAST };
 enum { WM_PROTOCOLS, WM_DELETE_WINDOW, WM_STATE, WM_TAKE_FOCUS,
 		_NET_ACTIVE_WINDOW, _NET_SUPPORTED, _NET_WM_NAME, _NET_WM_STATE,
 		_NET_WM_STATE_FULLSCREEN, _NET_WM_WINDOW_TYPE,
@@ -355,7 +356,7 @@ attachws(Workspace *ws)
 				nws*sizeof(Workspace *));
 	}
 	for (i = nws-1; i >= 0; i--) {
-		if (!i || strcasecmp(workspaces[i-1]->name, ws->name) < 0) {
+		if (i == 0 || strcasecmp(workspaces[i-1]->name, ws->name) < 0) {
 			workspaces[i] = ws;
 			break;
 		}
@@ -667,11 +668,7 @@ dmenu(Arg const *arg)
 		cmd[i+1] = dmenuargs[i];
 	}
 	cmd[i] = "-p";
-	switch (arg->i) {
-		case DMENU_VIEW:   cmd[i+1] = PROMPT_CHANGE; break;
-		case DMENU_RENAME: cmd[i+1] = PROMPT_RENAME; break;
-		case DMENU_SPAWN:  cmd[i+1] = PROMPT_SPAWN;  break;
-	}
+	cmd[i+1] = dmenuprompt[arg->i];
 	cmd[i+2] = NULL;
 
 	/* create pipes */
@@ -699,7 +696,7 @@ dmenu(Arg const *arg)
 	}
 	close(in[0]);
 	close(out[1]);
-	if (arg->i == DMENU_VIEW) {
+	if (arg->i != DMENU_RENAME) {
 		for (i = 0; i < nws; i++) {
 			write(in[1], workspaces[i]->name, strlen(workspaces[i]->name));
 			write(in[1], "\n", 1);
@@ -715,7 +712,9 @@ dmenueval(void)
 {
 	int ret;
 	char buf[256];
+	Monitor *mon=NULL;
 	Workspace *ws;
+	Client *c;
 
 	ret = read(dmenu_out, buf, 256);
 	if (ret < 0) {
@@ -723,20 +722,26 @@ dmenueval(void)
 	}
 	if (ret > 0) {
 		buf[ret-1] = 0;
-		switch (dmenu_state) {
-			case DMENU_RENAME:
-				renamews(selmon->selws, buf);
-				detachws(selmon->selws);
-				attachws(selmon->selws);
-				updatebar(selmon);
-				break;
-			case DMENU_VIEW:
-				if (locatews(&ws, NULL, 0, 0, buf)) {
-					setws(selmon, ws->x, ws->y);
+		if (dmenu_state == DMENU_RENAME) {
+			renamews(selmon->selws, buf);
+			detachws(selmon->selws);
+			attachws(selmon->selws);
+			updatebar(selmon);
+		} else if (locatews(&ws, NULL, 0, 0, buf)) {
+			if (dmenu_state == DMENU_SEND || dmenu_state == DMENU_SENDFOLLOW) {
+				if (selmon->selws->nc) {
+					c = selmon->selws->selcli;
+					detachclient(c);
+					arrange(selmon);
+					attachclient(ws, c);
+					locatemon(&mon, NULL, ws);
+					showclient(mon, c);
+					updatefocus();
 				}
-				break;
-			default:
-				warn("unknown dmenu state: %u", dmenu_state);
+			}
+			if (dmenu_state == DMENU_SENDFOLLOW || dmenu_state == DMENU_VIEW) {
+				setws(selmon, ws->x, ws->y);
+			}
 		}
 	}
 	close(dmenu_out);
@@ -2005,9 +2010,11 @@ showws(Monitor *mon, Workspace *ws)
 	if (mon && ws->dirty) {
 		arrange(mon);
 	} else {
+		setclientmask(mon, false);
 		for (i = 0; i < ws->nc; i++) {
 			showclient(mon, ws->clients[i]);
 		}
+		setclientmask(mon, true);
 	}
 }
 
