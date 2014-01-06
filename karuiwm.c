@@ -1039,7 +1039,7 @@ initwsmbox(Workspace *ws)
 	updatewsmpixmap(ws);
 
 	/* box */
-	ws->wsmbox = XCreateWindow(dpy, root, -WSMBOXWIDTH, 0,
+	ws->wsmbox = XCreateWindow(dpy, root, -WSMBOXWIDTH-2*WSMBORDERWIDTH, 0,
 			WSMBOXWIDTH, WSMBOXHEIGHT, 0, dc.sd, CopyFromParent,
 			DefaultVisual(dpy, screen),
 			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wsm.wa);

@@ -41,7 +41,7 @@ static char const *dmenuprompt[DMenuLAST] = {
 	[DMenuView]       = "workspace",
 	[DMenuClients]    = "client",
 };
-static char const *dmenuargs[] = { "-l", "10",
+static char const *dmenuargs[] = { "-l", "10", "-i",
                                    "-nf", "#888888", "-nb", "#222222",
                                    "-sf", "#AFD800", "-sb", "#444444", NULL };
 
