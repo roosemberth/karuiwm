@@ -46,7 +46,7 @@
 enum { CurNormal, CurResize, CurMove, CurLAST };
 enum { Left, Right, Up, Down, NoDirection };
 enum DMenuState { DMenuInactive, DMenuSpawn, DMenuRename, DMenuView, DMenuSend,
-		DMenuSendFollow, DMenuLAST };
+		DMenuSendFollow, DMenuClients, DMenuLAST };
 enum { WMProtocols, WMDeleteWindow, WMState, WMTakeFocus, WMLAST };
 enum { NetActiveWindow, NetSupported, NetWMName, NetWMState,
 		NetWMStateFullscreen, NetWMWindowType, NetWMWindowTypeDialog, NetLAST };
@@ -169,7 +169,7 @@ static void initwsmbox(Workspace *);
 static void keypress(XEvent *);
 static void keyrelease(XEvent *);
 static void killclient(Arg const *);
-static bool locateclient(Workspace **, Client **, unsigned int *, Window const);
+static bool locateclient(Workspace **, Client **, unsigned int *, Window const, char const *);
 static bool locatemon(Monitor **, unsigned int *, Workspace const *);
 static Monitor *locaterect(int, int, int, int);
 static bool locatews(Workspace **, unsigned int *, int, int, char const *);
@@ -233,6 +233,7 @@ static void updateclient(Client *);
 static void updatefocus(void);
 static void updategeom(void);
 static void updatemon(Monitor *, int, int, unsigned int, unsigned int);
+static void updatename(Client *);
 static void updatesizehints(Client *);
 static void updatewsm(void);
 static void updatewsmbox(Workspace *);
@@ -371,7 +372,7 @@ buttonpress(XEvent *e)
 	Workspace *ws;
 	Monitor *mon;
 
-	if (!locateclient(&ws, &c, NULL, e->xbutton.window) ||
+	if (!locateclient(&ws, &c, NULL, e->xbutton.window, NULL) ||
 			!locatemon(&mon, NULL, ws)) {
 		return;
 	}
@@ -504,7 +505,7 @@ clientmessage(XEvent *e)
 	Client *c;
 	XClientMessageEvent *ev = &e->xclient;
 
-	if (!locateclient(NULL, &c, NULL, ev->window)) {
+	if (!locateclient(NULL, &c, NULL, ev->window, NULL)) {
 		return;
 	}
 
@@ -539,7 +540,7 @@ configurerequest(XEvent *e)
 
 	/* forward configuration if not managed (or if we don't force the size) */
 	if ((pad && ev->window == pad->win) ||
-			!locateclient(NULL, &c, NULL, ev->window) || c->fullscreen ||
+			!locateclient(NULL, &c, NULL, ev->window, NULL) || c->fullscreen ||
 			c->floating) {
 		wc = (XWindowChanges) {
 			.x = ev->x,
@@ -578,7 +579,7 @@ detachclient(Client *c)
 	Workspace *ws;
 	Monitor *mon;
 
-	if (!locateclient(&ws, &c, &i, c->win)) {
+	if (!locateclient(&ws, &c, &i, c->win, NULL)) {
 		warn("attempt to detach non-existent client");
 		return;
 	}
@@ -652,8 +653,8 @@ detachws(Workspace *ws)
 void
 dmenu(Arg const *arg)
 {
-	int in[2], out[2], i;
-	char const *cmd[LENGTH(dmenuargs)+3];
+	int in[2], out[2], j, i, len;
+	char const *cmd[LENGTH(dmenuargs)+3], *cname;
 
 	/* assemble dmenu command */
 	cmd[0] = arg->i == DMenuSpawn ? "dmenu_run" : "dmenu";
@@ -690,9 +691,23 @@ dmenu(Arg const *arg)
 	close(in[0]);
 	close(out[1]);
 	if (arg->i != DMenuRename) {
-		for (i = 0; i < nws; i++) {
-			write(in[1], workspaces[i]->name, strlen(workspaces[i]->name));
-			write(in[1], "\n", 1);
+		if (arg->i == DMenuClients) {
+			for (j = 0; j < nws; j++) {
+				for (i = 0; i < workspaces[j]->nc; i++) {
+					cname = workspaces[j]->clients[i]->name;
+					len = strlen(cname);
+					if (!len) {
+						continue;
+					}
+					write(in[1], cname, len);
+					write(in[1], "\n", 1);
+				}
+			}
+		} else {
+			for (i = 0; i < nws; i++) {
+				write(in[1], workspaces[i]->name, strlen(workspaces[i]->name));
+				write(in[1], "\n", 1);
+			}
 		}
 	}
 	close(in[1]);
@@ -715,7 +730,14 @@ dmenueval(void)
 	}
 	if (ret > 0) {
 		buf[ret-1] = 0;
-		if (dmenu_state == DMenuRename) {
+		if (dmenu_state == DMenuClients) {
+			locateclient(&ws, &c, NULL, 0, buf);
+			if (ws != selmon->selws) {
+				setws(selmon, ws->x, ws->y);
+			}
+			push(ws, c);
+			updatefocus();
+		} else if (dmenu_state == DMenuRename) {
 			renamews(selmon->selws, buf);
 			detachws(selmon->selws);
 			attachws(selmon->selws);
@@ -754,7 +776,7 @@ enternotify(XEvent *e)
 	if (pad && e->xcrossing.window == pad->win) {
 		viewmon(pad_mon);
 	} else {
-		if (!locateclient(&ws, &c, &pos, e->xcrossing.window)) {
+		if (!locateclient(&ws, &c, &pos, e->xcrossing.window, NULL)) {
 			warn("attempt to enter unhandled/invisible window %d",
 					e->xcrossing.window);
 			return;
@@ -928,6 +950,8 @@ initclient(Window win, bool viewable)
 	c->dirty = false;
 	XSetWindowBorderWidth(dpy, c->win, c->border);
 	updatesizehints(c);
+	c->name[0] = 0;
+	updatename(c);
 	grabbuttons(c, false);
 	return c;
 }
@@ -1020,7 +1044,7 @@ initwsmbox(Workspace *ws)
 			DefaultVisual(dpy, screen),
 			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wsm.wa);
 	XMapRaised(dpy, ws->wsmbox);
-	XSetWindowBorderWidth(dpy, ws->wsmbox, BORDERWIDTH);
+	XSetWindowBorderWidth(dpy, ws->wsmbox, WSMBORDERWIDTH);
 	XSetWindowBorder(dpy, ws->wsmbox, ws == selmon->selws ? WSMCBORDERSEL
 			: ws == wsm.target ? WSMCBORDERTARGET : WSMCBORDERNORM);
 
@@ -1073,7 +1097,7 @@ killclient(Arg const *arg)
 		return;
 	}
 
-	/* try to kill the client via the atom WM_DELETE_WINDOW atom */
+	/* try to kill the client via the WM_DELETE_WINDOW atom */
 	c = selmon->selws->selcli;
 	if (sendevent(c, wmatom[WMDeleteWindow])) {
 		return;
@@ -1088,13 +1112,15 @@ killclient(Arg const *arg)
 }
 
 bool
-locateclient(Workspace **ws, Client **c, unsigned int *pos, Window w)
+locateclient(Workspace **ws, Client **c, unsigned int *pos, Window w, char const *name)
 {
 	unsigned int i, j;
 
+	if (name) debug("searching for client '%s'", name);
 	for (j = 0; j < nws; j++) {
 		for (i = 0; i < workspaces[j]->nc; i++) {
-			if (workspaces[j]->clients[i]->win == w) {
+			if ((name && !strcmp(workspaces[j]->clients[i]->name, name)) ||
+					workspaces[j]->clients[i]->win == w) {
 				if (ws) *ws = workspaces[j];
 				if (c) *c = workspaces[j]->clients[i];
 				if (pos) *pos = i;
@@ -1102,6 +1128,7 @@ locateclient(Workspace **ws, Client **c, unsigned int *pos, Window w)
 			}
 		}
 	}
+	if (name) debug("=> not found: '%s'", name);
 	return false;
 }
 
@@ -1312,7 +1339,7 @@ propertynotify(XEvent *e)
 	Client *c;
 
 	ev = &e->xproperty;
-	if (!locateclient(NULL, &c, NULL, ev->window)) {
+	if (!locateclient(NULL, &c, NULL, ev->window, NULL)) {
 		return;
 	}
 	switch (ev->atom) {
@@ -1327,7 +1354,7 @@ propertynotify(XEvent *e)
 			break;
 	}
 	if (ev->atom == XA_WM_NAME || ev->atom == netatom[NetWMName]) {
-		/* TODO */
+		updatename(c);
 	}
 	if (ev->atom == netatom[NetWMWindowType]) {
 		updateclient(c);
@@ -1636,7 +1663,7 @@ setfullscreen(Client *c, bool fullscreen)
 {
 	Monitor *mon=NULL;
 	Workspace *ws;
-	locateclient(&ws, NULL, NULL, c->win) && locatemon(&mon, NULL, ws);
+	locateclient(&ws, NULL, NULL, c->win, NULL) && locatemon(&mon, NULL, ws);
 
 	c->fullscreen = fullscreen;
 	if (fullscreen) {
@@ -1831,7 +1858,7 @@ setupsession(char const *sessionfile)
 
 	/* create clients if they do not already exist */
 	for (i = 0; i < nwins; i++) {
-		if (!locateclient(NULL, &c, NULL, wins[i])) {
+		if (!locateclient(NULL, &c, NULL, wins[i], NULL)) {
 			c = initclient(wins[i], true);
 			if (c) {
 				warn("scanned unhandled window %lu", c->win);
@@ -1934,7 +1961,7 @@ shiftclient(Arg const *arg)
 	if (selmon->selws->ns < 2) {
 		return;
 	}
-	if (!locateclient(NULL, NULL, &pos, selmon->selws->selcli->win)) {
+	if (!locateclient(NULL, NULL, &pos, selmon->selws->selcli->win, NULL)) {
 		warn("attempt to shift non-existent window %d",
 				selmon->selws->selcli->win);
 	}
@@ -2057,7 +2084,7 @@ stepfocus(Arg const *arg)
 	if (!selmon->selws->nc) {
 		return;
 	}
-	if (!locateclient(NULL, NULL, &pos, selmon->selws->selcli->win)) {
+	if (!locateclient(NULL, NULL, &pos, selmon->selws->selcli->win, NULL)) {
 		warn("attempt to step from non-existing client");
 		return;
 	}
@@ -2287,7 +2314,7 @@ unmapnotify(XEvent *e)
 		return;
 	}
 
-	if (!locateclient(&ws, &c, NULL, e->xunmap.window)) {
+	if (!locateclient(&ws, &c, NULL, e->xunmap.window, NULL)) {
 		return;
 	}
 
@@ -2439,6 +2466,32 @@ updatemon(Monitor *mon, int x, int y, unsigned int w, unsigned int h)
 }
 
 void
+updatename(Client *c)
+{
+	XTextProperty xtp;
+	int n;
+	char **list;
+
+	XGetTextProperty(dpy, c->win, &xtp, netatom[NetWMName]);
+	if (!xtp.nitems) {
+		warn("could not get text property for window %lu", c->win);
+		return;
+	}
+	if (xtp.encoding == XA_STRING) {
+		strncpy(c->name, (char const *) xtp.value, 255);
+	} else {
+		if (XmbTextPropertyToTextList(dpy, &xtp, &list, &n) >= Success &&
+				n > 0 && list) {
+			strncpy(c->name, list[0], 255);
+			XFreeStringList(list);
+		}
+	}
+	debug("window %lu has name '%s'", c->win, c->name);
+	c->name[255] = 0;
+	XFree(xtp.value);
+}
+
+void
 updatesizehints(Client *c)
 {
 	long size;
@@ -2496,10 +2549,15 @@ updatewsmbox(Workspace *ws) /* TODO prefix with wsm_ */
 
 	cx = selmon->x + selmon->w/2;
 	cy = selmon->y + selmon->h/2;
-	x = cx + (ws->x - wsm.target->x) * (WSMBOXWIDTH + 2*BORDERWIDTH) - WSMBOXWIDTH/2 - BORDERWIDTH;
-	y = cy + (ws->y - wsm.target->y) * (WSMBOXHEIGHT + 2*BORDERWIDTH) - WSMBOXHEIGHT/2 - BORDERWIDTH;
+	x = cx + (ws->x - wsm.target->x) * (WSMBOXWIDTH + WSMBORDERWIDTH) -
+			WSMBOXWIDTH/2 - WSMBORDERWIDTH;
+	y = cy + (ws->y - wsm.target->y) * (WSMBOXHEIGHT + WSMBORDERWIDTH) -
+			WSMBOXHEIGHT/2 - WSMBORDERWIDTH;
 
 	XMoveWindow(dpy, ws->wsmbox, x, y);
+	if (ws == selmon->selws || ws == wsm.target) {
+		XRaiseWindow(dpy, ws->wsmbox);
+	}
 }
 
 void
@@ -2557,7 +2615,7 @@ zoom(Arg const *arg)
 		return;
 	}
 
-	if (!locateclient(NULL, &c, &pos, selmon->selws->selcli->win)) {
+	if (!locateclient(NULL, &c, &pos, selmon->selws->selcli->win, NULL)) {
 		warn("attempt to zoom non-existing window %d",
 				selmon->selws->selcli->win);
 		return;

@@ -4,8 +4,9 @@
 #define NMASTER 1        /* number of clients in master area */
 #define MFACT 0.5        /* size of master area */
 #define BORDERWIDTH 1    /* window border width */
-#define WSMBOXWIDTH 136  /* WSM box width */
-#define WSMBOXHEIGHT 75  /* WSM box height */
+#define WSMBOXWIDTH 90   /* WSM box width */
+#define WSMBOXHEIGHT 60  /* WSM box height */
+#define WSMBORDERWIDTH 2 /* WSM box border width */
 #define PADMARGIN 20     /* border gap for scratchpad workspace */
 #define SESSIONFILE "/tmp/"APPNAME /* file for saving session when restarting */
 
@@ -34,10 +35,11 @@
 /* dmenu */
 static char const *dmenuprompt[DMenuLAST] = {
 	[DMenuRename]     = "rename",
-	[DMenuSend]       = "send to",
-	[DMenuSendFollow] = "follow to",
+	[DMenuSend]       = "send",
+	[DMenuSendFollow] = "follow",
 	[DMenuSpawn]      = "spawn",
 	[DMenuView]       = "workspace",
+	[DMenuClients]    = "client",
 };
 static char const *dmenuargs[] = { "-l", "10",
                                    "-nf", "#888888", "-nb", "#222222",
@@ -85,6 +87,7 @@ static Key const keys[] = {
 	{ MODKEY,                       XK_h,       setmfact,         { .f=-0.02 } },
 	{ MODKEY,                       XK_t,       togglefloat,      { 0 } },
 	{ MODKEY|ShiftMask,             XK_c,       killclient,       { 0 } },
+	{ MODKEY,                       XK_u,       dmenu,            { .i=DMenuClients } },
 
 	/* layout */
 	{ MODKEY|ShiftMask,             XK_j,       shiftclient,      { .i=+1 } },

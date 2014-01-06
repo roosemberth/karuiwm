@@ -2,7 +2,6 @@ karuiwm todo list
 =================
 
 * render statusbar with pixmap, not directly
-* handle window names => add window switching through dmenu (issue #5)
 * differ between verbose and debug messages
 * handle urgent hints
 * add monocle layout and layout toggling
@@ -11,4 +10,5 @@ karuiwm todo list
 * add rules for floating/fullscreen/scratchpad client(s)
 * fix scratchpad "unpadding" to floating issue (#2)
 * multiple scratchpads (issue #3)
+* handle transient/popup windows (and hope that this fixes the weird pidgin behaviour)
 
