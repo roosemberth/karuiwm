@@ -99,6 +99,8 @@ These are the default settings defined by the <code>keys</code> array;
   toggle floating for selected client
 * <code>Mod</code>+<code>Shift</code>+<code>c</code>
   close selected client
+* <code>Mod</code>+<code>u</code>
+  select client by name
 
 **Layout** (see appendix A)
 
