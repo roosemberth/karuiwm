@@ -77,7 +77,7 @@ struct Client {
 	int oldx, oldy, oldw, oldh;
 	char name[256];
 	Window win;
-	bool floating, fullscreen;
+	bool floating, fullscreen, dialog;
 	int basew, baseh, incw, inch;
 	int minw, minh;
 	int border;
@@ -195,8 +195,10 @@ static void savesession(char **sessionfile);
 static bool sendevent(Client *, Atom);
 static void sendfollowclient(Arg const *);
 static void setclientmask(Monitor *, bool);
+static void setfloating(Client *, bool);
 static void setfullscreen(Client *, bool);
 static void setmfact(Arg const *);
+static void setnmaster(Arg const *);
 static void setpad(Arg const *);
 static void setup(char const *sessionfile);
 static void setupatoms(void);
@@ -204,7 +206,6 @@ static void setupfont(void);
 static void setuplayouts(void);
 static void setupsession(char const *sessionfile);
 static void setupwsm(void);
-static void setnmaster(Arg const *);
 static void setws(Monitor *, int, int);
 static void shiftclient(Arg const *);
 static void shiftws(Arg const *);
@@ -235,6 +236,7 @@ static void updategeom(void);
 static void updatemon(Monitor *, int, int, unsigned int, unsigned int);
 static void updatename(Client *);
 static void updatesizehints(Client *);
+static void updatetransient(Client *);
 static void updatewsm(void);
 static void updatewsmbox(Workspace *);
 static void updatewsmpixmap(Workspace *);
@@ -939,6 +941,7 @@ initclient(Window win, bool viewable)
 	}
 	c->win = win;
 	c->floating = false; /* TODO apply rules */
+	updatetransient(c);
 	c->fullscreen = false;
 	if (c->floating) {
 		c->x = wa.x;
@@ -1235,6 +1238,8 @@ movemouse(Arg const *arg)
 	int cx=c->x, cy=c->y, x, y, i;
 	unsigned int ui;
 
+	debug("movemouse(%lu)", c->win);
+
 	/* don't move fullscreen client */
 	if (c->fullscreen) {
 		return;
@@ -1451,8 +1456,10 @@ resizemouse(Arg const *arg)
 	int x, y;
 	unsigned int cw=c->w, ch=c->h;
 
-	/* don't resize fullscreen client */
-	if (c->fullscreen) {
+	debug("resizemouse(%lu)", c->win);
+
+	/* don't resize fullscreen or dialog client */
+	if (c->fullscreen || c->dialog) {
 		warn("attempt to resize fullscreen client");
 		return;
 	}
@@ -1659,6 +1666,19 @@ setclientmask(Monitor *mon, bool set)
 }
 
 void
+setfloating(Client *c, bool floating)
+{
+	if (floating) {
+		XRaiseWindow(dpy, c->win);
+	} else {
+		XLowerWindow(dpy, c->win);
+	}
+	c->floating = floating;
+	arrange(selmon);
+	updatefocus();
+}
+
+void
 setfullscreen(Client *c, bool fullscreen)
 {
 	Monitor *mon=NULL;
@@ -1690,6 +1710,16 @@ void
 setmfact(Arg const *arg)
 {
 	selmon->selws->mfact = MAX(0.1, MIN(0.9, selmon->selws->mfact+arg->f));
+	arrange(selmon);
+}
+
+void
+setnmaster(Arg const *arg)
+{
+	if (!selmon->selws->nmaster && arg->i < 0) {
+		return;
+	}
+	selmon->selws->nmaster = selmon->selws->nmaster+arg->i;
 	arrange(selmon);
 }
 
@@ -1944,16 +1974,6 @@ setws(Monitor *mon, int x, int y)
 }
 
 void
-setnmaster(Arg const *arg)
-{
-	if (!selmon->selws->nmaster && arg->i < 0) {
-		return;
-	}
-	selmon->selws->nmaster = selmon->selws->nmaster+arg->i;
-	arrange(selmon);
-}
-
-void
 shiftclient(Arg const *arg)
 {
 	unsigned int pos;
@@ -2190,13 +2210,7 @@ togglefloat(Arg const *arg)
 		return;
 	}
 	c = selmon->selws->selcli;
-	if ((c->floating = !c->floating)) {
-		XRaiseWindow(dpy, c->win);
-	} else {
-		XLowerWindow(dpy, c->win);
-	}
-	arrange(selmon);
-	updatefocus();
+	setfloating(c, !c->floating);
 }
 
 void
@@ -2356,6 +2370,10 @@ updateclient(Client *c)
 	}
 	if (state == netatom[NetWMStateFullscreen]) {
 		setfullscreen(c, true);
+	}
+	if (state == netatom[NetWMWindowTypeDialog]) {
+		c->dialog = true;
+		setfloating(c, true);
 	}
 }
 
@@ -2523,6 +2541,23 @@ updatesizehints(Client *c)
 		c->minh = hints.min_height;
 	} else {
 		c->minw = c->minh = 0;
+	}
+}
+
+void
+updatetransient(Client *c)
+{
+	Window trans;
+	Client *t;
+	Workspace *ws;
+	Monitor *mon;
+
+	if (XGetTransientForHint(dpy, c->win, &trans) &&
+			locateclient(&ws, &t, NULL, trans, NULL)) {
+		if (!locatemon(&mon, NULL, ws)) {
+			mon = selmon;
+		}
+		setfloating(c, true);
 	}
 }
 

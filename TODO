@@ -1,14 +1,22 @@
-karuiwm todo list
-=================
-
+IMPORTANT
+---------
+* handle client hints
+  - floating/transient windows
+  - urgent hints
+  - fix mplayer fullscreen state (also there was a buggy behaviour once that
+    made it crash; will try to reproduce that) (issue #1)
 * render statusbar with pixmap, not directly
-* differ between verbose and debug messages
-* handle urgent hints
-* add monocle layout and layout toggling
-* fix mplayer fullscreen state (also there was a buggy behaviour once that made
-  it crash; will try to reproduce that) (issue #1)
-* add rules for floating/fullscreen/scratchpad client(s)
 * fix scratchpad "unpadding" to floating issue (#2)
+  - generally: save sizes for different states
+
+LESS IMPORTANT
+--------------
 * multiple scratchpads (issue #3)
-* handle transient/popup windows (and hope that this fixes the weird pidgin behaviour)
+* add monocle layout and layout toggling
+* rules (floating/fullscreen/scratchpad)
+
+NICE TO HAVE
+------------
+* "workspace-symlinking" (for making a workspace accessible at multiple locations)
+* differ between verbose and debug messages
 
