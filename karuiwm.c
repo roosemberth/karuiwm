@@ -1199,8 +1199,15 @@ maprequest(XEvent *e)
 {
 	debug("maprequest(%lu)", e->xmaprequest.window);
 
-	Client *c = initclient(e->xmap.window, false);
-	if (!c) {
+	Client *c;
+	Window win = e->xmaprequest.window;
+
+	/* in case a window gets remapped */
+	if (locateclient(NULL, &c, NULL, win, NULL)) {
+		detachclient(c);
+		termclient(c);
+	}
+	if (!(c = initclient(win, false))) {
 		return;
 	}
 
