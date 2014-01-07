@@ -2496,24 +2496,29 @@ updatename(Client *c)
 	XTextProperty xtp;
 	int n;
 	char **list;
+	bool broken=false;
 
 	XGetTextProperty(dpy, c->win, &xtp, netatom[NetWMName]);
 	if (!xtp.nitems) {
-		warn("could not get text property for window %lu", c->win);
-		return;
-	}
-	if (xtp.encoding == XA_STRING) {
-		strncpy(c->name, (char const *) xtp.value, 255);
+		broken = true;
 	} else {
-		if (XmbTextPropertyToTextList(dpy, &xtp, &list, &n) >= Success &&
-				n > 0 && list) {
-			strncpy(c->name, list[0], 255);
-			XFreeStringList(list);
+		if (xtp.encoding == XA_STRING) {
+			strncpy(c->name, (char const *) xtp.value, 255);
+		} else {
+			if (XmbTextPropertyToTextList(dpy, &xtp, &list, &n) >= Success &&
+					n > 0 && list) {
+				strncpy(c->name, list[0], 255);
+				XFreeStringList(list);
+			}
 		}
 	}
-	debug("window %lu has name '%s'", c->win, c->name);
+	if (broken || c->name[0] == 0) {
+		strcpy(c->name, "[broken]");
+	}
 	c->name[255] = 0;
 	XFree(xtp.value);
+
+	debug("window %lu has name '%s'", c->win, c->name);
 }
 
 void
