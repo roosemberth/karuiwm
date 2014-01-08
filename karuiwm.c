@@ -2265,10 +2265,6 @@ togglewsm(Arg const *arg) /* TODO prefix with wsm_ */
 		return;
 	}
 
-	/* grab input */
-	setclientmask(selmon, false);
-	grabkeys();
-
 	/* create a box for each workspace */
 	for (i = 0; i < nws; i++) {
 		initwsmbox(workspaces[i]);
@@ -2281,6 +2277,10 @@ togglewsm(Arg const *arg) /* TODO prefix with wsm_ */
 	wsm.target->x = selmon->selws->x;
 	wsm.target->y = selmon->selws->y;
 	stepwsmbox(&((Arg const) { .i = NoDirection }));
+
+	/* grab input */
+	setclientmask(selmon, false);
+	grabkeys();
 
 	/* initial update */
 	updatewsm();
