@@ -1,18 +1,17 @@
 IMPORTANT
 ---------
 * handle client hints
-  - floating/transient windows
+  - dialog/transient windows
   - urgent hints
   - fix mplayer fullscreen state (also there was a buggy behaviour once that
     made it crash; will try to reproduce that) (issue #1)
-* render statusbar with pixmap, not directly
 * fix scratchpad "unpadding" to floating issue (#2)
   - generally: save sizes for different states
+* add monocle layout and layout toggling
 
 LESS IMPORTANT
 --------------
 * multiple scratchpads (issue #3)
-* add monocle layout and layout toggling
 * rules (floating/fullscreen/scratchpad)
 
 NICE TO HAVE

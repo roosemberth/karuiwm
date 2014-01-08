@@ -115,6 +115,7 @@ struct Monitor {
 	int wx, wy, ww, wh; /* workspace dimensions */
 	struct {
 		Window win;
+		Pixmap pm;
 		char buffer[256];
 	} bar;
 };
@@ -904,14 +905,17 @@ initbar(Monitor *mon)
 	mon->bh = dc.font.height + 2;
 	mon->bar.buffer[0] = 0;
 
+	/* window */
 	wa.override_redirect = true;
 	wa.background_pixmap = ParentRelative;
 	wa.event_mask = ExposureMask;
-	mon->bar.win = XCreateWindow(dpy, root, 0, -mon->bh, 10, mon->bh, 0,
-			dc.sd, CopyFromParent,
-			DefaultVisual(dpy, screen),
+	mon->bar.win = XCreateWindow(dpy, root, 0, 0, 1, 1, 0, dc.sd,
+			CopyFromParent, DefaultVisual(dpy, screen),
 			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
 	XMapWindow(dpy, mon->bar.win);
+
+	/* pixmap */
+	mon->bar.pm = XCreatePixmap(dpy, root, mon->bw, mon->bh, dc.sd);
 }
 
 Client *
@@ -1428,21 +1432,8 @@ renamews(Workspace *ws, char const *name)
 void
 renderbar(Monitor *mon)
 {
-	Layout *layout = &layouts[mon->selws->ilayout];
-
-	/* background */
-	XSetForeground(dpy, dc.gc, CBGNORM);
-	XFillRectangle(dpy, mon->bar.win, dc.gc, 0, 0, mon->bw, mon->bh);
-
-	/* layout icon */
-	XCopyArea(dpy, mon == selmon ? layout->icon_sel : layout->icon_norm,
-			mon->bar.win, dc.gc, 0, 0, layout->w, layout->h, 2, 0);
-
-	/* workspace name */
-	XSetForeground(dpy, dc.gc, mon == selmon ? CBORDERSEL : CNORM);
-	Xutf8DrawString(dpy, mon->bar.win, dc.font.xfontset, dc.gc, layout->w+12,
-			dc.font.ascent+1, mon->bar.buffer, strlen(mon->bar.buffer));
-	XSync(dpy, false);
+	XCopyArea(dpy, mon->bar.pm, mon->bar.win, dc.gc, 0, 0, mon->bw, mon->bh,
+			0, 0);
 }
 
 void
@@ -2197,6 +2188,7 @@ void
 termmon(Monitor *mon)
 {
 	XDestroyWindow(dpy, mon->bar.win);
+	XFreePixmap(dpy, mon->bar.pm);
 	free(mon);
 }
 
@@ -2369,13 +2361,33 @@ unmapnotify(XEvent *e)
 void
 updatebar(Monitor *mon)
 {
+	Layout *layout = &layouts[mon->selws->ilayout];
+
 	if (mon->bx != mon->x || mon->by != mon->y || mon->bw != mon->w) {
 		mon->bx = mon->x;
 		mon->by = mon->y;
 		mon->bw = mon->w;
 		XMoveResizeWindow(dpy, mon->bar.win, mon->bx, mon->by, mon->bw,mon->bh);
+		XFreePixmap(dpy, mon->bar.pm);
+		mon->bar.pm = XCreatePixmap(dpy, root, mon->bw, mon->bh, dc.sd);
 	}
 	sprintf(mon->bar.buffer, "%s", mon->selws->name);
+
+	/* background */
+	XSetForeground(dpy, dc.gc, CBGNORM);
+	XFillRectangle(dpy, mon->bar.pm, dc.gc, 0, 0, mon->bw, mon->bh);
+
+	/* layout icon */
+	XCopyArea(dpy, mon == selmon ? layout->icon_sel : layout->icon_norm,
+			mon->bar.pm, dc.gc, 0, 0, layout->w, layout->h, 2, 0);
+
+	/* workspace name */
+	XSetForeground(dpy, dc.gc, mon == selmon ? CBORDERSEL : CNORM);
+	Xutf8DrawString(dpy, mon->bar.pm, dc.font.xfontset, dc.gc, layout->w+12,
+			dc.font.ascent+1, mon->bar.buffer, strlen(mon->bar.buffer));
+	XSync(dpy, false);
+
+	/* map to bar window */
 	renderbar(mon);
 }
 
