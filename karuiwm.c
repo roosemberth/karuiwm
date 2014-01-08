@@ -1013,7 +1013,12 @@ initmon(void)
 Workspace *
 initws(int x, int y)
 {
-	Workspace *ws = malloc(sizeof(Workspace));
+	Workspace *ws;
+
+	if (locatews(&ws, NULL, x, y, NULL)) {
+		return ws;
+	}
+	ws = malloc(sizeof(Workspace));
 	if (!ws) {
 		die("could not allocate %u bytes for workspace", sizeof(Workspace));
 	}
@@ -1526,6 +1531,7 @@ restoresession(char const *sessionfile)
 	int x, y;
 	Workspace *ws;
 	Client *c;
+	char name[256];
 
 	f = fopen(sessionfile, "r");
 	if (!f) {
@@ -1538,7 +1544,8 @@ restoresession(char const *sessionfile)
 		fscanf(f, "%d:%d:", &x, &y);
 		ws=initws(x, y);
 		fscanf(f, "%u:%u:%f:%d:%s\n", &ws->nmaster, &_nc, &ws->mfact,
-				&ws->ilayout, ws->name);
+				&ws->ilayout, name);
+		renamews(ws, name);
 		attachws(ws);
 		for (j = 0; j < _nc; j++) {
 			fscanf(f, "  %lu:", &win);
@@ -1601,12 +1608,16 @@ savesession(char **sessionfile)
 	}
 
 	fprintf(f, "%u\n", nws);
+	note("storing %u workspaces:", nws);
 	for (i = 0; i < nws; i++) {
 		ws = workspaces[i];
+		note("- storing workspace[%u] (%d,%d): '%s' (%u clients)",
+				i, ws->x, ws->y, ws->name, ws->nc);
 		fprintf(f, "%d:%d:%u:%u:%f:%d:%s\n", ws->x, ws->y, ws->nmaster, ws->nc,
 				ws->mfact, ws->ilayout, ws->name);
 		for (j = 0; j < ws->nc; j++) {
 			c = ws->clients[j];
+			note("  storing client '%s'", c->name);
 			fprintf(f, "  %lu:%d:%d:%d:%d:%d:%d\n",
 					c->win, c->x, c->y, c->w, c->h, c->floating, c->fullscreen);
 		}
@@ -2101,6 +2112,7 @@ stdlog(FILE *f, char const *format, ...)
 	va_end(args);
 
 	fprintf(f, "\n");
+	fflush(f);
 }
 
 void
@@ -2194,18 +2206,21 @@ termws(Workspace *ws)
 	if (ws->nc) {
 		warn("destroying non-empty workspace");
 	}
-	if (wsm.active) {
-		termwsmbox(ws);
-	}
+	termwsmbox(ws);
 	free(ws);
 }
 
 void
 termwsmbox(Workspace *ws)
 {
-	XDestroyWindow(dpy, ws->wsmbox);
-	XFreePixmap(dpy, ws->wsmpm);
-	ws->wsmbox = ws->wsmpm = 0;
+	if (ws->wsmbox) {
+		XDestroyWindow(dpy, ws->wsmbox);
+		ws->wsmbox = 0;
+	}
+	if (ws->wsmpm) {
+		XFreePixmap(dpy, ws->wsmpm);
+		ws->wsmpm = 0;
+	}
 }
 
 void
@@ -2267,6 +2282,8 @@ togglewsm(Arg const *arg) /* TODO prefix with wsm_ */
 		initwsmbox(workspaces[i]);
 	}
 	initwsmbox(wsm.target);
+	XRaiseWindow(dpy, selmon->selws->wsmbox);
+	XRaiseWindow(dpy, wsm.target->wsmbox);
 
 	/* initial target is the current workspace (make a "0-step") */
 	wsm.target->x = selmon->selws->x;
@@ -2602,9 +2619,6 @@ updatewsmbox(Workspace *ws) /* TODO prefix with wsm_ */
 			WSMBOXHEIGHT/2 - WSMBORDERWIDTH;
 
 	XMoveWindow(dpy, ws->wsmbox, x, y);
-	if (ws == selmon->selws || ws == wsm.target) {
-		XRaiseWindow(dpy, ws->wsmbox);
-	}
 }
 
 void

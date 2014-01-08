@@ -6,13 +6,17 @@ karuiwm is a lightweight, dynamically tiling window manager for X.
 It is based on [dwm](http://dwm.suckless.org/) and inspired by
 [xmonad](http://xmonad.org/).
 
+This WM is currently in an early development state and has only been tested on
+Arch Linux - expect crashes! Bug reports and feature requests are welcome.
+
+In the unlikely case there is any need for support, visit
+<code>irc.freenode.net#karuiwm</code>.
+
 
 build
 -----
 
-karuiwm requires Xlib and Xinerama to be installed on the system. It is also
-highly recommended to install dmenu, since some workspace-related actions rely
-on it.
+karuiwm requires Xlib and Xinerama to be installed on the system.
 
 This will create the binary <code>karuiwm</code>:
 
@@ -22,10 +26,16 @@ This will create the binary <code>karuiwm</code>:
 install
 -------
 
+karuiwm requires dmenu to run correctly. If dmenu is missing, the behaviour is
+unspecified yet; probably it will freeze the moment there is an interaction with
+dmenu.
+
+Running the following command as root will install karuiwm to
+<code>/usr/local/bin</code> by default:
+
 	make install
 
-as root will install karuiwm to <code>/usr/local/bin</code> by default; modify
-the Makefile to change the installation directory.
+Modify the Makefile to change the installation directory.
 
 
 uninstall
@@ -236,17 +246,4 @@ Once a monitor is added, it will attempt to display the next undisplayed
 workspace; if there is none, it will create a new workspace nearby and move its
 view there. If a monitor moves its view to a workspace that is already displayed
 on another monitor, the workspace view is swapped.
-
-
-meta
-----
-
-Bug reports are welcome, especially since this is still in a quite early
-development state.
-
-Feature requests are welcome too, as long as they do not require me to add a
-thousand lines of code or change the programming language.
-
-In the unlikely case there is any need for support, visit
-<code>irc.freenode.net#karuiwm</code>.
 
