@@ -19,4 +19,6 @@ NICE TO HAVE
 ------------
 * "workspace-symlinking" (for making a workspace accessible at multiple locations)
 * differ between verbose and debug messages
+* switch to an empty workspace
+  - improve monitor-to-workspace placing algorithm
 

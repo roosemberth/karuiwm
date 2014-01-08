@@ -31,7 +31,7 @@ bstack(Monitor *mon)
 	}
 
 	/* draw stack area */
-	y = mon->wy+(ncm ? mon->selws->mfact*mon->wh : mon->wy);
+	y = mon->wy+(ncm ? mon->selws->mfact*mon->wh : 0);
 	w = mon->ww/(nct-ncm);
 	h = ncm ? mon->h-y : mon->wh;
 	for (i = ncm; i < nct; i++) {
@@ -90,7 +90,7 @@ rstack(Monitor *mon)
 	}
 
 	/* draw stack area */
-	x = mon->wx+(ncm ? mon->selws->mfact*mon->ww : mon->wx);
+	x = mon->wx+(ncm ? mon->selws->mfact*mon->ww : 0);
 	w = ncm ? mon->w-x : mon->ww;
 	h = mon->wh/(nct-ncm);
 	for (i = ncm; i < nct; i++) {
