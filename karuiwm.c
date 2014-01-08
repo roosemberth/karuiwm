@@ -915,7 +915,7 @@ initbar(Monitor *mon)
 	XMapWindow(dpy, mon->bar.win);
 
 	/* pixmap */
-	mon->bar.pm = XCreatePixmap(dpy, root, mon->bw, mon->bh, dc.sd);
+	mon->bar.pm = XCreatePixmap(dpy, root, 1, 1, dc.sd);
 }
 
 Client *
