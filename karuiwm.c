@@ -1647,6 +1647,9 @@ sendevent(Client *c, Atom atom)
 void
 sendfollowclient(Arg const *arg)
 {
+	if (!selmon->selws->nc) {
+		return;
+	}
 	Client *c = selmon->selws->selcli;
 	detachclient(c);
 	stepws(arg);
