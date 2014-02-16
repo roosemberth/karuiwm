@@ -78,8 +78,7 @@ struct Client {
 	char name[256];
 	Window win;
 	bool floating, fullscreen, dialog;
-	int basew, baseh, incw, inch;
-	int minw, minh;
+	int basew, baseh, incw, inch, maxw, maxh, minw, minh;
 	int border;
 	bool dirty;
 };
@@ -132,6 +131,7 @@ struct Workspace {
 	int x, y;
 	int ilayout;
 	bool dirty;
+	Monitor *mon;
 };
 
 struct {
@@ -302,6 +302,7 @@ arrange(Monitor *mon)
 	}
 	setclientmask(mon, true);
 	mon->selws->dirty = false;
+	mon->selws->mon = mon;
 }
 
 void
@@ -399,25 +400,37 @@ checksizehints(Client *c, int *w, int *h)
 	int u;
 	bool change = false;
 
+	/* don't respect size hints for tiled or fullscreen windows */
 	if (!c->floating || c->fullscreen) {
 		return *w != c->w || *h != c->h;
 	}
 
-	/* if there are no resize limitations, don't limit anything */
-	if (!(c->basew && c->incw)) {
-		return true;
-	}
-
 	if (*w != c->w) {
-		u = (*w-c->basew)/c->incw;
-		*w = c->basew+u*c->incw;
+		if (c->basew > 0 && c->incw > 0) {
+			u = (*w-c->basew)/c->incw;
+			*w = c->basew+u*c->incw;
+		}
+		if (c->minw > 0) {
+			*w = MAX(*w, c->minw);
+		}
+		if (c->maxw > 0) {
+			*w = MIN(*w, c->maxw);
+		}
 		if (*w != c->w) {
 			change = true;
 		}
 	}
 	if (*h != c->h) {
-		u = (*h-c->baseh)/c->inch;
-		*h = c->baseh+u*c->inch;
+		if (c->baseh > 0 && c->inch > 0) {
+			u = (*h-c->baseh)/c->inch;
+			*h = c->baseh+u*c->inch;
+		}
+		if (c->minh > 0) {
+			*h = MAX(*h, c->minh);
+		}
+		if (c->maxh > 0) {
+			*h = MIN(*h, c->maxh);
+		}
 		if (*h != c->h) {
 			change = true;
 		}
@@ -752,8 +765,11 @@ dmenueval(void)
 					detachclient(c);
 					arrange(selmon);
 					attachclient(ws, c);
-					locatemon(&mon, NULL, ws);
-					showclient(mon, c);
+					if (locatemon(&mon, NULL, ws)) {
+						arrange(mon);
+					} else {
+						showclient(NULL, c);
+					}
 					updatefocus();
 				}
 			}
@@ -945,7 +961,6 @@ initclient(Window win, bool viewable)
 	}
 	c->win = win;
 	c->floating = false; /* TODO apply rules */
-	updatetransient(c);
 	c->fullscreen = false;
 	if (c->floating) {
 		c->x = wa.x;
@@ -1220,20 +1235,14 @@ maprequest(XEvent *e)
 		return;
 	}
 
+	/* display */
 	attachclient(selmon->selws, c);
 	arrange(selmon);
 	XMapWindow(dpy, c->win);
 
-	/* floating */
-	if (c->floating) {
-		XRaiseWindow(dpy, c->win);
-	} else {
-		XLowerWindow(dpy, c->win);
-	}
-
-	/* fullscreen */
-	c->fullscreen = false;
+	/* update client information (fullscreen/dialog/transient) and focus */
 	updateclient(c);
+	updatetransient(c);
 	updatefocus();
 }
 
@@ -1354,7 +1363,7 @@ pop(Workspace *ws, Client *c)
 void
 propertynotify(XEvent *e)
 {
-	//debug("propertynotify(%lu)", e->xproperty.window);
+	debug("propertynotify(%lu)", e->xproperty.window);
 
 	XPropertyEvent *ev;
 	Client *c;
@@ -1365,13 +1374,14 @@ propertynotify(XEvent *e)
 	}
 	switch (ev->atom) {
 		case XA_WM_TRANSIENT_FOR:
-			/* TODO */
+			debug("\033[33mwindow %lu is transient!\033[0m", c->win);
+			updatetransient(c);
 			break;
 		case XA_WM_NORMAL_HINTS:
 			updatesizehints(c);
 			break;
 		case XA_WM_HINTS:
-			/* TODO urgency hint */
+			/* TODO urgent hint */
 			break;
 	}
 	if (ev->atom == XA_WM_NAME || ev->atom == netatom[NetWMName]) {
@@ -1680,13 +1690,23 @@ setclientmask(Monitor *mon, bool set)
 void
 setfloating(Client *c, bool floating)
 {
+	Workspace *ws;
+	Monitor *mon;
+
+	if (!locateclient(&ws, NULL, NULL, c->win, NULL)) {
+		warn("attempt to set non-existing client to floating");
+		return;
+	}
+
 	if (floating) {
 		XRaiseWindow(dpy, c->win);
 	} else {
 		XLowerWindow(dpy, c->win);
 	}
 	c->floating = floating;
-	arrange(selmon);
+	if (locatemon(&mon, NULL, ws)) {
+		arrange(mon);
+	}
 	updatefocus();
 }
 
@@ -2052,7 +2072,7 @@ showws(Monitor *mon, Workspace *ws)
 		termws(ws);
 		return;
 	}
-	if (mon && ws->dirty) {
+	if (mon && (ws->dirty || mon != ws->mon)) {
 		arrange(mon);
 	} else {
 		setclientmask(mon, false);
@@ -2400,19 +2420,26 @@ updateclient(Client *c)
 	int di;
 	unsigned long dl;
 	unsigned char *p = NULL;
-	Atom da, state=None;
+	Atom da;
 
 	if (XGetWindowProperty(dpy, c->win, netatom[NetWMState], 0, sizeof(da),
 			false, XA_ATOM, &da, &di, &dl, &dl, &p) == Success && p) {
-		state = (Atom) *p;
+		if ((Atom) *p == netatom[NetWMStateFullscreen]) {
+			setfullscreen(c, true);
+		}
 		free(p);
 	}
-	if (state == netatom[NetWMStateFullscreen]) {
-		setfullscreen(c, true);
-	}
-	if (state == netatom[NetWMWindowTypeDialog]) {
-		c->dialog = true;
-		setfloating(c, true);
+	if (XGetWindowProperty(dpy, c->win, netatom[NetWMWindowType], 0, sizeof(da),
+			false, XA_ATOM, &da, &di, &dl, &dl, &p) == Success && p) {
+		if ((Atom) *p == netatom[NetWMWindowTypeDialog]) {
+			debug("\033[32mwindow %lu is a dialog!\033[0m", c->win);
+			c->dialog = true;
+			setfloating(c, true);
+		} else {
+			debug("\033[32mwindow %lu is not a dialog\033[0m", c->win);
+		}
+	} else {
+		debug("\033[32mcould not get window property for %lu\033[0m", c->win);
 	}
 }
 
@@ -2563,10 +2590,14 @@ updatesizehints(Client *c)
 		warn("XGetWMNormalHints() failed");
 		return;
 	}
+
 	/* base size */
 	if (hints.flags & PBaseSize) {
 		c->basew = hints.base_width;
 		c->baseh = hints.base_height;
+	} else if (hints.flags & PMinSize) {
+		c->basew = hints.min_width;
+		c->baseh = hints.min_height;
 	} else {
 		c->basew = c->baseh = 0;
 	}
@@ -2583,26 +2614,41 @@ updatesizehints(Client *c)
 	if (hints.flags & PMinSize) {
 		c->minw = hints.min_width;
 		c->minh = hints.min_height;
+	} else if (hints.flags & PBaseSize) {
+		c->minw = hints.base_width;
+		c->minh = hints.base_height;
 	} else {
 		c->minw = c->minh = 0;
+	}
+
+	/* maximum size */
+	if (hints.flags & PMaxSize) {
+		c->maxw = hints.max_width;
+		c->maxw = hints.max_height;
+	} else {
+		c->maxw = c->maxh = 0;
 	}
 }
 
 void
 updatetransient(Client *c)
 {
-	Window trans;
-	Client *t;
+	Window trans=0;
 	Workspace *ws;
 	Monitor *mon;
 
 	if (XGetTransientForHint(dpy, c->win, &trans) &&
-			locateclient(&ws, &t, NULL, trans, NULL)) {
-		if (!locatemon(&mon, NULL, ws)) {
-			mon = selmon;
-		}
+			locateclient(&ws, NULL, NULL, trans, NULL)) {
+		debug("\033[33mwindow %lu is transient\033[0m", c->win);
 		setfloating(c, true);
+		if (locatemon(&mon, NULL, ws)) {
+			detachclient(c);
+			attachclient(ws, c);
+		}
+	} else {
+		debug("\033[33mwindow %lu is not transient\033[0m", c->win);
 	}
+	debug("\033[33m=> trans = %lu\033[0m", trans);
 }
 
 void

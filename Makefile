@@ -27,4 +27,6 @@ devbuild: build
 devrun:
 	PATH="${PWD}:${PATH}" xinit ./karuiwm -- :1
 dev: devbuild devrun
+xephyr: devbuild
+	PATH="${PWD}:${PATH}" xinit ./karuiwm -- $(shell which Xephyr) :1
 
