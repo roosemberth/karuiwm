@@ -2719,7 +2719,15 @@ xerror(Display *dpy, XErrorEvent *ee)
 	char es[256];
 
 	/* catch certain errors */
-	if (ee->error_code == BadWindow) {
+	if (ee->error_code == BadWindow
+	|| (ee->request_code == X_SetInputFocus && ee->error_code == BadMatch)
+	|| (ee->request_code == X_PolyText8 && ee->error_code == BadDrawable)
+	|| (ee->request_code == X_PolyFillRectangle && ee->error_code == BadDrawable)
+	|| (ee->request_code == X_PolySegment && ee->error_code == BadDrawable)
+	|| (ee->request_code == X_ConfigureWindow && ee->error_code == BadMatch)
+	|| (ee->request_code == X_GrabButton && ee->error_code == BadAccess)
+	|| (ee->request_code == X_GrabKey && ee->error_code == BadAccess)
+	|| (ee->request_code == X_CopyArea && ee->error_code == BadDrawable)) {
 		XGetErrorText(dpy, ee->error_code, es, 256);
 		warn("%s (ID %d) after request %d", es, ee->error_code, ee->error_code);
 		return 0;
