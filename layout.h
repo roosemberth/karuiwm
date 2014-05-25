@@ -1,6 +1,6 @@
 /* karuiwm layout definitions */
 
-#define LFIXED_AREA 516+2 /* width of fixed size area in the lfixed layout */
+#define LFIXED_AREA 522+2 /* width of fixed size area in the lfixed layout */
 
 /* horizontally arranged master at top, horizontally arranged stack at bottom */
 void
@@ -173,17 +173,17 @@ static long const icon_lfixed[] = {
 	17, 15,
 	0x00000,
 	0x00000,
-	0x1F7FF,
-	0x1F7FF,
-	0x1F7FF,
-	0x1F7FF,
-	0x1F7FF,
-	0x1F000,
-	0x1F777,
-	0x1F777,
-	0x1F777,
-	0x1F777,
-	0x1F777,
+	0x1FDFF,
+	0x1FDFF,
+	0x1FDFF,
+	0x1FDFF,
+	0x1FDFF,
+	0x1FC00,
+	0x1FDEF,
+	0x1FDEF,
+	0x1FDEF,
+	0x1FDEF,
+	0x1FDEF,
 	0x00000,
 	0x00000,
 };
