@@ -1,8 +1,8 @@
 /* karuiwm configuration */
 
 #define FONTSTR "-misc-fixed-medium-r-semicondensed--13-100-100-100-c-60-iso8859-1"
-#define NMASTER 1        /* number of clients in master area */
-#define MFACT 0.5        /* size of master area */
+#define NMASTER 1        /* default number of clients in master area */
+#define MFACT 0.5        /* default size of master area */
 #define BORDERWIDTH 1    /* window border width */
 #define WSMBOXWIDTH 90   /* WSM box width */
 #define WSMBOXHEIGHT 60  /* WSM box height */

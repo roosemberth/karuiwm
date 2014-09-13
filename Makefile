@@ -1,32 +1,48 @@
-CC?=gcc
-LFLAGS=-lX11 -lXinerama
-CFLAGS=-Wall -Wpedantic -std=c99
-INSTALLDIR=/usr/local
-DEPS=dmenu
+# Makefile for karuiwm
 
-build:
-	@[ -f config.h ] || cp config.def.h config.h
-	${CC} ${CFLAGS} karuiwm.c ${LFLAGS} -o karuiwm
+# Compiler:
+CC ?= gcc
 
-scan:
-	scan-build make debug
+# Installation prefix:
+PREFIX = /usr/local
 
+# Application name:
+APPNAME = karuiwm
+
+# Flags:
+CFLAGS  = -W -Wall -Wextra -pedantic -g
+CFLAGS += -Wcast-align -Wcast-qual -Wconversion -Wwrite-strings -Wfloat-equal
+CFLAGS += -Wlogical-op -Wpointer-arith -Wformat=2
+CFLAGS += -Winit-self -Wuninitialized -Wmaybe-uninitialized
+CFLAGS += -Wstrict-prototypes -Wmissing-declarations -Wmissing-prototypes
+CFLAGS += -Wshadow #-Wpadded
+CFLAGS += -std=c99
+
+LIBS  = $(shell pkg-config --libs xinerama x11)
+
+# Default: Build application
+all: $(APPNAME)
+
+# Handy actions:
+clean:
+mrproper: clean
+	rm -f ${APPNAME}
 install:
-	@for i in ${DEPS}; do \
-		printf "checking whether %s is installed... " $$i; \
-		which $$i >/dev/null 2>&1 && echo 'OK' || { echo 'FAIL'; exit 1; }; \
-	done
-	install karuiwm ${INSTALLDIR}/bin/karuiwm
-
+	install ${APPNAME} ${PREFIX}/bin/${APPNAME}
 uninstall:
-	rm ${INSTALLDIR}/bin/karuiwm
+	rm -f ${PREFIX}/bin/${APPNAME}
+xephyr:
+	xinit ./karuiwm -- $(shell which Xephyr) :1
 
-# for ayekat, for developing
-devbuild: CFLAGS+=-g -DDEBUG
-devbuild: build
-devrun:
-	PATH="${PWD}:${PATH}" xinit ./karuiwm -- :1
-dev: devbuild devrun
-xephyr: devbuild
-	PATH="${PWD}:${PATH}" xinit ./karuiwm -- $(shell which Xephyr) :1
+# Compile & Link:
+$(APPNAME):
+	@[ -f config.h ] || cp config.def.h config.h
+	$(CC) ${CFLAGS} karuiwm.c ${LIBS} -o $@
 
+# Phony targets:
+.PHONY: all
+.PHONY: clean
+.PHONY: mrproper
+.PHONY: install
+.PHONY: uninstall
+.PHONY: xephyr

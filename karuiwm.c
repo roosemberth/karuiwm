@@ -1434,6 +1434,12 @@ renamews(Workspace *ws, char const *name)
 		if (name[0] != '*' && !locatews(NULL, NULL, 0, 0, name)) {
 			strncpy(ws->name, name, 256);
 		}
+		if (strcmp(name, "chat") == 0) { /* TODO rules list */
+			/* TODO layout pointer instead of index */
+			ws->ilayout = 4;
+			updatebar(selmon);
+			arrange(selmon);
+		}
 	} else {
 		sprintf(ws->name, "*%p", (void *) ws);
 	}
@@ -1618,7 +1624,7 @@ savesession(char **sessionfile)
 				ws->mfact, ws->ilayout, ws->name);
 		for (j = 0; j < ws->nc; j++) {
 			c = ws->clients[j];
-			note("  storing client '%s'", c->name);
+			note("  storing client '%s' (%u)", c->name, c->win);
 			fprintf(f, "  %lu:%d:%d:%d:%d:%d:%d\n",
 					c->win, c->x, c->y, c->w, c->h, c->floating, c->fullscreen);
 		}
@@ -1887,11 +1893,11 @@ setuplayouts()
 {
 	unsigned int i, len=LENGTH(layouts);
 
-	for (nlayouts = 0; nlayouts < len && layouts[nlayouts].icon_bitfield; nlayouts++);
+	for (nlayouts = 0; nlayouts < len && layouts[nlayouts].func != NULL &&
+			layouts[nlayouts].icon_bitfield != NULL; nlayouts++);
 	for (i = 0; i < len; i++) {
-		if (!layouts[i].icon_bitfield) {
+		if (layouts[i].icon_bitfield == NULL || layouts[i].func == NULL)
 			continue;
-		}
 		layouts[i].icon_norm = initpixmap(layouts[i].icon_bitfield, CNORM, CBGNORM);
 		layouts[i].icon_sel = initpixmap(layouts[i].icon_bitfield, CBORDERSEL, CBGNORM);
 		layouts[i].w = layouts[i].icon_bitfield[0];
@@ -2153,6 +2159,7 @@ void
 steplayout(Arg const *arg)
 {
 	selmon->selws->ilayout = (selmon->selws->ilayout+nlayouts+arg->i)%nlayouts;
+	selmon->selws->mfact = MFACT;
 	updatebar(selmon);
 	arrange(selmon);
 }
