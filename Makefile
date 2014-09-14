@@ -32,10 +32,10 @@ install:
 uninstall:
 	rm -f ${PREFIX}/bin/${APPNAME}
 xephyr:
-	xinit ./karuiwm -- $(shell which Xephyr) :1
+	xinit ./${APPNAME} -- $(shell which Xephyr) :1
 
 # Compile & Link:
-$(APPNAME):
+$(APPNAME): karuiwm.c config.h layout.h
 	@[ -f config.h ] || cp config.def.h config.h
 	$(CC) ${CFLAGS} karuiwm.c ${LIBS} -o $@
 

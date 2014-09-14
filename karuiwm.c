@@ -33,8 +33,8 @@
 
 /* log macros */
 #define warn(...) stdlog(stderr, "\033[33mWRN\033[0m "__VA_ARGS__)
-#define die(...)  stdlog(stderr, "\033[31mERR\033[0m "__VA_ARGS__); \
-                  exit(EXIT_FAILURE)
+#define die(...) {stdlog(stderr, "\033[31mERR\033[0m "__VA_ARGS__); \
+                  exit(EXIT_FAILURE);}
 #define note(...) stdlog(stdout, "    "__VA_ARGS__)
 #ifdef DEBUG
   #define debug(...) stdlog(stdout, "\033[34mDBG\033[0m "__VA_ARGS__)
