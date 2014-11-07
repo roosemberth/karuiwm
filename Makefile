@@ -36,7 +36,7 @@ xephyr:
 
 # Compile & Link:
 $(APPNAME): karuiwm.c config.h layout.h
-	@[ -f config.h ] || cp config.def.h config.h
+	if [ ! -e config.h ]; then cp config.def.h config.h; fi
 	$(CC) ${CFLAGS} karuiwm.c ${LIBS} -o $@
 
 # Phony targets:
