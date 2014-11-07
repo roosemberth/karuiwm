@@ -66,7 +66,7 @@ custom_shutdown()
 	/* place code here */
 }
 
-#define MODKEY Mod1Mask
+#define MODKEY Mod4Mask
 
 /* normal keys */
 static Key const keys[] = {
