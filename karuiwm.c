@@ -960,7 +960,7 @@ initclient(Window win, bool viewable)
 		die("could not allocate %u bytes for client", sizeof(Client));
 	}
 	c->win = win;
-	c->floating = false; /* TODO apply rules */
+	c->floating = false;
 	c->fullscreen = false;
 	if (c->floating) {
 		c->x = wa.x;
@@ -1111,13 +1111,13 @@ void
 keyrelease(XEvent *e)
 {
 	//debug("keyrelease()");
-	/* TODO */
 }
 
 void
 killclient(Arg const *arg)
 {
 	Client *c;
+	(void) arg;
 
 	/* nothing to kill */
 	if (!selmon->selws->nc) {
@@ -1262,6 +1262,7 @@ movemouse(Arg const *arg)
 	Client *c = selmon->selws->selcli;
 	int cx=c->x, cy=c->y, x, y, i;
 	unsigned int ui;
+	(void) arg;
 
 	debug("movemouse(%lu)", c->win);
 
@@ -1410,6 +1411,8 @@ push(Workspace *ws, Client *c)
 void
 quit(Arg const *arg)
 {
+	(void) arg;
+
 	restarting = false;
 	running = false;
 }
@@ -1453,7 +1456,7 @@ renderbar(Monitor *mon)
 }
 
 void
-renderwsmbox(Workspace *ws) /* TODO prefix with wsm_ */
+renderwsmbox(Workspace *ws)
 {
 	XCopyArea(dpy, ws->wsmpm, ws->wsmbox, dc.gc, 0,0, WSMBOXWIDTH, WSMBOXHEIGHT,
 			0, 0);
@@ -1474,6 +1477,7 @@ resizemouse(Arg const *arg)
 	Client *c = selmon->selws->selcli;
 	int x, y;
 	unsigned int cw=c->w, ch=c->h;
+	(void) arg;
 
 	debug("resizemouse(%lu)", c->win);
 
@@ -1525,6 +1529,8 @@ resizemouse(Arg const *arg)
 void
 restart(Arg const *arg)
 {
+	(void) arg;
+
 	restarting = true;
 	running = false;
 }
@@ -1747,6 +1753,8 @@ setfullscreen(Client *c, bool fullscreen)
 void
 setmfact(Arg const *arg)
 {
+	(void) arg;
+
 	selmon->selws->mfact = MAX(0.1, MIN(0.9, selmon->selws->mfact+arg->f));
 	arrange(selmon);
 }
@@ -1754,6 +1762,8 @@ setmfact(Arg const *arg)
 void
 setnmaster(Arg const *arg)
 {
+	(void) arg;
+
 	if (!selmon->selws->nmaster && arg->i < 0) {
 		return;
 	}
@@ -1764,7 +1774,8 @@ setnmaster(Arg const *arg)
 void
 setpad(Arg const *arg)
 {
-	Client *newpad=NULL;
+	Client *newpad = NULL;
+	(void) arg;
 
 	/* if pad has focus, unpad it */
 	if (pad_mon == selmon) {
@@ -1777,9 +1788,8 @@ setpad(Arg const *arg)
 	}
 
 	/* pad does not have focus; check if anything has focus */
-	if (!selmon->selws->nc) {
+	if (!selmon->selws->nc)
 		return;
-	}
 
 	/* set current focus as pad, remove old pad if necessary */
 	newpad = selmon->selws->selcli;
@@ -2015,6 +2025,7 @@ void
 shiftclient(Arg const *arg)
 {
 	unsigned int pos;
+	(void) arg;
 
 	if (selmon->selws->ns < 2) {
 		return;
@@ -2169,6 +2180,7 @@ stepmon(Arg const *arg)
 {
 	Monitor *oldmon;
 	unsigned int pos;
+	(void) arg; /* TODO use arg->i */
 
 	if (!locatemon(&oldmon, &pos, selmon->selws)) {
 		warn("attempt to step from non-existing monitor");
@@ -2249,6 +2261,7 @@ void
 togglefloat(Arg const *arg)
 {
 	Client *c;
+	(void) arg;
 
 	if (!selmon->selws->nc) {
 		return;
@@ -2260,9 +2273,10 @@ togglefloat(Arg const *arg)
 void
 togglepad(Arg const *arg)
 {
-	if (!pad) {
+	(void) arg;
+
+	if (!pad)
 		return;
-	}
 	setclientmask(selmon, false);
 	if (pad_mon == selmon) {
 		showclient(NULL, pad);
@@ -2278,9 +2292,10 @@ togglepad(Arg const *arg)
 }
 
 void
-togglewsm(Arg const *arg) /* TODO prefix with wsm_ */
+togglewsm(Arg const *arg)
 {
 	unsigned int i;
+	(void) arg;
 
 	wsm.active = !wsm.active;
 
@@ -2296,9 +2311,8 @@ togglewsm(Arg const *arg) /* TODO prefix with wsm_ */
 	}
 
 	/* create a box for each workspace */
-	for (i = 0; i < nws; i++) {
+	for (i = 0; i < nws; i++)
 		initwsmbox(workspaces[i]);
-	}
 	initwsmbox(wsm.target);
 	XRaiseWindow(dpy, selmon->selws->wsmbox);
 	XRaiseWindow(dpy, wsm.target->wsmbox);
@@ -2659,7 +2673,7 @@ updatetransient(Client *c)
 }
 
 void
-updatewsm(void) /* TODO prefix with wsm_ */
+updatewsm(void)
 {
 	unsigned int i;
 
@@ -2675,7 +2689,7 @@ updatewsm(void) /* TODO prefix with wsm_ */
 }
 
 void
-updatewsmbox(Workspace *ws) /* TODO prefix with wsm_ */
+updatewsmbox(Workspace *ws)
 {
 	int x, y, cx, cy;
 
@@ -2690,7 +2704,7 @@ updatewsmbox(Workspace *ws) /* TODO prefix with wsm_ */
 }
 
 void
-updatewsmpixmap(Workspace *ws) /* TODO prefix with wsm_ */
+updatewsmpixmap(Workspace *ws)
 {
 	XSetForeground(dpy, dc.gc, ws == selmon->selws ? WSMCBGSEL
 			: ws == wsm.target ? WSMCBGTARGET : WSMCBGNORM);
@@ -2711,11 +2725,12 @@ viewmon(Monitor *mon)
 }
 
 void
-viewws(Arg const *arg) /* TODO prefix with wsm_ */
+viewws(Arg const *arg)
 {
-	if (!wsm.active) {
+	(void) arg;
+
+	if (!wsm.active)
 		return;
-	}
 	setws(selmon, wsm.target->x, wsm.target->y);
 	togglewsm(NULL);
 }
@@ -2745,8 +2760,9 @@ xerror(Display *dpy, XErrorEvent *ee)
 void
 zoom(Arg const *arg)
 {
-	unsigned int i, pos;
+	unsigned int pos;
 	Client *c;
+	(void) arg;
 
 	if (selmon->selws->nc == 0) {
 		return;
@@ -2759,7 +2775,7 @@ zoom(Arg const *arg)
 	}
 
 	if (pos == 0) {
-		/* window is at the top */
+		/* window is at the top: swap with next below */
 		if (selmon->selws->nc > 1) {
 			selmon->selws->clients[0] = selmon->selws->clients[1];
 			selmon->selws->clients[1] = c;
@@ -2769,10 +2785,8 @@ zoom(Arg const *arg)
 			return;
 		}
 	} else {
-		/* window is somewhere else */
-		for (i = pos; i > 0; i--) {
-			selmon->selws->clients[i] = selmon->selws->clients[i-1];
-		}
+		/* window is somewhere else: swap with top */
+		selmon->selws->clients[pos] = selmon->selws->clients[0];
 		selmon->selws->clients[0] = c;
 	}
 	arrange(selmon);
