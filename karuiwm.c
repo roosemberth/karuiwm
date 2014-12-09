@@ -2134,8 +2134,9 @@ stdlog(FILE *f, char const *format, ...)
 	/* timestamp */
 	time(&rawtime);
 	date = localtime(&rawtime);
-	fprintf(f, "[%02d:%02d:%02d][%s] ",
-			date->tm_hour, date->tm_min, date->tm_sec, APPNAME);
+	fprintf(f, "[%04d-%02d-%02d,%02d:%02d:%02d] "APPNAME": ",
+			date->tm_year+1900, date->tm_mon, date->tm_mday,
+			date->tm_hour, date->tm_min, date->tm_sec);
 
 	/* message */
 	va_start(args, format);

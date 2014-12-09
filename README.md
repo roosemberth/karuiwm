@@ -6,11 +6,6 @@ karuiwm is a lightweight, dynamically tiling window manager for X.
 It is based on [dwm](http://dwm.suckless.org/) and inspired by
 [xmonad](http://xmonad.org/).
 
-**WARNING** The master branch of this project is discontinued; active
-development currently takes place in the
-[rewrite](https://github.com/ayekat/karuiwm/tree/rewrite) branch. The following
-readme is just here in case you want to test this version.
-
 
 build
 -----
