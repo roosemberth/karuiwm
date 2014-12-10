@@ -69,7 +69,7 @@ custom_shutdown()
 #define MODKEY Mod1Mask
 
 /* normal keys */
-static Key const keys[] = {
+static struct key const keys[] = {
 	/* applications */
 	{ MODKEY,                       XK_n,       spawn,            { .v=termcmd } },
 	{ MODKEY,                       XK_p,       dmenu,            { .i=DMenuSpawn } },
@@ -127,7 +127,7 @@ static Key const keys[] = {
 };
 
 /* WSM keys */
-static Key const wsmkeys[] = {
+static struct key const wsmkeys[] = {
 	/* applications */
 	{ 0,                            XK_Print,   spawn,            { .v=scrotcmd } },
 
@@ -150,7 +150,7 @@ static Key const wsmkeys[] = {
 };
 
 /* mouse buttons */
-static Button const buttons[] = {
+static struct button const buttons[] = {
 	{ MODKEY,                       Button1,    movemouse,        { 0 } },
 	{ MODKEY,                       Button3,    resizemouse,      { 0 } },
 };

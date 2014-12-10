@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <stdbool.h>
 #include <stdarg.h>
 #include <string.h>
 #include <strings.h>
@@ -11,7 +10,6 @@
 #include <errno.h>
 #include <sys/wait.h>
 #include <sys/select.h>
-#include <X11/Xlib.h>
 #include <X11/Xatom.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
@@ -27,9 +25,6 @@
 #define INTERSECT(MON, X, Y, W, H) \
 	((MAX(0, MIN((X)+(W),(MON)->x+(MON)->w) - MAX((MON)->x, X))) * \
 	 (MAX(0, MIN((Y)+(H),(MON)->y+(MON)->h) - MAX((MON)->y, Y))))
-#define LENGTH(ARR) (sizeof(ARR)/sizeof(ARR[0]))
-#define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
-#define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
 #define MOUSEMASK (BUTTONMASK|PointerMotionMask)
 
 /* log macros */
@@ -52,201 +47,109 @@ enum { WMProtocols, WMDeleteWindow, WMState, WMTakeFocus, WMLAST };
 enum { NetActiveWindow, NetSupported, NetWMName, NetWMState,
 		NetWMStateFullscreen, NetWMWindowType, NetWMWindowTypeDialog, NetLAST };
 
-typedef union Arg Arg;
-typedef struct Button Button;
-typedef struct Client Client;
-typedef struct Key Key;
-typedef struct Layout Layout;
-typedef struct Monitor Monitor;
-typedef struct Workspace Workspace;
-
-union Arg {
-	int i;
-	float f;
-	const void *v;
-};
-
-struct Button {
-	unsigned int mod;
-	unsigned int button;
-	void (*func)(Arg const *);
-	Arg const arg;
-};
-
-struct Client {
-	int x, y, w, h;
-	int oldx, oldy, oldw, oldh;
-	char name[256];
-	Window win;
-	bool floating, fullscreen, dialog;
-	int basew, baseh, incw, inch, maxw, maxh, minw, minh;
-	int border;
-	bool dirty;
-};
-
-struct {
-	GC gc;
-	unsigned int sd; /* screen depth */
-	struct {
-		int ascent, descent, height;
-		XFontStruct *xfontstruct;
-		XFontSet xfontset;
-	} font;
-} dc;
-
-struct Key {
-	unsigned int mod;
-	KeySym key;
-	void (*func)(Arg const *);
-	Arg const arg;
-};
-
-struct Layout {
-	long const *icon_bitfield;
-	void (*func)(Monitor *);
-	Pixmap icon_norm, icon_sel;
-	int w, h;
-};
-
-struct Monitor {
-	Workspace *selws;
-	int x, y, w, h;     /* monitor dimensions */
-	int bx, by, bw, bh; /* status bar dimensions */
-	int wx, wy, ww, wh; /* workspace dimensions */
-	struct {
-		Window win;
-		Pixmap pm;
-		char buffer[256];
-	} bar;
-};
-
-struct Workspace {
-	Client **clients, **stack;
-	Client *selcli;
-	Window wsmbox;
-	Pixmap wsmpm;
-	unsigned int nc, ns;
-	unsigned int nmaster;
-	float mfact;
-	char name[256];
-	int x, y;
-	int ilayout;
-	bool dirty;
-	Monitor *mon;
-};
-
-struct {
-	Workspace *target;
-	XSetWindowAttributes wa;
-	bool active;
-} wsm;
+#include "karuiwm.h"
 
 /* functions */
-static void arrange(Monitor *);
-static void attachclient(Workspace *, Client *);
-static void attachws(Workspace *);
+static void arrange(struct monitor *);
+static void attachclient(struct workspace *, struct client *);
+static void attachws(struct workspace *);
 static void buttonpress(XEvent *);
-static bool checksizehints(Client *, int *, int *);
+static bool checksizehints(struct client *, int *, int *);
 static void cleanup(char **);
 static void clientmessage(XEvent *);
 static void configurerequest(XEvent *);
 static void configurenotify(XEvent *);
-static void detachclient(Client *);
-static void detachmon(Monitor *);
-static void detachws(Workspace *);
-static void dmenu(Arg const *);
+static void detachclient(struct client *);
+static void detachmon(struct monitor *);
+static void detachws(struct workspace *);
+static void dmenu(union argument const *);
 static void dmenueval(void);
 static void enternotify(XEvent *);
 static void expose(XEvent *);
 static void focusin(XEvent *);
-static int gettiled(Client ***, Monitor *);
-static void grabbuttons(Client *, bool);
+static void grabbuttons(struct client *, bool);
 static void grabkeys(void);
-static void initbar(Monitor *);
-static Client *initclient(Window, bool);
-static Monitor *initmon(void);
+static struct client *initclient(Window, bool);
+static struct monitor *initmon(void);
 static Pixmap initpixmap(long const *, long const, long const);
-static Workspace *initws(int, int);
-static void initwsmbox(Workspace *);
+static struct workspace *initws(int, int);
+static void initwsmbox(struct workspace *);
 static void keypress(XEvent *);
 static void keyrelease(XEvent *);
-static void killclient(Arg const *);
-static bool locateclient(Workspace **, Client **, unsigned int *, Window const, char const *);
-static bool locatemon(Monitor **, unsigned int *, Workspace const *);
-static Monitor *locaterect(int, int, int, int);
-static bool locatews(Workspace **, unsigned int *, int, int, char const *);
+static void killclient(union argument const *);
+static bool locateclient(struct workspace **, struct client **, unsigned int *, Window const, char const *);
+static bool locatemon(struct monitor **, unsigned int *, struct workspace const *);
+static struct monitor *locaterect(int, int, int, int);
+static bool locatews(struct workspace **, unsigned int *, int, int, char const *);
 static void mappingnotify(XEvent *);
 static void maprequest(XEvent *);
-static void movemouse(Arg const *);
-static void moveclient(Monitor *, Client *, int, int);
-static void moveresizeclient(Monitor *, Client *, int, int, int, int);
-static void pop(Workspace *, Client *);
+static void movemouse(union argument const *);
+static void moveclient(struct monitor *, struct client *, int, int);
+static void pop(struct workspace *, struct client *);
 static void propertynotify(XEvent *);
-static void push(Workspace *, Client *);
-static void quit(Arg const *);
-static void reltoxy(int *, int *, Workspace *, int);
-static void renamews(Workspace *, char const *);
-static void renderbar(Monitor *);
-static void renderwsmbox(Workspace *);
-static void resizeclient(Client *, int, int);
-static void resizemouse(Arg const *);
-static void restart(Arg const *);
+static void push(struct workspace *, struct client *);
+static void quit(union argument const *);
+static void reltoxy(int *, int *, struct workspace *, int);
+static void renamews(struct workspace *, char const *);
+static void renderwsmbox(struct workspace *);
+static void resizeclient(struct client *, int, int);
+static void resizemouse(union argument const *);
+static void restart(union argument const *);
 static void restoresession(char const *sessionfile);
 static void run(void);
 static void savesession(char **sessionfile);
-static bool sendevent(Client *, Atom);
-static void sendfollowclient(Arg const *);
-static void setclientmask(Monitor *, bool);
-static void setfloating(Client *, bool);
-static void setfullscreen(Client *, bool);
-static void setmfact(Arg const *);
-static void setnmaster(Arg const *);
-static void setpad(Arg const *);
+static bool sendevent(struct client *, Atom);
+static void sendfollowclient(union argument const *);
+static void setclientmask(struct monitor *, bool);
+static void setfloating(struct client *, bool);
+static void setfullscreen(struct client *, bool);
+static void setmfact(union argument const *);
+static void setnmaster(union argument const *);
+static void setpad(union argument const *);
 static void setup(char const *sessionfile);
 static void setupatoms(void);
 static void setupfont(void);
 static void setuplayouts(void);
 static void setupsession(char const *sessionfile);
 static void setupwsm(void);
-static void setws(Monitor *, int, int);
-static void shiftclient(Arg const *);
-static void shiftws(Arg const *);
-static void showclient(Monitor *, Client *);
-static void showws(Monitor *, Workspace *);
+static void setws(struct monitor *, int, int);
+static void shiftclient(union argument const *);
+static void shiftws(union argument const *);
+static void showclient(struct monitor *, struct client *);
+static void showws(struct monitor *, struct workspace *);
 static void sigchld(int);
-static void spawn(Arg const *);
+static void spawn(union argument const *);
 static void stdlog(FILE *, char const *, ...);
-static void stepfocus(Arg const *);
-static void steplayout(Arg const *);
-static void stepmon(Arg const *);
-static void stepws(Arg const *);
-static void stepwsmbox(Arg const *arg);
-static void termclient(Client *);
-static void termlayout(Layout *);
-static void termmon(Monitor *);
-static void termws(Workspace *);
-static void termwsmbox(Workspace *);
-static void togglefloat(Arg const *);
-static void togglepad(Arg const *);
-static void togglewsm(Arg const *);
+static void stepfocus(union argument const *);
+static void steplayout(union argument const *);
+static void stepmon(union argument const *);
+static void stepws(union argument const *);
+static void stepwsmbox(union argument const *arg);
+static void termclient(struct client *);
+static void termlayout(struct layout *);
+static void termmon(struct monitor *);
+static void termws(struct workspace *);
+static void termwsmbox(struct workspace *);
+static void togglefloat(union argument const *);
+static void togglepad(union argument const *);
+static void togglewsm(union argument const *);
 static size_t unifyscreens(XineramaScreenInfo **, size_t);
 static void unmapnotify(XEvent *);
-static void updatebar(Monitor *);
-static void updateclient(Client *);
+static void updateclient(struct client *);
 static void updatefocus(void);
 static void updategeom(void);
-static void updatemon(Monitor *, int, int, unsigned int, unsigned int);
-static void updatename(Client *);
-static void updatesizehints(Client *);
-static void updatetransient(Client *);
+static void updatemon(struct monitor *, int, int, unsigned int, unsigned int);
+static void updatename(struct client *);
+static void updatesizehints(struct client *);
+static void updatetransient(struct client *);
 static void updatewsm(void);
-static void updatewsmbox(Workspace *);
-static void updatewsmpixmap(Workspace *);
-static void viewmon(Monitor *);
-static void viewws(Arg const *);
+static void updatewsmbox(struct workspace *);
+static void updatewsmpixmap(struct workspace *);
+static void viewmon(struct monitor *);
+static void viewws(union argument const *);
 static int xerror(Display *, XErrorEvent *);
 static int (*xerrorxlib)(Display *, XErrorEvent *);
-static void zoom(Arg const *);
+static void zoom(union argument const *);
 
 /* event handlers, as array to allow O(1) access; codes in X.h */
 static void (*handle[LASTEvent])(XEvent *) = {
@@ -271,14 +174,14 @@ static Display *dpy;                          /* X display */
 static int screen;                            /* screen */
 static Window root;                           /* root window */
 static Cursor cursor[CurLAST];                /* cursors */
-static Workspace **workspaces;                /* all workspaces */
-static Monitor **monitors, *selmon;           /* all/selected monitor(s) */
+static struct workspace **workspaces;                /* all workspaces */
+static struct monitor **monitors, *selmon;           /* all/selected monitor(s) */
 static unsigned int nws, nmon;                /* # of workspaces/monitors */
 static int dmenu_out;                         /* dmenu output file descriptor */
 static enum DMenuState dmenu_state;           /* dmenu state */
 static int nlayouts;                          /* number of cyclable layouts */
-static Client *pad;                           /* scratchpad window */
-static Monitor *pad_mon;                      /* monitor with scratchpad */
+static struct client *pad;                           /* scratchpad window */
+static struct monitor *pad_mon;                      /* monitor with scratchpad */
 static Atom wmatom[WMLAST], netatom[NetLAST]; /* atoms */
 
 /* configuration */
@@ -288,9 +191,9 @@ static Atom wmatom[WMLAST], netatom[NetLAST]; /* atoms */
 /* function implementation */
 
 void
-arrange(Monitor *mon)
+arrange(struct monitor *mon)
 {
-	Client *c;
+	struct client *c;
 	unsigned int i;
 
 	setclientmask(mon, false);
@@ -307,15 +210,15 @@ arrange(Monitor *mon)
 }
 
 void
-attachclient(Workspace *ws, Client *c)
+attachclient(struct workspace *ws, struct client *c)
 {
 	unsigned int i, pos;
 
 	/* add to list */
-	ws->clients = realloc(ws->clients, ++ws->nc*sizeof(Client *));
+	ws->clients = realloc(ws->clients, ++ws->nc*sizeof(struct client *));
 	if (!ws->clients) {
 		die("could not allocate %u bytes for client list",
-				ws->nc*sizeof(Client *));
+				ws->nc*sizeof(struct client *));
 	}
 	pos = 0;
 	if (ws->nc > 1) {
@@ -341,24 +244,24 @@ attachclient(Workspace *ws, Client *c)
 }
 
 void
-attachmon(Monitor *mon)
+attachmon(struct monitor *mon)
 {
-	monitors = realloc(monitors, ++nmon*sizeof(Monitor *));
+	monitors = realloc(monitors, ++nmon*sizeof(struct monitor *));
 	if (!monitors) {
-		die("could not allocate %u bytes for monitor list", sizeof(Monitor));
+		die("could not allocate %u bytes for monitor list", sizeof(struct monitor));
 	}
 	monitors[nmon-1] = mon;
 }
 
 void
-attachws(Workspace *ws)
+attachws(struct workspace *ws)
 {
 	unsigned int i;
 
-	workspaces = realloc(workspaces, ++nws*sizeof(Workspace *));
+	workspaces = realloc(workspaces, ++nws*sizeof(struct workspace *));
 	if (!workspaces) {
 		die("could not allocate %u bytes for workspace list",
-				nws*sizeof(Workspace *));
+				nws*sizeof(struct workspace *));
 	}
 	for (i = nws-1; i >= 0; i--) {
 		if (i == 0 || strcasecmp(workspaces[i-1]->name, ws->name) < 0) {
@@ -373,9 +276,9 @@ void
 buttonpress(XEvent *e)
 {
 	unsigned int i;
-	Client *c;
-	Workspace *ws;
-	Monitor *mon;
+	struct client *c;
+	struct workspace *ws;
+	struct monitor *mon;
 
 	if (!locateclient(&ws, &c, NULL, e->xbutton.window, NULL) ||
 			!locatemon(&mon, NULL, ws)) {
@@ -396,7 +299,7 @@ buttonpress(XEvent *e)
 }
 
 bool
-checksizehints(Client *c, int *w, int *h)
+checksizehints(struct client *c, int *w, int *h)
 {
 	int u;
 	bool change = false;
@@ -443,9 +346,9 @@ void
 cleanup(char **savefile)
 {
 	unsigned int i;
-	Monitor *mon;
-	Workspace *ws;
-	Client *c;
+	struct monitor *mon;
+	struct workspace *ws;
+	struct client *c;
 
 	/* disable WSM */
 	if (wsm.active) {
@@ -519,7 +422,7 @@ clientmessage(XEvent *e)
 {
 	debug("clientmessage(%lu)", e->xclient.window);
 
-	Client *c;
+	struct client *c;
 	XClientMessageEvent *ev = &e->xclient;
 
 	if (!locateclient(NULL, &c, NULL, ev->window, NULL)) {
@@ -550,7 +453,7 @@ configurerequest(XEvent *e)
 {
 	debug("configurerequest(%lu)", e->xconfigurerequest.window);
 
-	Client *c = NULL;
+	struct client *c = NULL;
 	XWindowChanges wc;
 	XConfigureEvent cev;
 	XConfigureRequestEvent *ev = &e->xconfigurerequest;
@@ -590,11 +493,11 @@ configurerequest(XEvent *e)
 }
 
 void
-detachclient(Client *c)
+detachclient(struct client *c)
 {
 	unsigned int i;
-	Workspace *ws;
-	Monitor *mon;
+	struct workspace *ws;
+	struct monitor *mon;
 
 	if (!locateclient(&ws, &c, &i, c->win, NULL)) {
 		warn("attempt to detach non-existent client");
@@ -609,10 +512,10 @@ detachclient(Client *c)
 	for (; i < ws->nc; i++) {
 		ws->clients[i] = ws->clients[i+1];
 	}
-	ws->clients = realloc(ws->clients, ws->nc*sizeof(Client *));
+	ws->clients = realloc(ws->clients, ws->nc*sizeof(struct client *));
 	if (!ws->clients && ws->nc) {
 		die ("could not allocate %u bytes for client list",
-				ws->nc*sizeof(Client *));
+				ws->nc*sizeof(struct client *));
 	}
 
 	/* remove workspace if last client and not focused */
@@ -625,7 +528,7 @@ detachclient(Client *c)
 }
 
 void
-detachmon(Monitor *mon)
+detachmon(struct monitor *mon)
 {
 	unsigned int i;
 
@@ -635,10 +538,10 @@ detachmon(Monitor *mon)
 			for (; i < nmon; i++) {
 				monitors[i] = monitors[i+1];
 			}
-			monitors = realloc(monitors, nmon*sizeof(Monitor *));
+			monitors = realloc(monitors, nmon*sizeof(struct monitor *));
 			if (!monitors && nmon) {
 				die("could not allocate %d bytes for monitor list",
-						nmon*sizeof(Monitor *));
+						nmon*sizeof(struct monitor *));
 			}
 			return;
 		}
@@ -647,7 +550,7 @@ detachmon(Monitor *mon)
 }
 
 void
-detachws(Workspace *ws)
+detachws(struct workspace *ws)
 {
 	unsigned int i;
 
@@ -660,15 +563,15 @@ detachws(Workspace *ws)
 	for (; i < nws; i++) {
 		workspaces[i] = workspaces[i+1];
 	}
-	workspaces = realloc(workspaces, nws*sizeof(Workspace *));
+	workspaces = realloc(workspaces, nws*sizeof(struct workspace *));
 	if (!workspaces && nws) {
 		die("could not allocate %u bytes for workspace list",
-				nws*sizeof(Workspace *));
+				nws*sizeof(struct workspace *));
 	}
 }
 
 void
-dmenu(Arg const *arg)
+dmenu(union argument const *arg)
 {
 	int in[2], out[2], j, i, len;
 	char const *cmd[LENGTH(dmenuargs)+3], *cname;
@@ -737,9 +640,9 @@ dmenueval(void)
 {
 	int ret;
 	char buf[256];
-	Monitor *mon=NULL;
-	Workspace *ws;
-	Client *c;
+	struct monitor *mon=NULL;
+	struct workspace *ws;
+	struct client *c;
 
 	ret = read(dmenu_out, buf, 256);
 	if (ret < 0) {
@@ -758,7 +661,6 @@ dmenueval(void)
 			renamews(selmon->selws, buf);
 			detachws(selmon->selws);
 			attachws(selmon->selws);
-			updatebar(selmon);
 		} else if (locatews(&ws, NULL, 0, 0, buf)) {
 			if (dmenu_state == DMenuSend || dmenu_state == DMenuSendFollow) {
 				if (selmon->selws->nc) {
@@ -789,9 +691,9 @@ enternotify(XEvent *e)
 	debug("enternotify(%lu)", e->xcrossing.window);
 
 	unsigned int pos;
-	Workspace *ws;
-	Monitor *mon;
-	Client *c;
+	struct workspace *ws;
+	struct monitor *mon;
+	struct client *c;
 
 	if (pad && e->xcrossing.window == pad->win) {
 		viewmon(pad_mon);
@@ -815,13 +717,6 @@ expose(XEvent *e)
 	debug("expose(%lu)", e->xexpose.window);
 
 	unsigned int i;
-
-	/* status bar */
-	for (i = 0; i < nmon; i++) {
-		if (e->xexpose.window == monitors[i]->bar.win) {
-			renderbar(monitors[i]);
-		}
-	}
 
 	/* WSM boxes */
 	for (i = 0; i < nws; i++) {
@@ -852,15 +747,15 @@ focusin(XEvent *e)
 }
 
 int
-gettiled(Client ***tiled, Monitor *mon)
+gettiled(struct client ***tiled, struct monitor *mon)
 {
 	unsigned int i, n;
-	Client *c;
+	struct client *c;
 
-	*tiled = calloc(mon->selws->nc, sizeof(Client *));
+	*tiled = calloc(mon->selws->nc, sizeof(struct client *));
 	if (!*tiled) {
 		die("could not allocate %u bytes for client list",
-				mon->selws->nc*sizeof(Client *));
+				mon->selws->nc*sizeof(struct client *));
 	}
 	for (n = i = 0; i < mon->selws->nc; i++) {
 		c = mon->selws->clients[i];
@@ -869,15 +764,15 @@ gettiled(Client ***tiled, Monitor *mon)
 		} else {
 		}
 	}
-	*tiled = realloc(*tiled, n*sizeof(Client *));
+	*tiled = realloc(*tiled, n*sizeof(struct client *));
 	if (!tiled && n) {
-		die("could not allocate %u bytes for client list", n*sizeof(Client *));
+		die("could not allocate %u bytes for client list", n*sizeof(struct client *));
 	}
 	return n;
 }
 
 void
-grabbuttons(Client *c, bool focused)
+grabbuttons(struct client *c, bool focused)
 {
 	unsigned int i;
 
@@ -914,31 +809,10 @@ grabkeys(void)
 	}
 }
 
-void
-initbar(Monitor *mon)
-{
-	XSetWindowAttributes wa;
-
-	mon->bh = dc.font.height + 2;
-	mon->bar.buffer[0] = 0;
-
-	/* window */
-	wa.override_redirect = true;
-	wa.background_pixmap = ParentRelative;
-	wa.event_mask = ExposureMask;
-	mon->bar.win = XCreateWindow(dpy, root, 0, 0, 1, 1, 0, dc.sd,
-			CopyFromParent, DefaultVisual(dpy, screen),
-			CWOverrideRedirect|CWBackPixmap|CWEventMask, &wa);
-	XMapWindow(dpy, mon->bar.win);
-
-	/* pixmap */
-	mon->bar.pm = XCreatePixmap(dpy, root, 1, 1, dc.sd);
-}
-
-Client *
+struct client *
 initclient(Window win, bool viewable)
 {
-	Client *c;
+	struct client *c;
 	XWindowAttributes wa;
 
 	/* ignore buggy windows or windows with override_redirect */
@@ -956,9 +830,9 @@ initclient(Window win, bool viewable)
 	}
 
 	/* create client */
-	c = malloc(sizeof(Client));
+	c = malloc(sizeof(struct client));
 	if (!c) {
-		die("could not allocate %u bytes for client", sizeof(Client));
+		die("could not allocate %u bytes for client", sizeof(struct client));
 	}
 	c->win = win;
 	c->floating = false;
@@ -1001,20 +875,17 @@ initpixmap(long const *bitfield, long const fg, long const bg)
 	return icon;
 }
 
-Monitor *
+struct monitor *
 initmon(void)
 {
 	unsigned int wsx;
-	Monitor *mon;
-	Workspace *ws;
+	struct monitor *mon;
+	struct workspace *ws;
 
-	mon = malloc(sizeof(Monitor));
+	mon = malloc(sizeof(struct monitor));
 	if (!mon) {
-		die("could not allocate %u bytes for monitor", sizeof(Monitor));
+		die("could not allocate %u bytes for monitor", sizeof(struct monitor));
 	}
-
-	/* create status bar */
-	initbar(mon);
 
 	/* assign workspace */
 	for (wsx = 0;; wsx++) {
@@ -1030,17 +901,17 @@ initmon(void)
 	return mon;
 }
 
-Workspace *
+struct workspace *
 initws(int x, int y)
 {
-	Workspace *ws;
+	struct workspace *ws;
 
 	if (locatews(&ws, NULL, x, y, NULL)) {
 		return ws;
 	}
-	ws = malloc(sizeof(Workspace));
+	ws = malloc(sizeof(struct workspace));
 	if (!ws) {
-		die("could not allocate %u bytes for workspace", sizeof(Workspace));
+		die("could not allocate %u bytes for workspace", sizeof(struct workspace));
 	}
 	ws->clients = ws->stack = NULL;
 	ws->nc = ws->ns = 0;
@@ -1060,7 +931,7 @@ initws(int x, int y)
 }
 
 void
-initwsmbox(Workspace *ws)
+initwsmbox(struct workspace *ws)
 {
 	/* pixmap */
 	ws->wsmpm = XCreatePixmap(dpy, root, WSMBOXWIDTH, WSMBOXHEIGHT, dc.sd);
@@ -1115,9 +986,9 @@ keyrelease(XEvent *e)
 }
 
 void
-killclient(Arg const *arg)
+killclient(union argument const *arg)
 {
-	Client *c;
+	struct client *c;
 	(void) arg;
 
 	/* nothing to kill */
@@ -1140,7 +1011,7 @@ killclient(Arg const *arg)
 }
 
 bool
-locateclient(Workspace **ws, Client **c, unsigned int *pos, Window w, char const *name)
+locateclient(struct workspace **ws, struct client **c, unsigned int *pos, Window w, char const *name)
 {
 	unsigned int i, j;
 
@@ -1161,7 +1032,7 @@ locateclient(Workspace **ws, Client **c, unsigned int *pos, Window w, char const
 }
 
 bool
-locatemon(Monitor **mon, unsigned int *pos, Workspace const *ws)
+locatemon(struct monitor **mon, unsigned int *pos, struct workspace const *ws)
 {
 	unsigned int i;
 
@@ -1178,10 +1049,10 @@ locatemon(Monitor **mon, unsigned int *pos, Workspace const *ws)
 	return false;
 }
 
-Monitor *
+struct monitor *
 locaterect(int x, int y, int w, int h)
 {
-	Monitor *mon = selmon;
+	struct monitor *mon = selmon;
 	unsigned int i;
 	int a, area=0;
 
@@ -1195,7 +1066,7 @@ locaterect(int x, int y, int w, int h)
 }
 
 bool
-locatews(Workspace **ws, unsigned int *pos, int x, int y, char const *name)
+locatews(struct workspace **ws, unsigned int *pos, int x, int y, char const *name)
 {
 	unsigned int i;
 
@@ -1224,7 +1095,7 @@ maprequest(XEvent *e)
 {
 	debug("maprequest(%lu)", e->xmaprequest.window);
 
-	Client *c;
+	struct client *c;
 	Window win = e->xmaprequest.window;
 
 	/* in case a window gets remapped */
@@ -1255,12 +1126,12 @@ mappingnotify(XEvent *e)
 }
 
 void
-movemouse(Arg const *arg)
+movemouse(union argument const *arg)
 {
-	Monitor *mon;
+	struct monitor *mon;
 	XEvent ev;
 	Window dummy;
-	Client *c = selmon->selws->selcli;
+	struct client *c = selmon->selws->selcli;
 	int cx=c->x, cy=c->y, x, y, i;
 	unsigned int ui;
 	(void) arg;
@@ -1322,21 +1193,21 @@ movemouse(Arg const *arg)
 }
 
 void
-moveclient(Monitor *mon, Client *c, int x, int y)
+moveclient(struct monitor *mon, struct client *c, int x, int y)
 {
 	XMoveWindow(dpy, c->win, (mon ? mon->x : 0) + (c->x=x),
 			(mon ? mon->y : 0) + (c->y=y));
 }
 
 void
-moveresizeclient(Monitor *mon, Client *c, int x, int y, int w, int h)
+moveresizeclient(struct monitor *mon, struct client *c, int x, int y, int w, int h)
 {
 	moveclient(mon, c, x, y);
 	resizeclient(c, w, h);
 }
 
 void
-pop(Workspace *ws, Client *c)
+pop(struct workspace *ws, struct client *c)
 {
 	unsigned int i;
 
@@ -1351,10 +1222,10 @@ pop(Workspace *ws, Client *c)
 			for (; i < ws->ns; i++) {
 				ws->stack[i] = ws->stack[i+1];
 			}
-			ws->stack = realloc(ws->stack, ws->ns*sizeof(Client *));
+			ws->stack = realloc(ws->stack, ws->ns*sizeof(struct client *));
 			if (ws->ns && !ws->stack) {
 				die("could not allocate %u bytes for stack",
-						ws->ns*sizeof(Client*));
+						ws->ns*sizeof(struct client*));
 			}
 			break;
 		}
@@ -1368,7 +1239,7 @@ propertynotify(XEvent *e)
 	debug("propertynotify(%lu)", e->xproperty.window);
 
 	XPropertyEvent *ev;
-	Client *c;
+	struct client *c;
 
 	ev = &e->xproperty;
 	if (!locateclient(NULL, &c, NULL, ev->window, NULL)) {
@@ -1395,22 +1266,22 @@ propertynotify(XEvent *e)
 }
 
 void
-push(Workspace *ws, Client *c)
+push(struct workspace *ws, struct client *c)
 {
 	if (!c) {
 		warn("attempt to push NULL client");
 		return;
 	}
 	pop(ws, c);
-	ws->stack = realloc(ws->stack, ++ws->ns*sizeof(Client *));
+	ws->stack = realloc(ws->stack, ++ws->ns*sizeof(struct client *));
 	if (!ws->stack) {
-		die("could not allocated %u bytes for stack", ws->ns*sizeof(Client *));
+		die("could not allocated %u bytes for stack", ws->ns*sizeof(struct client *));
 	}
 	ws->selcli = ws->stack[ws->ns-1] = c;
 }
 
 void
-quit(Arg const *arg)
+quit(union argument const *arg)
 {
 	(void) arg;
 
@@ -1419,7 +1290,7 @@ quit(Arg const *arg)
 }
 
 void
-reltoxy(int *x, int *y, Workspace *ws, int direction)
+reltoxy(int *x, int *y, struct workspace *ws, int direction)
 {
 	if (x) *x = ws->x;
 	if (y) *y = ws->y;
@@ -1432,7 +1303,7 @@ reltoxy(int *x, int *y, Workspace *ws, int direction)
 }
 
 void
-renamews(Workspace *ws, char const *name)
+renamews(struct workspace *ws, char const *name)
 {
 	if (name && strlen(name)) {
 		if (name[0] != '*' && !locatews(NULL, NULL, 0, 0, name)) {
@@ -1441,7 +1312,6 @@ renamews(Workspace *ws, char const *name)
 		if (strcmp(name, "chat") == 0) { /* TODO rules list */
 			/* TODO layout pointer instead of index */
 			ws->ilayout = 4;
-			updatebar(selmon);
 			arrange(selmon);
 		}
 	} else {
@@ -1450,21 +1320,14 @@ renamews(Workspace *ws, char const *name)
 }
 
 void
-renderbar(Monitor *mon)
-{
-	XCopyArea(dpy, mon->bar.pm, mon->bar.win, dc.gc, 0, 0, mon->bw, mon->bh,
-			0, 0);
-}
-
-void
-renderwsmbox(Workspace *ws)
+renderwsmbox(struct workspace *ws)
 {
 	XCopyArea(dpy, ws->wsmpm, ws->wsmbox, dc.gc, 0,0, WSMBOXWIDTH, WSMBOXHEIGHT,
 			0, 0);
 }
 
 void
-resizeclient(Client *c, int w, int h)
+resizeclient(struct client *c, int w, int h)
 {
 	if (checksizehints(c, &w, &h)) {
 		XResizeWindow(dpy, c->win, c->w = MAX(w, 1), c->h = MAX(h, 1));
@@ -1472,10 +1335,10 @@ resizeclient(Client *c, int w, int h)
 }
 
 void
-resizemouse(Arg const *arg)
+resizemouse(union argument const *arg)
 {
 	XEvent ev;
-	Client *c = selmon->selws->selcli;
+	struct client *c = selmon->selws->selcli;
 	int x, y;
 	unsigned int cw=c->w, ch=c->h;
 	(void) arg;
@@ -1528,7 +1391,7 @@ resizemouse(Arg const *arg)
 }
 
 void
-restart(Arg const *arg)
+restart(union argument const *arg)
 {
 	(void) arg;
 
@@ -1543,8 +1406,8 @@ restoresession(char const *sessionfile)
 	unsigned int i, j, _nc, _nws;
 	Window win;
 	int x, y;
-	Workspace *ws;
-	Client *c;
+	struct workspace *ws;
+	struct client *c;
 	char name[256];
 
 	f = fopen(sessionfile, "r");
@@ -1610,8 +1473,8 @@ savesession(char **sessionfile)
 {
 	FILE *f;
 	unsigned int i, j;
-	Client *c;
-	Workspace *ws;
+	struct client *c;
+	struct workspace *ws;
 
 	*sessionfile = malloc(strlen(SESSIONFILE+1+(sizeof(int)<<1)));
 	srand(time(NULL));
@@ -1641,7 +1504,7 @@ savesession(char **sessionfile)
 }
 
 bool
-sendevent(Client *c, Atom atom)
+sendevent(struct client *c, Atom atom)
 {
 	int n;
 	Atom *supported;
@@ -1668,12 +1531,12 @@ sendevent(Client *c, Atom atom)
 }
 
 void
-sendfollowclient(Arg const *arg)
+sendfollowclient(union argument const *arg)
 {
 	if (!selmon->selws->nc) {
 		return;
 	}
-	Client *c = selmon->selws->selcli;
+	struct client *c = selmon->selws->selcli;
 	detachclient(c);
 	stepws(arg);
 	attachclient(selmon->selws, c);
@@ -1682,7 +1545,7 @@ sendfollowclient(Arg const *arg)
 }
 
 void
-setclientmask(Monitor *mon, bool set)
+setclientmask(struct monitor *mon, bool set)
 {
 	int i;
 
@@ -1701,10 +1564,10 @@ setclientmask(Monitor *mon, bool set)
 }
 
 void
-setfloating(Client *c, bool floating)
+setfloating(struct client *c, bool floating)
 {
-	Workspace *ws;
-	Monitor *mon;
+	struct workspace *ws;
+	struct monitor *mon;
 
 	if (!locateclient(&ws, NULL, NULL, c->win, NULL)) {
 		warn("attempt to set non-existing client to floating");
@@ -1724,10 +1587,10 @@ setfloating(Client *c, bool floating)
 }
 
 void
-setfullscreen(Client *c, bool fullscreen)
+setfullscreen(struct client *c, bool fullscreen)
 {
-	Monitor *mon=NULL;
-	Workspace *ws;
+	struct monitor *mon=NULL;
+	struct workspace *ws;
 	locateclient(&ws, NULL, NULL, c->win, NULL) && locatemon(&mon, NULL, ws);
 
 	c->fullscreen = fullscreen;
@@ -1752,7 +1615,7 @@ setfullscreen(Client *c, bool fullscreen)
 }
 
 void
-setmfact(Arg const *arg)
+setmfact(union argument const *arg)
 {
 	(void) arg;
 
@@ -1761,7 +1624,7 @@ setmfact(Arg const *arg)
 }
 
 void
-setnmaster(Arg const *arg)
+setnmaster(union argument const *arg)
 {
 	(void) arg;
 
@@ -1773,9 +1636,9 @@ setnmaster(Arg const *arg)
 }
 
 void
-setpad(Arg const *arg)
+setpad(union argument const *arg)
 {
-	Client *newpad = NULL;
+	struct client *newpad = NULL;
 	(void) arg;
 
 	/* if pad has focus, unpad it */
@@ -1921,7 +1784,7 @@ setupsession(char const *sessionfile)
 {
 	unsigned int i, j, nwins;
 	Window p, r, *wins = NULL;
-	Client *c;
+	struct client *c;
 
 	/* check for an old session, otherwise setup initial workspace */
 	restoresession(sessionfile);
@@ -1981,10 +1844,10 @@ setupwsm(void)
 }
 
 void
-setws(Monitor *mon, int x, int y)
+setws(struct monitor *mon, int x, int y)
 {
-	Workspace *srcws, *dstws=NULL;
-	Monitor *othermon=NULL;
+	struct workspace *srcws, *dstws=NULL;
+	struct monitor *othermon=NULL;
 
 	/* get source and destination workspaces */
 	srcws = mon->selws;
@@ -1997,8 +1860,6 @@ setws(Monitor *mon, int x, int y)
 		srcws->dirty = dstws->dirty = true; /* for different screen sizes */
 		showws(othermon, srcws);
 		showws(mon, dstws);
-		updatebar(mon);
-		updatebar(othermon);
 		updatefocus();
 		return;
 	}
@@ -2018,12 +1879,11 @@ setws(Monitor *mon, int x, int y)
 		termws(srcws);
 	}
 
-	updatebar(mon);
 	updatefocus();
 }
 
 void
-shiftclient(Arg const *arg)
+shiftclient(union argument const *arg)
 {
 	unsigned int pos;
 	(void) arg;
@@ -2044,10 +1904,10 @@ shiftclient(Arg const *arg)
 }
 
 void
-shiftws(Arg const *arg)
+shiftws(union argument const *arg)
 {
-	Workspace *src=NULL, *dst=NULL;
-	Workspace *ref = wsm.active ? wsm.target : selmon->selws;
+	struct workspace *src=NULL, *dst=NULL;
+	struct workspace *ref = wsm.active ? wsm.target : selmon->selws;
 	int dx, dy;
 
 	reltoxy(&dx, &dy, ref, arg->i);
@@ -2069,7 +1929,7 @@ shiftws(Arg const *arg)
 }
 
 void
-showclient(Monitor *mon, Client *c)
+showclient(struct monitor *mon, struct client *c)
 {
 	if (mon) {
 		XMoveWindow(dpy, c->win, mon->x + c->x, mon->y + c->y);
@@ -2079,7 +1939,7 @@ showclient(Monitor *mon, Client *c)
 }
 
 void
-showws(Monitor *mon, Workspace *ws)
+showws(struct monitor *mon, struct workspace *ws)
 {
 	unsigned int i;
 
@@ -2113,7 +1973,7 @@ sigchld(int unused)
 }
 
 void
-spawn(Arg const *arg)
+spawn(union argument const *arg)
 {
 	pid_t pid = fork();
 	if (pid == 0) {
@@ -2150,7 +2010,7 @@ stdlog(FILE *f, char const *format, ...)
 }
 
 void
-stepfocus(Arg const *arg)
+stepfocus(union argument const *arg)
 {
 	unsigned int pos;
 
@@ -2170,18 +2030,17 @@ stepfocus(Arg const *arg)
 }
 
 void
-steplayout(Arg const *arg)
+steplayout(union argument const *arg)
 {
 	selmon->selws->ilayout = (selmon->selws->ilayout+nlayouts+arg->i)%nlayouts;
 	selmon->selws->mfact = MFACT;
-	updatebar(selmon);
 	arrange(selmon);
 }
 
 void
-stepmon(Arg const *arg)
+stepmon(union argument const *arg)
 {
-	Monitor *oldmon;
+	struct monitor *oldmon;
 	unsigned int pos;
 	(void) arg; /* TODO use arg->i */
 
@@ -2195,7 +2054,7 @@ stepmon(Arg const *arg)
 }
 
 void
-stepws(Arg const *arg)
+stepws(union argument const *arg)
 {
 	int x, y;
 	reltoxy(&x, &y, selmon->selws, arg->i);
@@ -2203,9 +2062,9 @@ stepws(Arg const *arg)
 }
 
 void
-stepwsmbox(Arg const *arg)
+stepwsmbox(union argument const *arg)
 {
-	Workspace *ws;
+	struct workspace *ws;
 
 	wsm.target->name[0] = 0;
 	reltoxy(&wsm.target->x, &wsm.target->y, wsm.target, arg->i);
@@ -2217,28 +2076,26 @@ stepwsmbox(Arg const *arg)
 }
 
 void
-termclient(Client *c)
+termclient(struct client *c)
 {
 	free(c);
 }
 
 void
-termlayout(Layout *l)
+termlayout(struct layout *l)
 {
 	XFreePixmap(dpy, l->icon_norm);
 	XFreePixmap(dpy, l->icon_sel);
 }
 
 void
-termmon(Monitor *mon)
+termmon(struct monitor *mon)
 {
-	XDestroyWindow(dpy, mon->bar.win);
-	XFreePixmap(dpy, mon->bar.pm);
 	free(mon);
 }
 
 void
-termws(Workspace *ws)
+termws(struct workspace *ws)
 {
 	if (ws->nc) {
 		warn("destroying non-empty workspace");
@@ -2248,7 +2105,7 @@ termws(Workspace *ws)
 }
 
 void
-termwsmbox(Workspace *ws)
+termwsmbox(struct workspace *ws)
 {
 	if (ws->wsmbox) {
 		XDestroyWindow(dpy, ws->wsmbox);
@@ -2261,9 +2118,9 @@ termwsmbox(Workspace *ws)
 }
 
 void
-togglefloat(Arg const *arg)
+togglefloat(union argument const *arg)
 {
-	Client *c;
+	struct client *c;
 	(void) arg;
 
 	if (!selmon->selws->nc) {
@@ -2274,7 +2131,7 @@ togglefloat(Arg const *arg)
 }
 
 void
-togglepad(Arg const *arg)
+togglepad(union argument const *arg)
 {
 	(void) arg;
 
@@ -2295,7 +2152,7 @@ togglepad(Arg const *arg)
 }
 
 void
-togglewsm(Arg const *arg)
+togglewsm(union argument const *arg)
 {
 	unsigned int i;
 	(void) arg;
@@ -2307,7 +2164,6 @@ togglewsm(Arg const *arg)
 			termwsmbox(workspaces[i]);
 		}
 		termwsmbox(wsm.target);
-		updatebar(selmon);
 		grabkeys();
 		setclientmask(selmon, true);
 		return;
@@ -2323,7 +2179,7 @@ togglewsm(Arg const *arg)
 	/* initial target is the current workspace (make a "0-step") */
 	wsm.target->x = selmon->selws->x;
 	wsm.target->y = selmon->selws->y;
-	stepwsmbox(&((Arg const) { .i = NoDirection }));
+	stepwsmbox(&((union argument const) { .i = NoDirection }));
 
 	/* grab input */
 	setclientmask(selmon, false);
@@ -2376,9 +2232,9 @@ unmapnotify(XEvent *e)
 {
 	debug("unmapnotify(%lu)", e->xunmap.window);
 
-	Client *c;
-	Workspace *ws;
-	Monitor *mon;
+	struct client *c;
+	struct workspace *ws;
+	struct monitor *mon;
 
 	if (pad && e->xunmap.window == pad->win) {
 		termclient(pad);
@@ -2406,40 +2262,7 @@ unmapnotify(XEvent *e)
 }
 
 void
-updatebar(Monitor *mon)
-{
-	Layout *layout = &layouts[mon->selws->ilayout];
-
-	if (mon->bx != mon->x || mon->by != mon->y || mon->bw != mon->w) {
-		mon->bx = mon->x;
-		mon->by = mon->y;
-		mon->bw = mon->w;
-		XMoveResizeWindow(dpy, mon->bar.win, mon->bx, mon->by, mon->bw,mon->bh);
-		XFreePixmap(dpy, mon->bar.pm);
-		mon->bar.pm = XCreatePixmap(dpy, root, mon->bw, mon->bh, dc.sd);
-	}
-	sprintf(mon->bar.buffer, "%s", mon->selws->name);
-
-	/* background */
-	XSetForeground(dpy, dc.gc, CBGNORM);
-	XFillRectangle(dpy, mon->bar.pm, dc.gc, 0, 0, mon->bw, mon->bh);
-
-	/* layout icon */
-	XCopyArea(dpy, mon == selmon ? layout->icon_sel : layout->icon_norm,
-			mon->bar.pm, dc.gc, 0, 0, layout->w, layout->h, 2, 0);
-
-	/* workspace name */
-	XSetForeground(dpy, dc.gc, mon == selmon ? CBORDERSEL : CNORM);
-	Xutf8DrawString(dpy, mon->bar.pm, dc.font.xfontset, dc.gc, layout->w+12,
-			dc.font.ascent+1, mon->bar.buffer, strlen(mon->bar.buffer));
-	XSync(dpy, false);
-
-	/* map to bar window */
-	renderbar(mon);
-}
-
-void
-updateclient(Client *c)
+updateclient(struct client *c)
 {
 	int di;
 	unsigned long dl;
@@ -2472,7 +2295,7 @@ updatefocus(void)
 {
 	unsigned int i, j;
 	bool sel;
-	Monitor *mon;
+	struct monitor *mon;
 
 	for (i = 0; i < nmon; i++) {
 		mon = monitors[i];
@@ -2518,7 +2341,7 @@ updategeom(void)
 {
 	int i, n;
 	XineramaScreenInfo *info;
-	Monitor *mon;
+	struct monitor *mon;
 
 	if (!XineramaIsActive(dpy)) {
 		while (nmon > 1) {
@@ -2558,23 +2381,22 @@ updategeom(void)
 }
 
 void
-updatemon(Monitor *mon, int x, int y, unsigned int w, unsigned int h)
+updatemon(struct monitor *mon, int x, int y, unsigned int w, unsigned int h)
 {
 	mon->x = x;
 	mon->y = y;
 	mon->w = w;
 	mon->h = h;
-	updatebar(mon);
 
 	mon->wx = 0;
-	mon->wy = mon->bh;
+	mon->wy = 0;
 	mon->ww = mon->w;
-	mon->wh = mon->h-mon->bh;
+	mon->wh = mon->h;
 	arrange(mon);
 }
 
 void
-updatename(Client *c)
+updatename(struct client *c)
 {
 	XTextProperty xtp;
 	int n;
@@ -2605,7 +2427,7 @@ updatename(Client *c)
 }
 
 void
-updatesizehints(Client *c)
+updatesizehints(struct client *c)
 {
 	long size;
 	XSizeHints hints;
@@ -2655,11 +2477,11 @@ updatesizehints(Client *c)
 }
 
 void
-updatetransient(Client *c)
+updatetransient(struct client *c)
 {
 	Window trans=0;
-	Workspace *ws;
-	Monitor *mon;
+	struct workspace *ws;
+	struct monitor *mon;
 
 	if (XGetTransientForHint(dpy, c->win, &trans) &&
 			locateclient(&ws, NULL, NULL, trans, NULL)) {
@@ -2692,7 +2514,7 @@ updatewsm(void)
 }
 
 void
-updatewsmbox(Workspace *ws)
+updatewsmbox(struct workspace *ws)
 {
 	int x, y, cx, cy;
 
@@ -2707,7 +2529,7 @@ updatewsmbox(Workspace *ws)
 }
 
 void
-updatewsmpixmap(Workspace *ws)
+updatewsmpixmap(struct workspace *ws)
 {
 	XSetForeground(dpy, dc.gc, ws == selmon->selws ? WSMCBGSEL
 			: ws == wsm.target ? WSMCBGTARGET : WSMCBGNORM);
@@ -2719,16 +2541,14 @@ updatewsmpixmap(Workspace *ws)
 }
 
 void
-viewmon(Monitor *mon)
+viewmon(struct monitor *mon)
 {
-	Monitor *oldmon = selmon;
+	struct monitor *oldmon = selmon;
 	selmon = mon;
-	updatebar(oldmon);
-	updatebar(selmon);
 }
 
 void
-viewws(Arg const *arg)
+viewws(union argument const *arg)
 {
 	(void) arg;
 
@@ -2761,10 +2581,10 @@ xerror(Display *dpy, XErrorEvent *ee)
 }
 
 void
-zoom(Arg const *arg)
+zoom(union argument const *arg)
 {
 	unsigned int pos;
-	Client *c;
+	struct client *c;
 	(void) arg;
 
 	if (selmon->selws->nc == 0) {
