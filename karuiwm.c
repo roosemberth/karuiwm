@@ -8,6 +8,7 @@
 #include <time.h>
 #include <locale.h>
 #include <signal.h>
+#include <errno.h>
 #include <sys/wait.h>
 #include <sys/select.h>
 #include <X11/Xlib.h>
@@ -2117,7 +2118,8 @@ spawn(Arg const *arg)
 	pid_t pid = fork();
 	if (pid == 0) {
 		execvp(((char const **)arg->v)[0], (char **)arg->v);
-		warn("execvp(%s) failed", ((char const **)arg->v)[0]);
+		warn("execvp(%s) failed: %s",
+		     ((char const **)arg->v)[0], strerror(errno));
 		_exit(EXIT_FAILURE);
 	} else if (pid < 0) {
 		warn("vfork() failed with code %d", pid);
