@@ -1,4 +1,5 @@
 #include "karuiwm.h"
+#include "client.h"
 #include <stdlib.h>
 
 /* karuiwm layout definitions */

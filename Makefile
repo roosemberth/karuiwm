@@ -15,7 +15,7 @@ CFLAGS += -Wcast-align -Wcast-qual -Wconversion -Wwrite-strings -Wfloat-equal
 CFLAGS += -Wlogical-op -Wpointer-arith -Wformat=2
 CFLAGS += -Winit-self -Wuninitialized -Wmaybe-uninitialized
 CFLAGS += -Wstrict-prototypes -Wmissing-declarations -Wmissing-prototypes
-CFLAGS += -Wpadded -Wshadow
+CFLAGS += -Wshadow #-Wpadded
 CFLAGS += -std=c99 -O2
 CFLAGS += $(shell pkg-config --cflags xinerama x11)
 LIBS  = $(shell pkg-config --libs xinerama x11)

@@ -3,7 +3,7 @@ void rstack(struct monitor *);
 void lfixed(struct monitor *);
 void chat(struct monitor *);
 
-long const icon_bstack[] = {
+int long unsigned const icon_bstack[] = {
 	17, 15,
 	0x00000,
 	0x00000,
@@ -22,7 +22,7 @@ long const icon_bstack[] = {
 	0x00000,
 };
 
-long const icon_rstack[] = {
+int long unsigned const icon_rstack[] = {
 	17, 15,
 	0x00000,
 	0x00000,
@@ -41,7 +41,7 @@ long const icon_rstack[] = {
 	0x00000,
 };
 
-long const icon_lfixed[] = {
+int long unsigned const icon_lfixed[] = {
 	17, 15,
 	0x00000,
 	0x00000,
@@ -60,7 +60,7 @@ long const icon_lfixed[] = {
 	0x00000,
 };
 
-long const icon_chat[] = {
+int long unsigned const icon_chat[] = {
 	17, 15,
 	0x00000,
 	0x00000,
@@ -81,10 +81,10 @@ long const icon_chat[] = {
 
 /* used layouts */
 struct layout layouts[] = {
-	{ icon_rstack, rstack },
-	{ icon_bstack, bstack },
-	{ icon_lfixed, lfixed },
-	{ NULL,        NULL },
-	{ icon_chat,   chat },
+	{ .icon_bitfield = icon_rstack, .func = rstack },
+	{ .icon_bitfield = icon_bstack, .func = bstack },
+	{ .icon_bitfield = icon_lfixed, .func = lfixed },
+	{ .icon_bitfield = NULL,        .func = NULL },
+	{ .icon_bitfield = icon_chat,   .func = chat },
 };
 

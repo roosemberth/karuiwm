@@ -46,25 +46,12 @@ static char const *dmenuargs[] = { "-l", "10", "-i",
                                    "-sf", "#AFD800", "-sb", "#444444", NULL };
 
 /* commands */
-static char const *termcmd[] = { "xterm", NULL };
-static char const *scrotcmd[] = { "scrot", NULL };
-static char const *lockcmd[] = { "slock", NULL };
+static char const *termcmd[] = { "urxvtc", NULL };
+static char const *scrotcmd[] = { "prtscr", NULL };
+static char const *lockcmd[] = { "scrock", NULL };
 static char const *volupcmd[] = { "amixer", "set", "Master", "2+", "unmute", NULL };
 static char const *voldowncmd[] = { "amixer", "set", "Master", "2-", "unmute", NULL };
 static char const *volmutecmd[] = { "amixer", "set", "Master", "toggle", NULL };
-
-/* custom behaviour */
-static void
-custom_startup()
-{
-	/* place code here */
-}
-
-static void
-custom_shutdown()
-{
-	/* place code here */
-}
 
 #define MODKEY Mod1Mask
 
@@ -73,7 +60,7 @@ static struct key const keys[] = {
 	/* applications */
 	{ MODKEY,                       XK_n,       spawn,            { .v=termcmd } },
 	{ MODKEY,                       XK_p,       dmenu,            { .i=DMenuSpawn } },
-	{ 0,                            XK_Print,   spawn,            { .v=scrotcmd } },
+	{ MODKEY,                       XK_Print,   spawn,            { .v=scrotcmd } },
 
 	/* hardware */
 	{ 0,                            0x1008FF11, spawn,            { .v=voldowncmd } },
@@ -122,14 +109,14 @@ static struct key const keys[] = {
 
 	/* session */
 	{ MODKEY,                       XK_z,       spawn,            { .v=lockcmd } },
-	{ MODKEY,                       XK_q,       restart,          { 0 } },
-	{ MODKEY|ShiftMask,             XK_q,       quit,             { 0 } },
+	{ MODKEY|ShiftMask,             XK_q,       restart,          { 0 } },
+	{ MODKEY|ControlMask|ShiftMask, XK_q,       quit,             { 0 } },
 };
 
 /* WSM keys */
 static struct key const wsmkeys[] = {
 	/* applications */
-	{ 0,                            XK_Print,   spawn,            { .v=scrotcmd } },
+	{ MODKEY,                       XK_Print,   spawn,            { .v=scrotcmd } },
 
 	/* hardware */
 	{ 0,                            0x1008FF11, spawn,            { .v=voldowncmd } },
