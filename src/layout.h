@@ -1,3 +1,6 @@
+#ifndef _LAYOUT_H
+#define _LAYOUT_H
+
 void bstack(struct monitor *);
 void rstack(struct monitor *);
 void lfixed(struct monitor *);
@@ -88,3 +91,4 @@ struct layout layouts[] = {
 	{ .icon_bitfield = icon_chat,   .func = chat },
 };
 
+#endif /* _LAYOUT_H */

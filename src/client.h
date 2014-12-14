@@ -1,7 +1,10 @@
 #ifndef _CLIENT_H
 #define _CLIENT_H
 
+#include "karuiwm.h"
+#include "monitor.h"
 #include <X11/Xlib.h>
+#include <stdbool.h>
 
 struct client {
 	int x, y;

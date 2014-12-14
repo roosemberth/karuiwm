@@ -1,5 +1,6 @@
 #include "karuiwm.h"
 #include "client.h"
+#include "monitor.h"
 #include <stdlib.h>
 
 /* karuiwm layout definitions */

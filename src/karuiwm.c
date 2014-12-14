@@ -1,5 +1,7 @@
 #include "karuiwm.h"
 #include "client.h"
+#include "workspace.h"
+#include "monitor.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,7 +40,6 @@ enum DMenuState { DMenuInactive, DMenuSpawn, DMenuRename, DMenuView, DMenuSend,
 		DMenuSendFollow, DMenuClients, DMenuLAST };
 
 /* functions */
-static void arrange(struct monitor *);
 static void attachclient(struct workspace *, struct client *);
 static void attachws(struct workspace *);
 static void buttonpress(XEvent *);
@@ -58,24 +59,18 @@ static void focusin(XEvent *);
 static void grabkeys(void);
 static struct monitor *initmon(void);
 static Pixmap initpixmap(long const *, long const, long const);
-static struct workspace *initws(int, int);
-static void initwsmbox(struct workspace *);
 static void keypress(XEvent *);
 static void keyrelease(XEvent *);
 static void killclient(union argument const *);
 static bool locateclient(struct workspace **, struct client **, unsigned int *, Window const, char const *);
 static bool locatemon(struct monitor **, unsigned int *, struct workspace const *);
 static struct monitor *locaterect(int, int, int, int);
-static bool locatews(struct workspace **, unsigned int *, int, int, char const *);
 static void mappingnotify(XEvent *);
 static void maprequest(XEvent *);
 static void movemouse(union argument const *);
-static void pop(struct workspace *, struct client *);
 static void propertynotify(XEvent *);
-static void push(struct workspace *, struct client *);
 static void quit(union argument const *);
 static void reltoxy(int *, int *, struct workspace *, int);
-static void renamews(struct workspace *, char const *);
 static void renderwsmbox(struct workspace *);
 static void resizeclient(struct client *, int unsigned, int unsigned);
 static void resizemouse(union argument const *);
@@ -90,7 +85,6 @@ static void setfloating(struct client *, bool);
 static void setfullscreen(struct client *, bool);
 static void setmfact(union argument const *);
 static void setnmaster(union argument const *);
-static void setpad(union argument const *);
 static void setup(char const *sessionfile);
 static void setupatoms(void);
 static void setupfont(void);
@@ -115,7 +109,6 @@ static void termmon(struct monitor *);
 static void termws(struct workspace *);
 static void termwsmbox(struct workspace *);
 static void togglefloat(union argument const *);
-static void togglepad(union argument const *);
 static void togglewsm(union argument const *);
 static size_t unifyscreens(XineramaScreenInfo **, size_t);
 static void unmapnotify(XEvent *);
@@ -161,13 +154,148 @@ static unsigned int nws, nmon;                /* # of workspaces/monitors */
 static int dmenu_out;                         /* dmenu output file descriptor */
 static enum DMenuState dmenu_state;           /* dmenu state */
 static int nlayouts;                          /* number of cyclable layouts */
-static struct client *pad;                           /* scratchpad window */
-static struct monitor *pad_mon;                      /* monitor with scratchpad */
 static enum log_level log_level;
 
 /* configuration */
 #include "layout.h"
-#include "config.h"
+
+/* karuiwm configuration */
+
+#define FONTSTR "-misc-fixed-medium-r-semicondensed--13-100-100-100-c-60-iso8859-1"
+#define BORDERWIDTH 1    /* window border width */
+#define WSMBOXWIDTH 90   /* WSM box width */
+#define WSMBOXHEIGHT 60  /* WSM box height */
+#define WSMBORDERWIDTH 2 /* WSM box border width */
+#define SESSIONFILE "/tmp/"APPNAME /* file for saving session when restarting */
+
+/* colours */
+#define CBORDERNORM      0x222222   /* normal windows */
+#define CBORDERSEL       0xAFD700   /* selected windows */
+
+#define CNORM            0x888888   /* status bar */
+#define CBGNORM          0x222222
+
+#define CSEL             0xCCCCCC
+#define CBGSEL           0x444444
+
+#define WSMCNORM         CNORM      /* WSM box of normal workspaces */
+#define WSMCBGNORM       CBGNORM
+#define WSMCBORDERNORM   CBGSEL
+
+#define WSMCSEL          CSEL       /* WSM box of current workspace */
+#define WSMCBGSEL        CBGSEL
+#define WSMCBORDERSEL    CSEL
+
+#define WSMCTARGET       CBORDERSEL /* WSM box of selected workspace */
+#define WSMCBGTARGET     CBGSEL
+#define WSMCBORDERTARGET CBORDERSEL
+
+/* dmenu */
+static char const *dmenuprompt[DMenuLAST] = {
+	[DMenuRename]     = "rename",
+	[DMenuSend]       = "send",
+	[DMenuSendFollow] = "follow",
+	[DMenuSpawn]      = "spawn",
+	[DMenuView]       = "workspace",
+	[DMenuClients]    = "client",
+};
+static char const *dmenuargs[] = { "-l", "10", "-i",
+                                   "-nf", "#888888", "-nb", "#222222",
+                                   "-sf", "#AFD800", "-sb", "#444444", NULL };
+
+/* commands */
+static char const *termcmd[] = { "urxvtc", NULL };
+static char const *scrotcmd[] = { "prtscr", NULL };
+static char const *lockcmd[] = { "scrock", NULL };
+static char const *volupcmd[] = { "amixer", "set", "Master", "2+", "unmute", NULL };
+static char const *voldowncmd[] = { "amixer", "set", "Master", "2-", "unmute", NULL };
+static char const *volmutecmd[] = { "amixer", "set", "Master", "toggle", NULL };
+
+#define MODKEY Mod1Mask
+
+/* normal keys */
+static struct key const keys[] = {
+	/* applications */
+	{ MODKEY,                       XK_n,       spawn,            { .v=termcmd } },
+	{ MODKEY,                       XK_p,       dmenu,            { .i=DMenuSpawn } },
+	{ MODKEY,                       XK_Print,   spawn,            { .v=scrotcmd } },
+
+	/* hardware */
+	{ 0,                            0x1008FF11, spawn,            { .v=voldowncmd } },
+	{ 0,                            0x1008FF12, spawn,            { .v=volmutecmd } },
+	{ 0,                            0x1008FF13, spawn,            { .v=volupcmd } },
+
+	/* windows */
+	{ MODKEY,                       XK_j,       stepfocus,        { .i=+1 } },
+	{ MODKEY,                       XK_k,       stepfocus,        { .i=-1 } },
+	{ MODKEY,                       XK_l,       setmfact,         { .f=+0.02 } },
+	{ MODKEY,                       XK_h,       setmfact,         { .f=-0.02 } },
+	{ MODKEY,                       XK_t,       togglefloat,      { 0 } },
+	{ MODKEY|ShiftMask,             XK_c,       killclient,       { 0 } },
+	{ MODKEY,                       XK_u,       dmenu,            { .i=DMenuClients } },
+
+	/* layout */
+	{ MODKEY|ShiftMask,             XK_j,       shiftclient,      { .i=+1 } },
+	{ MODKEY|ShiftMask,             XK_k,       shiftclient,      { .i=-1 } },
+	{ MODKEY,                       XK_comma,   setnmaster,       { .i=+1 } },
+	{ MODKEY,                       XK_period,  setnmaster,       { .i=-1 } },
+	{ MODKEY,                       XK_Return,  zoom,             { 0 } },
+	{ MODKEY,                       XK_space,   steplayout,       { .i=+1 } },
+	{ MODKEY|ShiftMask,             XK_space,   steplayout,       { .i=-1 } },
+
+	/* workspaces */
+	{ MODKEY|ControlMask,           XK_h,       stepws,           { .i=Left } },
+	{ MODKEY|ControlMask,           XK_l,       stepws,           { .i=Right } },
+	{ MODKEY|ControlMask,           XK_j,       stepws,           { .i=Down } },
+	{ MODKEY|ControlMask,           XK_k,       stepws,           { .i=Up } },
+	{ MODKEY|ControlMask|ShiftMask, XK_h,       sendfollowclient, { .i=Left } },
+	{ MODKEY|ControlMask|ShiftMask, XK_l,       sendfollowclient, { .i=Right } },
+	{ MODKEY|ControlMask|ShiftMask, XK_j,       sendfollowclient, { .i=Down } },
+	{ MODKEY|ControlMask|ShiftMask, XK_k,       sendfollowclient, { .i=Up } },
+	{ MODKEY,                       XK_o,       togglewsm,        { 0 } },
+	{ MODKEY,                       XK_i,       dmenu,            { .i=DMenuView } },
+	{ MODKEY|ShiftMask,             XK_i,       dmenu,            { .i=DMenuSend } },
+	{ MODKEY|ShiftMask|ControlMask, XK_i,       dmenu,            { .i=DMenuSendFollow } },
+	{ MODKEY,                       XK_r,       dmenu,            { .i=DMenuRename } },
+
+	/* monitors */
+	{ MODKEY,                       XK_m,       stepmon,          { 0 } },
+
+	/* session */
+	{ MODKEY,                       XK_z,       spawn,            { .v=lockcmd } },
+	{ MODKEY|ShiftMask,             XK_q,       restart,          { 0 } },
+	{ MODKEY|ControlMask|ShiftMask, XK_q,       quit,             { 0 } },
+};
+
+/* WSM keys */
+static struct key const wsmkeys[] = {
+	/* applications */
+	{ MODKEY,                       XK_Print,   spawn,            { .v=scrotcmd } },
+
+	/* hardware */
+	{ 0,                            0x1008FF11, spawn,            { .v=voldowncmd } },
+	{ 0,                            0x1008FF12, spawn,            { .v=volmutecmd } },
+	{ 0,                            0x1008FF13, spawn,            { .v=volupcmd } },
+
+	/* workspaces */
+	{ MODKEY,                       XK_h,       stepwsmbox,       { .i=Left } },
+	{ MODKEY,                       XK_l,       stepwsmbox,       { .i=Right } },
+	{ MODKEY,                       XK_j,       stepwsmbox,       { .i=Down } },
+	{ MODKEY,                       XK_k,       stepwsmbox,       { .i=Up } },
+	{ MODKEY|ShiftMask,             XK_h,       shiftws,          { .i=Left } },
+	{ MODKEY|ShiftMask,             XK_l,       shiftws,          { .i=Right } },
+	{ MODKEY|ShiftMask,             XK_j,       shiftws,          { .i=Down } },
+	{ MODKEY|ShiftMask,             XK_k,       shiftws,          { .i=Up } },
+	{ 0,                            XK_Escape,  togglewsm,        { 0 } },
+	{ 0,                            XK_Return,  viewws,           { 0 } },
+};
+
+/* mouse buttons */
+static struct button const buttons[] = {
+	{ MODKEY,                       Button1,    movemouse,        { 0 } },
+	{ MODKEY,                       Button3,    resizemouse,      { 0 } },
+};
+
 
 /* function implementation */
 
@@ -216,8 +344,8 @@ attachclient(struct workspace *ws, struct client *c)
 	}
 	ws->clients[pos] = c;
 
-	/* add to stack */
-	push(ws, c);
+	/* update focus */
+	ws->selcli = c;
 
 	/* update layout if on a selected workspace */
 	if (!c->floating) {
@@ -272,7 +400,8 @@ buttonpress(XEvent *e)
 	if (mon != selmon) {
 		viewmon(mon);
 	}
-	push(ws, c);
+	/* update focus */
+	ws->selcli = c;
 	updatefocus();
 
 	for (i = 0; i < LENGTH(buttons); i++) {
@@ -338,12 +467,6 @@ cleanup(char **savefile)
 	/* disable WSM */
 	if (wsm.active) {
 		togglewsm(NULL);
-	}
-
-	/* remove scratchpad */
-	if (pad) {
-		free(pad);
-		pad = NULL;
 	}
 
 	/* make monitors point nowhere (so all workspaces are removed) */
@@ -444,8 +567,7 @@ configurerequest(XEvent *e)
 	XConfigureRequestEvent *ev = &e->xconfigurerequest;
 
 	/* forward configuration if not managed (or if we don't force the size) */
-	if ((pad && ev->window == pad->win) ||
-			!locateclient(NULL, &c, NULL, ev->window, NULL) || c->fullscreen ||
+	if (!locateclient(NULL, &c, NULL, ev->window, NULL) || c->fullscreen ||
 			c->floating) {
 		wc = (XWindowChanges) {
 			.x = ev->x,
@@ -489,8 +611,8 @@ detachclient(struct client *c)
 		return;
 	}
 
-	/* remove from stack */
-	pop(ws, c);
+	/* update focus */
+	ws->selcli = ws->nc > 0 ? ws->clients[0] : NULL;
 
 	/* remove from list */
 	ws->nc--;
@@ -646,10 +768,10 @@ dmenueval(void)
 			if (ws != selmon->selws) {
 				setws(selmon, ws->x, ws->y);
 			}
-			push(ws, c);
+			ws->selcli = c;
 			updatefocus();
 		} else if (dmenu_state == DMenuRename) {
-			renamews(selmon->selws, buf);
+			workspace_rename(selmon->selws, buf);
 			detachws(selmon->selws);
 			attachws(selmon->selws);
 		} else if (locatews(&ws, NULL, 0, 0, buf)) {
@@ -686,19 +808,15 @@ enternotify(XEvent *e)
 	struct monitor *mon;
 	struct client *c;
 
-	if (pad && e->xcrossing.window == pad->win) {
-		viewmon(pad_mon);
-	} else {
-		if (!locateclient(&ws, &c, &pos, e->xcrossing.window, NULL)) {
-			WARN("attempt to enter unhandled/invisible window %d",
-			     e->xcrossing.window);
-			return;
-		}
-		if (locatemon(&mon, NULL, ws) && mon != selmon) {
-			viewmon(mon);
-		}
-		push(selmon->selws, c);
+	if (!locateclient(&ws, &c, &pos, e->xcrossing.window, NULL)) {
+		WARN("attempt to enter unhandled/invisible window %d",
+		     e->xcrossing.window);
+		return;
 	}
+	if (locatemon(&mon, NULL, ws) && mon != selmon) {
+		viewmon(mon);
+	}
+	selmon->selws->selcli = c;
 	updatefocus();
 }
 
@@ -842,7 +960,7 @@ initmon(void)
 	/* assign workspace */
 	for (wsx = 0;; wsx++) {
 		if (!locatews(&ws, NULL, wsx, 0, NULL)) {
-			mon->selws = initws(wsx, 0);
+			mon->selws = workspace_init(wsx, 0);
 			attachws(mon->selws);
 			break;
 		} else if (!locatemon(NULL, NULL, ws)) {
@@ -851,37 +969,6 @@ initmon(void)
 		}
 	}
 	return mon;
-}
-
-struct workspace *
-initws(int x, int y)
-{
-	struct workspace *ws;
-
-	if (locatews(&ws, NULL, x, y, NULL)) {
-		return ws;
-	}
-	ws = malloc(sizeof(struct workspace));
-	if (!ws) {
-		FATAL("could not allocate %zu bytes for workspace",
-		      sizeof(struct workspace));
-		exit(EXIT_FAILURE);
-	}
-	ws->clients = ws->stack = NULL;
-	ws->nc = ws->ns = 0;
-	ws->x = x;
-	ws->y = y;
-	ws->mfact = MFACT;
-	ws->nmaster = NMASTER;
-	ws->ilayout = 0;
-	ws->dirty = false;
-	renamews(ws, NULL);
-	if (wsm.active) {
-		initwsmbox(ws);
-	} else {
-		ws->wsmbox = ws->wsmpm = 0;
-	}
-	return ws;
 }
 
 void
@@ -1156,34 +1243,6 @@ moveresizeclient(struct monitor *mon, struct client *c, int x, int y, int unsign
 }
 
 void
-pop(struct workspace *ws, struct client *c)
-{
-	unsigned int i;
-
-	if (!c) {
-		WARN("attempt to pop NULL client");
-		return;
-	}
-
-	for (i = 0; i < ws->ns; i++) {
-		if (ws->stack[i] == c) {
-			ws->ns--;
-			for (; i < ws->ns; i++) {
-				ws->stack[i] = ws->stack[i+1];
-			}
-			ws->stack = realloc(ws->stack, ws->ns*sizeof(struct client *));
-			if (ws->ns && !ws->stack) {
-				FATAL("could not allocate %zu bytes for stack",
-				      ws->ns*sizeof(struct client*));
-				exit(EXIT_FAILURE);
-			}
-			break;
-		}
-	}
-	ws->selcli = ws->ns ? ws->stack[ws->ns-1] : NULL;
-}
-
-void
 print(FILE *f, enum log_level level, char const *format, ...)
 {
 	va_list args;
@@ -1252,23 +1311,6 @@ propertynotify(XEvent *e)
 }
 
 void
-push(struct workspace *ws, struct client *c)
-{
-	if (!c) {
-		WARN("attempt to push NULL client");
-		return;
-	}
-	pop(ws, c);
-	ws->stack = realloc(ws->stack, ++ws->ns*sizeof(struct client *));
-	if (!ws->stack) {
-		FATAL("could not allocate %zu bytes for stack",
-		      ws->ns*sizeof(struct client *));
-		exit(EXIT_FAILURE);
-	}
-	ws->selcli = ws->stack[ws->ns-1] = c;
-}
-
-void
 quit(union argument const *arg)
 {
 	(void) arg;
@@ -1287,23 +1329,6 @@ reltoxy(int *x, int *y, struct workspace *ws, int direction)
 	case Right: if (x) (*x)++; break;
 	case Up:    if (y) (*y)--; break;
 	case Down:  if (y) (*y)++; break;
-	}
-}
-
-void
-renamews(struct workspace *ws, char const *name)
-{
-	if (name == NULL || strlen(name) == 0) {
-		sprintf(ws->name, "*%p", (void *) ws);
-		return;
-	}
-	if (name[0] != '*' && !locatews(NULL, NULL, 0, 0, name)) {
-		strncpy(ws->name, name, 256);
-	}
-	if (strcmp(name, "chat") == 0) { /* TODO rules list */
-		/* TODO layout pointer instead of index */
-		ws->ilayout = 4;
-		arrange(selmon);
 	}
 }
 
@@ -1406,10 +1431,10 @@ restoresession(char const *sessionfile)
 	fscanf(f, "%u\n", &_nws);
 	for (i = 0; i < _nws; i++) {
 		fscanf(f, "%d:%d:", &x, &y);
-		ws=initws(x, y);
+		ws = workspace_init(x, y);
 		fscanf(f, "%u:%u:%f:%d:%s\n", &ws->nmaster, &_nc, &ws->mfact,
 				&ws->ilayout, name);
-		renamews(ws, name);
+		workspace_rename(ws, name);
 		attachws(ws);
 		for (j = 0; j < _nc; j++) {
 			fscanf(f, "  %lu:", &win);
@@ -1624,37 +1649,6 @@ setnmaster(union argument const *arg)
 }
 
 void
-setpad(union argument const *arg)
-{
-	struct client *newpad = NULL;
-	(void) arg;
-
-	/* if pad has focus, unpad it */
-	if (pad_mon == selmon) {
-		attachclient(selmon->selws, pad);
-		pad = NULL;
-		pad_mon = NULL;
-		arrange(selmon);
-		updatefocus();
-		return;
-	}
-
-	/* pad does not have focus; check if anything has focus */
-	if (!selmon->selws->nc)
-		return;
-
-	/* set current focus as pad, remove old pad if necessary */
-	newpad = selmon->selws->selcli;
-	detachclient(newpad);
-	if (pad) {
-		attachclient(selmon->selws, pad);
-	}
-	pad = newpad;
-	arrange(selmon);
-	togglepad(NULL);
-}
-
-void
 setup(char const *sessionfile)
 {
 	XSetWindowAttributes wa;
@@ -1692,8 +1686,6 @@ setup(char const *sessionfile)
 	setuplayouts();
 	setupfont();
 	setupwsm();
-	pad = NULL;
-	pad_mon = NULL;
 	dmenu_state = DMenuInactive;
 
 	/* session */
@@ -1779,7 +1771,7 @@ setupsession(char const *sessionfile)
 	/* check for an old session, otherwise setup initial workspace */
 	restoresession(sessionfile);
 	if (!workspaces) {
-		attachws(initws(0, 0));
+		attachws(workspace_init(0, 0));
 	}
 
 	/* scan existing windows */
@@ -1829,7 +1821,7 @@ setupwsm(void)
 	wsm.wa.event_mask = ExposureMask;
 
 	/* dummy workspace for target box */
-	wsm.target = initws(0, 0);
+	wsm.target = workspace_init(0, 0);
 	wsm.target->name[0] = 0;
 }
 
@@ -1856,7 +1848,7 @@ setws(struct monitor *mon, int x, int y)
 
 	/* destination workspace */
 	if (!dstws) {
-		dstws = initws(x, y);
+		dstws = workspace_init(x, y);
 		attachws(dstws);
 	}
 	showws(mon, dstws);
@@ -1878,7 +1870,7 @@ shiftclient(union argument const *arg)
 	unsigned int pos;
 	(void) arg;
 
-	if (selmon->selws->ns < 2) {
+	if (selmon->selws->nc < 2) {
 		return;
 	}
 	if (!locateclient(NULL, NULL, &pos, selmon->selws->selcli->win, NULL)) {
@@ -1990,8 +1982,8 @@ stepfocus(union argument const *arg)
 		WARN("attempt to step from non-existing client");
 		return;
 	}
-	push(selmon->selws, selmon->selws->clients[
-			(pos+selmon->selws->nc+arg->i)%selmon->selws->nc]);
+	selmon->selws->selcli = selmon->selws->clients[
+	                        (pos+selmon->selws->nc+arg->i)%selmon->selws->nc];
 	updatefocus();
 	if (selmon->selws->selcli->floating) {
 		XRaiseWindow(kwm.dpy, selmon->selws->selcli->win);
@@ -2002,7 +1994,7 @@ void
 steplayout(union argument const *arg)
 {
 	selmon->selws->ilayout = (selmon->selws->ilayout+nlayouts+arg->i)%nlayouts;
-	selmon->selws->mfact = MFACT;
+	selmon->selws->mfact = 0.5;
 	arrange(selmon);
 }
 
@@ -2100,27 +2092,6 @@ togglefloat(union argument const *arg)
 }
 
 void
-togglepad(union argument const *arg)
-{
-	(void) arg;
-
-	if (!pad)
-		return;
-	setclientmask(selmon, false);
-	if (pad_mon == selmon) {
-		showclient(NULL, pad);
-		pad_mon = NULL;
-	} else {
-		pad_mon = selmon;
-		moveresizeclient(pad_mon, pad,
-				pad_mon->wx + PADMARGIN, pad_mon->wy + PADMARGIN,
-				pad_mon->ww - 2*PADMARGIN, pad_mon->wh - 2*PADMARGIN);
-	}
-	updatefocus();
-	setclientmask(selmon, true);
-}
-
-void
 togglewsm(union argument const *arg)
 {
 	unsigned int i;
@@ -2206,17 +2177,6 @@ unmapnotify(XEvent *e)
 	struct workspace *ws;
 	struct monitor *mon;
 
-	if (pad && e->xunmap.window == pad->win) {
-		termclient(pad);
-		if (pad_mon) {
-			pad_mon = NULL;
-			updatefocus();
-		}
-		pad_mon = NULL;
-		pad = NULL;
-		return;
-	}
-
 	if (!locateclient(&ws, &c, NULL, e->xunmap.window, NULL)) {
 		return;
 	}
@@ -2261,48 +2221,39 @@ updateclient(struct client *c)
 }
 
 void
+updateworkspacefocus(struct monitor *mon)
+{
+	int unsigned i;
+	bool sel = mon == selmon;
+	struct workspace *ws = mon->selws;
+	struct client *c;
+
+	if (ws->nc == 0 && sel) {
+		XSetInputFocus(kwm.dpy, root, RevertToPointerRoot, CurrentTime);
+		return;
+	}
+
+	for (i = 0; i < ws->nc; ++i) {
+		c = ws->clients[i];
+		if (sel && ws->selcli == c) {
+			XSetWindowBorder(kwm.dpy, c->win, CBORDERSEL);
+			XSetInputFocus(kwm.dpy, root, RevertToPointerRoot, CurrentTime);
+			grabbuttons(c, true);
+		} else {
+			XSetWindowBorder(kwm.dpy, c->win, CBORDERNORM);
+			grabbuttons(c, false);
+		}
+	}
+}
+
+void
 updatefocus(void)
 {
 	unsigned int i, j;
 	bool sel;
-	struct monitor *mon;
 
 	for (i = 0; i < nmon; i++) {
-		mon = monitors[i];
-		sel = mon == selmon && pad_mon != selmon;
-
-		/* empty monitor: don't focus anything */
-		if (!mon->selws->ns) {
-			if (sel) {
-				XSetInputFocus(kwm.dpy, root, RevertToPointerRoot, CurrentTime);
-			}
-			continue;
-		}
-
-		/* draw borders and restack */
-		for (j = 0; j < (sel ? mon->selws->ns-1 : mon->selws->ns); j++) {
-			XSetWindowBorder(kwm.dpy, mon->selws->stack[j]->win, CBORDERNORM);
-			grabbuttons(mon->selws->stack[j], false);
-		}
-		if (sel) {
-			XSetWindowBorder(kwm.dpy, mon->selws->selcli->win, CBORDERSEL);
-			XSetInputFocus(kwm.dpy, mon->selws->selcli->win, RevertToPointerRoot,
-					CurrentTime);
-			grabbuttons(mon->selws->stack[j], true);
-		}
-	}
-
-	/* focus scratchpad if existent and visible */
-	if (pad) {
-		if (pad_mon == selmon) {
-			XSetInputFocus(kwm.dpy, pad->win, RevertToPointerRoot, CurrentTime);
-			XSetWindowBorder(kwm.dpy, pad->win, CBORDERSEL);
-			XRaiseWindow(kwm.dpy, pad->win);
-			grabbuttons(pad, true);
-		} else {
-			XSetWindowBorder(kwm.dpy, pad->win, CBORDERNORM);
-			grabbuttons(pad, false);
-		}
+		updateworkspacefocus(monitors[i]);
 	}
 }
 
@@ -2491,7 +2442,7 @@ zoom(union argument const *arg)
 		if (selmon->selws->nc > 1) {
 			selmon->selws->clients[0] = selmon->selws->clients[1];
 			selmon->selws->clients[1] = c;
-			push(selmon->selws, selmon->selws->clients[0]);
+			selmon->selws->selcli = selmon->selws->clients[0];
 			updatefocus();
 		} else {
 			return;
