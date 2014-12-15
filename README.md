@@ -1,10 +1,10 @@
 karuiwm
 =======
 
-karuiwm is a lightweight, dynamically tiling window manager for X.
+karuiwm is an attempt to write a lightweight, dynamically tiling window manager
+for X.
 
-It is based on [dwm](http://dwm.suckless.org/) and inspired by
-[xmonad](http://xmonad.org/).
+It is currently under heavy development and rather unusable.
 
 
 build
@@ -12,7 +12,7 @@ build
 
 karuiwm requires Xlib and Xinerama to be installed on the system.
 
-This will create the binary <code>karuiwm</code>:
+This will create the binary `karuiwm`:
 
 	make
 
@@ -20,35 +20,23 @@ This will create the binary <code>karuiwm</code>:
 install
 -------
 
-karuiwm requires dmenu to run correctly. If dmenu is missing, the behaviour is
-unspecified yet; probably it will freeze the moment there is an interaction with
-dmenu.
+karuiwm requires dmenu to run correctly.
 
 Running the following command as root will install karuiwm to
-<code>/usr/local/bin</code> by default:
+`/usr/local/bin` by default:
 
 	make install
 
 Modify the Makefile to change the installation directory.
 
 
-uninstall
----------
-
-	make uninstall
-
-as root will remove karuiwm from your system. Alternatively, you may simply
-delete the <code>karuiwm</code> binary from <code>/usr/local/bin</code> (or
-where ever you installed it to).
-
-
 run
 ---
 
-Follow the standard procedure for launching a WM; add an <code>.xinitrc</code>
-to your home directory, then launch <code>xinit</code>.
+Follow the standard procedure for launching a WM: add an `.xinitrc`
+to your home directory, then launch `xinit`.
 
-Here is an example <code>.xinitrc</code>:
+Here is an example `.xinitrc`:
 
 	#!/bin/sh
 	# xinitrc to launch karuiwm
@@ -59,185 +47,81 @@ Here is an example <code>.xinitrc</code>:
 	# launch karuiwm:
 	exec karuiwm
 
-You may add other actions to <code>.xinitrc</code>, but make sure that
-<code>exec karuiwm</code> comes at last (since everything after that won't get
-executed).
-
-
-configure
----------
-
-<code>config.h</code> holds the configuration of karuiwm and gets included by
-<code>karuiwm.c</code> upon compilation.
-
-<code>config.def.h</code> holds the default configuration of karuiwm. When
-running <code>make</code>, this file will be used to generate a
-<code>config.h</code> if that one doesn't exist yet. This protects your
-configuration from being overwritten by the default upon checking out the git
-repository.
-
-These are the default settings defined by the <code>keys</code> array;
-<code>Mod</code> is set to the Mod1 (<code>Alt</code>) key:
+These are currently the key bindings and settings for karuiwm (`Mod` is set to
+`Alt`). Since the project is currently at an early development stage, this is
+hardcoded and can only be changed by modifying the source code directly:
 
 **Applications**
 
-* <code>Mod</code>+<code>n</code>
-  launch xterm
-* <code>Mod</code>+<code>p</code>
-  launch dmenu\_run
-* <code>PrtSc</code>
-  launch scrot (screenshot)
+* `Mod`+`n`: launch urxvt
+* `Mod`+`p`: launch dmenu\_run
+* `Mod`+`PrtSc`: launch the
+  [`prtscr`](https://github.com/ayekat/dotfiles/blob/master/.local/bin/prtscr)
+  script to take a screenshot
 
 **Hardware**
 
-* <code>VolUp</code>|<code>VolDown</code>
+* `VolUp`|`VolDown`
   increase/decrease ALSA's Master sound level by 2%
-* <code>VolMute</code>
+* `VolMute`
   toggle ALSA's Master sound (mute/unmute)
 
 **Clients**
 
-* <code>Mod</code>+<code>j</code>|<code>k</code>
+* `Mod`+`j`|`k`
   set focus to next/previous client
-* <code>Mod</code>+<code>t</code>
+* `Mod`+`t`
   toggle floating for selected client
-* <code>Mod</code>+<code>Shift</code>+<code>c</code>
+* `Mod`+`Shift`+`c`
   close selected client
-* <code>Mod</code>+<code>u</code>
+* `Mod`+`u`
   select client by name
 
-**Layout** (see appendix A)
+**Layouts**
 
-* <code>Mod</code>+<code>l</code>|<code>h</code>
+* `Mod`+`l`|`h`
   increase/decrease master area size
-* <code>Mod</code>+<code>Shift</code>+<code>j</code>|<code>k</code>
+* `Mod`+`Shift`+`j`|`k`
   swap client with next/previous client in the layout
-* <code>Mod</code>+<code>,</code>|<code>.</code>
+* `Mod`+`,`|`.`
   increase/decrease number of clients in the master area
-* <code>Mod</code>(+<code>Shift</code>)+<code>Space</code>
+* `Mod`(+`Shift`)+`Space`
   select next (previous) layout
-* <code>Mod</code>+<code>Return</code>
+* `Mod`+`Return`
   move selected client to master area
 
-**Workspaces** (see appendix B)
+**Workspaces**
 
-* <code>Mod</code>+<code>Ctrl</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
+* `Mod`+`Ctrl`+`h`|`j`|`k`|`l`
   set view to left/below/above/right workspace
-* <code>Mod</code>+<code>Ctrl</code>+<code>Shift</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
+* `Mod`+`Ctrl`+`Shift`+`h`|`j`|`k`|`l`
   move and follow client to left/below/above/right workspace
-* <code>Mod</code>+<code>i</code>
+* `Mod`+`i`
   switch to a workspace by name
-* <code>Mod</code>+<code>Shift</code>+<code>i</code>
+* `Mod`+`Shift`+`i`
   send selected client to a workspace by name
-* <code>Mod</code>+<code>Shift</code>+<code>Ctrl</code>+<code>i</code>
+* `Mod`+`Shift`+`Ctrl`+`i`
   send and follow selected client to a workspace by name
-* <code>Mod</code>+<code>r</code>
+* `Mod`+`r`
   rename current workspace
-* <code>Mod</code>+<code>o</code>
+* `Mod`+`o`
   open workspace map
 
-**Scratchpad** (see appendix C)
+**Monitors**
 
-* <code>Mod</code>+<code>Tab</code>
-  toggle scratchpad
-* <code>Mod</code>+<code>Shift</code>+<code>Tab</code>
-  set focused client as scratchpad, or unset scratchpad if it is focused
-
-**Monitors** (see appendix D)
-
-* <code>Mod</code>+<code>m</code>
+* `Mod`+`m`
   set focus to next monitor
 
 **Session**
 
-* <code>Mod</code>+<code>q</code>
+* `Mod`+`Shift`+`q`
   restart karuiwm
-* <code>Mod</code>+<code>Shift</code>+<code>q</code>
+* `Mod`+`Shift`+`Ctrl`+`q`
   quit karuiwm
 
-The mouse can be configured via the <code>buttons</code> array and currently
-supports following actions:
+**Mouse**
 
-* <code>Mod</code>+<code>Button1</code>
+* `Mod`+`Button1`
   grab and move client, make it floating
-* <code>Mod</code>+<code>Button3</code>
+* `Mod`+`Button3`
   resize client, make it floating
-
-
-appendix A: layouts
--------------------
-
-karuiwm is a *dynamically tiling window manager*, this means that it
-automatically arranges windows following certain dynamically changable rules,
-called *layouts*. This allows the user to focus on the workflow instead of
-having to arrange windows manually.
-
-You can cycle through the layouts with <code>Mod</code>+<code>Space</code>; the
-windows will get arranged automatically.
-
-The layouts are defined in <code>layout.h</code>; the array at the end of the
-file contains the layouts that will be actually used in your personal karuiwm
-setup. Every layout below the <code>NULL</code> entry will not be accessible
-through the usual layout cycling.
-
-Every layout is assigned a bitfield that describes an icon that will get
-displayed in the statusbar to indicate the current layout. Every hexadecimal
-<code>long</code> entry in the array corresponds to a row in the icon (thus an
-icon cannot be wider than <code>sizeof(long)\*8</code> pixels, but that
-shouldn't be a problem).
-
-
-appendix B: workspaces
-----------------------
-
-Workspaces in karuiwm are arranged in a two-dimensional grid, and they are
-created and destroyed dynamically. A workspace may be considered either
-*persistent* (it remains if left) or *temporary* (leaving it destroys it).
-
-Whether a workspaces is temporary or persistent depends on the number of clients
-on that workspace; an empty workspace is considered temporary, whereas it
-becomes persistent as soon as a client is added.
-
-The workspace map (accessible by <code>Mod</code>+<code>o</code>, see above) is
-a visual representation of the workspaces and allows to perform actions on them
-with a separately configured set of keys (the <code>wsmkeys</code> array):
-
-* <code>Mod</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
-  set selection to left/below/above/right workspace
-* <code>Mod</code>+<code>Shift</code>+<code>h</code>|<code>j</code>|<code>k</code>|<code>l</code>
-  swap selected workspace with left/below/above/right workspace
-* <code>Return</code>
-  switch to the selected workspace
-* <code>Esc</code>
-  close workspace map without selecting a workspace
-
-Each workspace is assigned a unique name that can be used to switch workspaces
-by name using dmenu (see the dmenu manpage for further information how to use
-it). If no or an empty name is assigned to a workspace, it automatically
-takes the workspace structure's pointer value, preceded by <code>\*</code>.
-
-
-appendix C: scratchpad
-----------------------
-
-A scratchpad is a window that can easily be displayed and dismissed, typically a
-terminal emulator to spontaneously type a command. In karuiwm, the scratchpad
-can be toggled by hitting <code>Mod</code>+<code>Tab</code>.
-
-At startup, no client is defined as the scratchpad (thus toggling it won't have
-any effect); one first needs to define a client as the scratchpad by hitting
-<code>Mod</code>+<code>Shift</code>+<code>Tab</code>.
-
-
-appendix D: Xinerama (aka multi-monitor)
-----------------------------------------
-
-karuiwm comes with Xinerama support and is thus capable of handling a
-multi-monitor setup. Unlike its parent dwm however (which assigns a separate tag
-set to each monitor), karuiwm uses a unified workspace set for all monitors.
-
-Once a monitor is added, it will attempt to display the next undisplayed
-workspace; if there is none, it will create a new workspace nearby and move its
-view there. If a monitor moves its view to a workspace that is already displayed
-on another monitor, the workspace view is swapped.
-

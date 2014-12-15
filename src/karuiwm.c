@@ -2478,8 +2478,8 @@ main(int argc, char **argv)
 	cleanup(&sessionfile);
 	XCloseDisplay(kwm.dpy);
 	if (restarting) {
-		NOTE("restarting %s...", APPNAME);
-		execlp(APPNAME, APPNAME, sessionfile, NULL);
+		NOTE("restarting %s... (not really)", APPNAME);
+		//execlp(APPNAME, APPNAME, sessionfile, NULL);
 	}
 	NOTE("shutting down %s...", APPNAME);
 	return EXIT_SUCCESS;
