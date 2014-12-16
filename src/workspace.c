@@ -20,6 +20,7 @@ workspace_init(int x, int y)
 	ws->x = x;
 	ws->y = y;
 	ws->mfact = 0.5;
+	ws->nc = 0;
 	ws->nmaster = 1;
 	ws->ilayout = 0;
 	ws->dirty = false;

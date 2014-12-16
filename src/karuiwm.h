@@ -11,6 +11,7 @@
 #define LENGTH(ARR) (sizeof(ARR)/sizeof(ARR[0]))
 #define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
+#define DIE(...)    {print(stderr, LOG_FATAL, __VA_ARGS__); exit(EXIT_FAILURE);}
 #define ERROR(...)   print(stderr, LOG_ERROR, __VA_ARGS__)
 #define WARN(...)    print(stderr, LOG_WARN, __VA_ARGS__)
 #define NOTE(...)    print(stdout, LOG_NORMAL, __VA_ARGS__)
@@ -80,11 +81,11 @@ struct {
 /* functions */
 void arrange(struct monitor *mon);
 int gettiled(struct client ***tiled, struct monitor *mon);
-void grabbuttons(struct client *, bool);
-void moveresizeclient(struct monitor *, struct client *, int, int, int unsigned, int unsigned);
+void grabbuttons(struct client *c, bool grab);
+void moveresizeclient(struct monitor *mon, struct client *c, int x, int y, int unsigned w, int unsigned h);
 void print(FILE *f, enum log_level level, char const *format, ...);
-bool locatews(struct workspace **, unsigned int *, int, int, char const *);
-void initwsmbox(struct workspace *);
+bool locatews(struct workspace **ws, int unsigned *i, int x, int y, char const *name);
+void initwsmbox(struct workspace *ws);
 
 /* variables */
 Atom wmatom[WMLAST], netatom[NetLAST];

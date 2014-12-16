@@ -1,4 +1,5 @@
 #include "karuiwm.h"
+#include "util.h"
 #include "client.h"
 #include "workspace.h"
 #include "monitor.h"
@@ -44,7 +45,7 @@ static void attachclient(struct workspace *, struct client *);
 static void attachws(struct workspace *);
 static void buttonpress(XEvent *);
 static bool checksizehints(struct client *, int unsigned *, int unsigned *);
-static void cleanup(char **);
+static void cleanup(void);
 static void clientmessage(XEvent *);
 static void configurerequest(XEvent *);
 static void configurenotify(XEvent *);
@@ -75,9 +76,8 @@ static void renderwsmbox(struct workspace *);
 static void resizeclient(struct client *, int unsigned, int unsigned);
 static void resizemouse(union argument const *);
 static void restart(union argument const *);
-static void restoresession(char const *sessionfile);
+static void rstack(struct monitor *);
 static void run(void);
-static void savesession(char **sessionfile);
 static bool sendevent(struct client *, Atom);
 static void sendfollowclient(union argument const *);
 static void setclientmask(struct monitor *, bool);
@@ -85,11 +85,10 @@ static void setfloating(struct client *, bool);
 static void setfullscreen(struct client *, bool);
 static void setmfact(union argument const *);
 static void setnmaster(union argument const *);
-static void setup(char const *sessionfile);
+static void setup(void);
 static void setupatoms(void);
 static void setupfont(void);
-static void setuplayouts(void);
-static void setupsession(char const *sessionfile);
+static void setupsession(void);
 static void setupwsm(void);
 static void setws(struct monitor *, int, int);
 static void shiftclient(union argument const *);
@@ -99,12 +98,10 @@ static void showws(struct monitor *, struct workspace *);
 static void sigchld(int);
 static void spawn(union argument const *);
 static void stepfocus(union argument const *);
-static void steplayout(union argument const *);
 static void stepmon(union argument const *);
 static void stepws(union argument const *);
 static void stepwsmbox(union argument const *arg);
 static void termclient(struct client *);
-static void termlayout(struct layout *);
 static void termmon(struct monitor *);
 static void termws(struct workspace *);
 static void termwsmbox(struct workspace *);
@@ -144,7 +141,7 @@ static void (*handle[LASTEvent])(XEvent *) = {
 };
 
 /* variables */
-static bool running, restarting;              /* application state */
+static bool running;                          /* application state */
 static int screen;                            /* screen */
 static Window root;                           /* root window */
 static Cursor cursor[CurLAST];                /* cursors */
@@ -153,11 +150,7 @@ static struct monitor **monitors, *selmon;           /* all/selected monitor(s) 
 static unsigned int nws, nmon;                /* # of workspaces/monitors */
 static int dmenu_out;                         /* dmenu output file descriptor */
 static enum DMenuState dmenu_state;           /* dmenu state */
-static int nlayouts;                          /* number of cyclable layouts */
 static enum log_level log_level;
-
-/* configuration */
-#include "layout.h"
 
 /* karuiwm configuration */
 
@@ -204,7 +197,7 @@ static char const *dmenuargs[] = { "-l", "10", "-i",
                                    "-sf", "#AFD800", "-sb", "#444444", NULL };
 
 /* commands */
-static char const *termcmd[] = { "urxvtc", NULL };
+static char const *termcmd[] = { "urxvt", NULL };
 static char const *scrotcmd[] = { "prtscr", NULL };
 static char const *lockcmd[] = { "scrock", NULL };
 static char const *volupcmd[] = { "amixer", "set", "Master", "2+", "unmute", NULL };
@@ -240,8 +233,6 @@ static struct key const keys[] = {
 	{ MODKEY,                       XK_comma,   setnmaster,       { .i=+1 } },
 	{ MODKEY,                       XK_period,  setnmaster,       { .i=-1 } },
 	{ MODKEY,                       XK_Return,  zoom,             { 0 } },
-	{ MODKEY,                       XK_space,   steplayout,       { .i=+1 } },
-	{ MODKEY|ShiftMask,             XK_space,   steplayout,       { .i=-1 } },
 
 	/* workspaces */
 	{ MODKEY|ControlMask,           XK_h,       stepws,           { .i=Left } },
@@ -306,7 +297,7 @@ arrange(struct monitor *mon)
 	unsigned int i;
 
 	setclientmask(mon, false);
-	layouts[mon->selws->ilayout].func(mon);
+	rstack(mon);
 	for (i = 0; i < mon->selws->nc; i++) {
 		c = mon->selws->clients[i];
 		if (c->floating) {
@@ -324,12 +315,8 @@ attachclient(struct workspace *ws, struct client *c)
 	unsigned int i, pos;
 
 	/* add to list */
-	ws->clients = realloc(ws->clients, ++ws->nc*sizeof(struct client *));
-	if (!ws->clients) {
-		FATAL("could not allocate %zu bytes for client list",
-		      ws->nc*sizeof(struct client *));
-		exit(EXIT_FAILURE);
-	}
+	ws->clients = srealloc(ws->clients, ++ws->nc*sizeof(struct client *),
+	                       "client list");
 	pos = 0;
 	if (ws->nc > 1) {
 		for (i = 0; i < ws->nc-1; i++) {
@@ -356,12 +343,7 @@ attachclient(struct workspace *ws, struct client *c)
 void
 attachmon(struct monitor *mon)
 {
-	monitors = realloc(monitors, ++nmon*sizeof(struct monitor *));
-	if (!monitors) {
-		FATAL("could not allocate %zu bytes for monitor list",
-		      sizeof(struct monitor));
-		exit(EXIT_FAILURE);
-	}
+	monitors = srealloc(monitors, ++nmon*sizeof(struct monitor *), "monitor list");
 	monitors[nmon-1] = mon;
 }
 
@@ -370,12 +352,8 @@ attachws(struct workspace *ws)
 {
 	unsigned int i;
 
-	workspaces = realloc(workspaces, ++nws*sizeof(struct workspace *));
-	if (!workspaces) {
-		FATAL("could not allocate %zu bytes for workspace list",
-		      nws*sizeof(struct workspace *));
-		exit(EXIT_FAILURE);
-	}
+	workspaces = srealloc(workspaces, ++nws*sizeof(struct workspace *),
+	                      "workspace list");
 	for (i = nws-1; i >= 0; i--) {
 		if (i == 0 || strcasecmp(workspaces[i-1]->name, ws->name) < 0) {
 			workspaces[i] = ws;
@@ -393,8 +371,8 @@ buttonpress(XEvent *e)
 	struct workspace *ws;
 	struct monitor *mon;
 
-	if (!locateclient(&ws, &c, NULL, e->xbutton.window, NULL) ||
-			!locatemon(&mon, NULL, ws)) {
+	if (!locateclient(&ws, &c, NULL, e->xbutton.window, NULL)
+	|| !locatemon(&mon, NULL, ws)) {
 		return;
 	}
 	if (mon != selmon) {
@@ -405,8 +383,8 @@ buttonpress(XEvent *e)
 	updatefocus();
 
 	for (i = 0; i < LENGTH(buttons); i++) {
-		if (buttons[i].mod == e->xbutton.state &&
-				buttons[i].button == e->xbutton.button && buttons[i].func) {
+		if (buttons[i].mod == e->xbutton.state
+		&& buttons[i].button == e->xbutton.button && buttons[i].func) {
 			buttons[i].func(&buttons[i].arg);
 		}
 	}
@@ -457,7 +435,7 @@ checksizehints(struct client *c, int unsigned *w, int unsigned *h)
 }
 
 void
-cleanup(char **savefile)
+cleanup(void)
 {
 	unsigned int i;
 	struct monitor *mon;
@@ -481,11 +459,6 @@ cleanup(char **savefile)
 		monitors[i]->selws = NULL;
 	}
 
-	/* if restarting, save the session before removing everything */
-	if (restarting) {
-		savesession(savefile);
-	}
-
 	/* remove workspaces and their clients */
 	while (nws) {
 		ws = workspaces[0];
@@ -504,13 +477,6 @@ cleanup(char **savefile)
 		termmon(mon);
 	}
 
-	/* remove layouts */
-	for (i = 0; i < LENGTH(layouts); i++) {
-		if (layouts[i].icon_bitfield) {
-			termlayout(&layouts[i]);
-		}
-	}
-
 	/* remove X resources */
 	if (dc.font.xfontset) {
 		XFreeFontSet(kwm.dpy, dc.font.xfontset);
@@ -523,6 +489,7 @@ cleanup(char **savefile)
 	XFreeCursor(kwm.dpy, cursor[CurResize]);
 	XFreeCursor(kwm.dpy, cursor[CurMove]);
 	XSetInputFocus(kwm.dpy, PointerRoot, RevertToPointerRoot, CurrentTime);
+	XCloseDisplay(kwm.dpy);
 }
 
 void
@@ -619,12 +586,8 @@ detachclient(struct client *c)
 	for (; i < ws->nc; i++) {
 		ws->clients[i] = ws->clients[i+1];
 	}
-	ws->clients = realloc(ws->clients, ws->nc*sizeof(struct client *));
-	if (!ws->clients && ws->nc) {
-		FATAL("could not allocate %zu bytes for client list",
-		      ws->nc*sizeof(struct client *));
-		exit(EXIT_FAILURE);
-	}
+	ws->clients = srealloc(ws->clients, ws->nc*sizeof(struct client *),
+	                       "client list");
 
 	/* remove workspace if last client and not focused */
 	if (!ws->nc && !locatemon(&mon, NULL, ws)) {
@@ -646,12 +609,7 @@ detachmon(struct monitor *mon)
 			for (; i < nmon; i++) {
 				monitors[i] = monitors[i+1];
 			}
-			monitors = realloc(monitors, nmon*sizeof(struct monitor *));
-			if (!monitors && nmon) {
-				FATAL("could not allocate %zu bytes for monitor list",
-				      nmon*sizeof(struct monitor *));
-				exit(EXIT_FAILURE);
-			}
+			monitors = srealloc(monitors, nmon*sizeof(struct monitor *), "monitor list");
 			return;
 		}
 	}
@@ -672,12 +630,8 @@ detachws(struct workspace *ws)
 	for (; i < nws; i++) {
 		workspaces[i] = workspaces[i+1];
 	}
-	workspaces = realloc(workspaces, nws*sizeof(struct workspace *));
-	if (!workspaces && nws) {
-		FATAL("could not allocate %zu bytes for workspace list",
-		      nws*sizeof(struct workspace *));
-		exit(EXIT_FAILURE);
-	}
+	workspaces = srealloc(workspaces, nws*sizeof(struct workspace *),
+	                      "workspace list");
 }
 
 void
@@ -861,25 +815,15 @@ gettiled(struct client ***tiled, struct monitor *mon)
 	unsigned int i, n;
 	struct client *c;
 
-	*tiled = calloc(mon->selws->nc, sizeof(struct client *));
-	if (!*tiled) {
-		FATAL("could not allocate %zu bytes for client list",
-		      mon->selws->nc*sizeof(struct client *));
-		exit(EXIT_FAILURE);
-	}
+	*tiled = scalloc(mon->selws->nc, sizeof(struct client *),
+	                 "client list");
 	for (n = i = 0; i < mon->selws->nc; i++) {
 		c = mon->selws->clients[i];
 		if (!c->floating && !c->fullscreen) {
 			(*tiled)[n++] = mon->selws->clients[i];
-		} else {
 		}
 	}
-	*tiled = realloc(*tiled, n*sizeof(struct client *));
-	if (!tiled && n) {
-		FATAL("could not allocate %zu bytes for client list",
-		      n*sizeof(struct client *));
-		exit(EXIT_FAILURE);
-	}
+	*tiled = srealloc(*tiled, n*sizeof(struct client *), "client list");
 	return n;
 }
 
@@ -950,12 +894,7 @@ initmon(void)
 	struct monitor *mon;
 	struct workspace *ws;
 
-	mon = malloc(sizeof(struct monitor));
-	if (!mon) {
-		FATAL("could not allocate %zu bytes for monitor",
-		      sizeof(struct monitor));
-		exit(EXIT_FAILURE);
-	}
+	mon = smalloc(sizeof(struct monitor), "monitor");
 
 	/* assign workspace */
 	for (wsx = 0;; wsx++) {
@@ -1315,7 +1254,6 @@ quit(union argument const *arg)
 {
 	(void) arg;
 
-	restarting = false;
 	running = false;
 }
 
@@ -1407,51 +1345,47 @@ restart(union argument const *arg)
 {
 	(void) arg;
 
-	restarting = true;
 	running = false;
 }
 
-void
-restoresession(char const *sessionfile)
+static void
+rstack(struct monitor *mon)
 {
-	FILE *f;
-	unsigned int i, j, _nc, _nws;
-	Window win;
-	int x, y;
-	struct workspace *ws;
-	struct client *c;
-	char name[256];
+	struct client **tiled;
+	unsigned int i, ncm, nct, w, h, bw;
+	int x;
 
-	f = fopen(sessionfile, "r");
-	if (!f) {
-		NOTE("could not find session file %s", sessionfile);
+	/* get tiled clients */
+	if (!mon->selws->nc || !(nct = gettiled(&tiled, mon))) {
+		return;
+	}
+	bw = tiled[0]->border;
+
+	/* draw master area */
+	ncm = MIN(mon->selws->nmaster, nct);
+	if (ncm) {
+		x = mon->wx;
+		w = ncm == nct ? mon->ww : mon->selws->mfact*mon->ww;
+		h = mon->wh/ncm;
+		for (i = 0; i < ncm; i++) {
+			moveresizeclient(mon, tiled[i], x, mon->wy+i*h,
+					w-2*bw, h-2*bw);
+		}
+	}
+	if (ncm == nct) {
+		free(tiled);
 		return;
 	}
 
-	fscanf(f, "%u\n", &_nws);
-	for (i = 0; i < _nws; i++) {
-		fscanf(f, "%d:%d:", &x, &y);
-		ws = workspace_init(x, y);
-		fscanf(f, "%u:%u:%f:%d:%s\n", &ws->nmaster, &_nc, &ws->mfact,
-				&ws->ilayout, name);
-		workspace_rename(ws, name);
-		attachws(ws);
-		for (j = 0; j < _nc; j++) {
-			fscanf(f, "  %lu:", &win);
-			c = client_init(win, true);
-			if (!c) {
-				fscanf(f, "[^\n]\n");
-				continue;
-			}
-			attachclient(ws, c);
-			fscanf(f, "%d:%d:%d:%d:%d:%d\n", &c->x, &c->y, &c->w, &c->h,
-					(int *) &c->floating, (int *) &c->fullscreen);
-			c->dirty = true;
-		}
+	/* draw stack area */
+	x = mon->wx+(ncm ? mon->selws->mfact*mon->ww : 0);
+	w = ncm ? mon->w-x : mon->ww;
+	h = mon->wh/(nct-ncm);
+	for (i = ncm; i < nct; i++) {
+		moveresizeclient(mon, tiled[i], x, mon->wy+(i-ncm)*h,
+				w-2*bw, h-2*bw);
 	}
-
-	fclose(f);
-	remove(sessionfile);
+	free(tiled);
 }
 
 void
@@ -1478,42 +1412,6 @@ run(void)
 			}
 		}
 	}
-}
-
-void
-savesession(char **sessionfile)
-{
-	FILE *f;
-	unsigned int i, j;
-	struct client *c;
-	struct workspace *ws;
-
-	*sessionfile = malloc(strlen(SESSIONFILE+1+(sizeof(int)<<1)));
-	srand(time(NULL));
-	sprintf(*sessionfile, "%s-%0*X", SESSIONFILE, (int) sizeof(int)<<1, rand());
-	f = fopen(*sessionfile, "w");
-	if (!f) {
-		FATAL("could not open session file %s", *sessionfile);
-		exit(EXIT_FAILURE);
-	}
-
-	fprintf(f, "%u\n", nws);
-	NOTE("storing %u workspaces:", nws);
-	for (i = 0; i < nws; i++) {
-		ws = workspaces[i];
-		NOTE("- storing workspace[%u] (%d,%d): '%s' (%u clients)",
-				i, ws->x, ws->y, ws->name, ws->nc);
-		fprintf(f, "%d:%d:%u:%u:%f:%d:%s\n", ws->x, ws->y, ws->nmaster, ws->nc,
-				ws->mfact, ws->ilayout, ws->name);
-		for (j = 0; j < ws->nc; j++) {
-			c = ws->clients[j];
-			NOTE("  storing client '%s' (%u)", c->name, c->win);
-			fprintf(f, "  %lu:%d:%d:%d:%d:%d:%d\n",
-					c->win, c->x, c->y, c->w, c->h, c->floating, c->fullscreen);
-		}
-	}
-
-	fclose(f);
 }
 
 bool
@@ -1649,9 +1547,14 @@ setnmaster(union argument const *arg)
 }
 
 void
-setup(char const *sessionfile)
+setup(void)
 {
 	XSetWindowAttributes wa;
+
+	/* connect to X */
+	if (!(kwm.dpy = XOpenDisplay(NULL))) {
+		DIE("could not open X");
+	}
 
 	/* low: errors, zombies, locale */
 	xerrorxlib = XSetErrorHandler(xerror);
@@ -1683,13 +1586,12 @@ setup(char const *sessionfile)
 	grabkeys();
 
 	/* layouts, fonts, workspace map, scratchpad, dmenu */
-	setuplayouts();
 	setupfont();
 	setupwsm();
 	dmenu_state = DMenuInactive;
 
 	/* session */
-	setupsession(sessionfile);
+	setupsession();
 }
 
 void
@@ -1745,43 +1647,27 @@ setupfont(void)
 }
 
 void
-setuplayouts()
-{
-	unsigned int i, len=LENGTH(layouts);
-
-	for (nlayouts = 0; nlayouts < len && layouts[nlayouts].func != NULL &&
-			layouts[nlayouts].icon_bitfield != NULL; nlayouts++);
-	for (i = 0; i < len; i++) {
-		if (layouts[i].icon_bitfield == NULL || layouts[i].func == NULL)
-			continue;
-		layouts[i].icon_norm = initpixmap(layouts[i].icon_bitfield, CNORM, CBGNORM);
-		layouts[i].icon_sel = initpixmap(layouts[i].icon_bitfield, CBORDERSEL, CBGNORM);
-		layouts[i].w = layouts[i].icon_bitfield[0];
-		layouts[i].h = layouts[i].icon_bitfield[1];
-	}
-}
-
-void
-setupsession(char const *sessionfile)
+setupsession(void)
 {
 	unsigned int i, j, nwins;
 	Window p, r, *wins = NULL;
 	struct client *c;
 
-	/* check for an old session, otherwise setup initial workspace */
-	restoresession(sessionfile);
-	if (!workspaces) {
-		attachws(workspace_init(0, 0));
-	}
+	DEBUG("setupsession:1");
+	/* initial workspace */
+	attachws(workspace_init(0, 0));
 
+	DEBUG("setupsession:2");
 	/* scan existing windows */
 	if (!XQueryTree(kwm.dpy, root, &r, &p, &wins, &nwins)) {
 		WARN("XQueryTree() failed");
 		return;
 	}
 
+	DEBUG("setupsession:3 » nwins = %u", nwins);
 	/* create clients if they do not already exist */
 	for (i = 0; i < nwins; i++) {
+		DEBUG("setupsession:3.1 » i = %u", i);
 		if (!locateclient(NULL, &c, NULL, wins[i], NULL)) {
 			c = client_init(wins[i], true);
 			if (c) {
@@ -1793,8 +1679,10 @@ setupsession(char const *sessionfile)
 		}
 	}
 
+	DEBUG("setupsession:4 » nws = %zu", nws);
 	/* delete clients that do not have any windows assigned to them */
 	for (i = 0; i < nws; i++) {
+		DEBUG("setupsession:4.1 » workspaces[%u]->nc = %zu", i, workspaces[i]->nc);
 		for (j = 0; j < workspaces[i]->nc; j++) {
 			c = workspaces[i]->clients[j];
 			if (c->dirty) {
@@ -1805,6 +1693,7 @@ setupsession(char const *sessionfile)
 		}
 	}
 
+	DEBUG("setupsession:5");
 	/* setup monitors */
 	updategeom();
 }
@@ -1991,14 +1880,6 @@ stepfocus(union argument const *arg)
 }
 
 void
-steplayout(union argument const *arg)
-{
-	selmon->selws->ilayout = (selmon->selws->ilayout+nlayouts+arg->i)%nlayouts;
-	selmon->selws->mfact = 0.5;
-	arrange(selmon);
-}
-
-void
 stepmon(union argument const *arg)
 {
 	struct monitor *oldmon;
@@ -2040,13 +1921,6 @@ void
 termclient(struct client *c)
 {
 	free(c);
-}
-
-void
-termlayout(struct layout *l)
-{
-	XFreePixmap(kwm.dpy, l->icon_norm);
-	XFreePixmap(kwm.dpy, l->icon_sel);
 }
 
 void
@@ -2135,14 +2009,8 @@ unifyscreens(XineramaScreenInfo **list, size_t len)
 	unsigned int i, j, n;
 	bool dup;
 
-	/* reserve enough space */
-	XineramaScreenInfo *unique = calloc(len, sizeof(XineramaScreenInfo));
-	if (!unique && len) {
-		FATAL("could not allocate %zu bytes for screen info list",
-		      len*sizeof(XineramaScreenInfo));
-		exit(EXIT_FAILURE);
-	}
-
+	XineramaScreenInfo *unique = scalloc(len, sizeof(XineramaScreenInfo),
+	                                     "screen info list");
 	for (i = 0, n = 0; i < len; i++) {
 		dup = false;
 		for (j = 0; j < i; j++) {
@@ -2164,7 +2032,8 @@ unifyscreens(XineramaScreenInfo **list, size_t len)
 	}
 	XFree(*list);
 	*list = unique;
-	*list = realloc(*list, n*sizeof(XineramaScreenInfo)); /* fix size */
+	*list = srealloc(*list, n*sizeof(XineramaScreenInfo),
+	                 "screen info list");
 	return n;
 }
 
@@ -2402,22 +2271,10 @@ int
 xerror(Display *dpy, XErrorEvent *ee)
 {
 	char es[256];
-
-	/* catch certain errors */
-	if (ee->error_code == BadWindow
-	|| (ee->request_code == X_SetInputFocus && ee->error_code == BadMatch)
-	|| (ee->request_code == X_PolyText8 && ee->error_code == BadDrawable)
-	|| (ee->request_code == X_PolyFillRectangle && ee->error_code == BadDrawable)
-	|| (ee->request_code == X_PolySegment && ee->error_code == BadDrawable)
-	|| (ee->request_code == X_ConfigureWindow && ee->error_code == BadMatch)
-	|| (ee->request_code == X_GrabButton && ee->error_code == BadAccess)
-	|| (ee->request_code == X_GrabKey && ee->error_code == BadAccess)
-	|| (ee->request_code == X_CopyArea && ee->error_code == BadDrawable)) {
-		XGetErrorText(dpy, ee->error_code, es, 256);
-		WARN("%s (ID %d) after request %d", es, ee->error_code, ee->error_code);
-		return 0;
-	}
-	return xerrorxlib(dpy, ee); /* default error handler (might call exit) */
+	XGetErrorText(dpy, ee->error_code, es, 256);
+	ERROR("%s (ID %d) after request %d", es, ee->error_code, ee->error_code);
+	/* default error handler (will likely call exit) */
+	return xerrorxlib(dpy, ee);
 }
 
 void
@@ -2458,29 +2315,17 @@ zoom(union argument const *arg)
 int
 main(int argc, char **argv)
 {
-	char *sessionfile=NULL;
+	(void) argc;
+	(void) argv;
+
 	log_level = LOG_DEBUG;
 
-	if (argc == 2) {
-		if (argv[1][0] == '-') {
-			puts(APPNAME" © 2014 ayekat, see LICENSE for details");
-			return EXIT_FAILURE;
-		}
-		sessionfile = argv[1];
-	}
-	if (!(kwm.dpy = XOpenDisplay(NULL))) {
-		FATAL("could not open X");
+	if (argc > 1) {
+		puts(APPNAME" © 2014 ayekat, see LICENSE for details");
 		return EXIT_FAILURE;
 	}
-	NOTE("starting %s...", APPNAME);
-	setup(sessionfile);
+	setup();
 	run();
-	cleanup(&sessionfile);
-	XCloseDisplay(kwm.dpy);
-	if (restarting) {
-		NOTE("restarting %s... (not really)", APPNAME);
-		//execlp(APPNAME, APPNAME, sessionfile, NULL);
-	}
-	NOTE("shutting down %s...", APPNAME);
+	cleanup();
 	return EXIT_SUCCESS;
 }
