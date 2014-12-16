@@ -28,7 +28,7 @@ enum { NetActiveWindow, NetSupported, NetWMName, NetWMState,
 union argument {
 	int i;
 	float f;
-	void const *v;
+	void *v;
 };
 
 struct button {
@@ -40,7 +40,7 @@ struct button {
 
 struct {
 	GC gc;
-	unsigned int sd; /* screen depth */
+	int depth; /* screen depth */
 	struct {
 		int ascent, descent, height;
 		XFontStruct *xfontstruct;

@@ -39,8 +39,8 @@ client_init(Window win, bool viewable)
 	if (c->floating) {
 		c->x = wa.x;
 		c->y = wa.y;
-		c->w = wa.width;
-		c->h = wa.height;
+		c->w = (int unsigned) wa.width;
+		c->h = (int unsigned) wa.height;
 	}
 	c->dirty = false;
 	XSetWindowBorderWidth(kwm.dpy, c->win, BORDERWIDTH);
@@ -103,38 +103,38 @@ client_updatesizehints(struct client *c)
 
 	/* base size */
 	if (hints.flags & PBaseSize) {
-		c->basew = hints.base_width;
-		c->baseh = hints.base_height;
+		c->basew = (int unsigned) hints.base_width;
+		c->baseh = (int unsigned) hints.base_height;
 	} else if (hints.flags & PMinSize) {
-		c->basew = hints.min_width;
-		c->baseh = hints.min_height;
+		c->basew = (int unsigned) hints.min_width;
+		c->baseh = (int unsigned) hints.min_height;
 	} else {
 		c->basew = c->baseh = 0;
 	}
 
 	/* resize steps */
 	if (hints.flags & PResizeInc) {
-		c->incw = hints.width_inc;
-		c->inch = hints.height_inc;
+		c->incw = (int unsigned) hints.width_inc;
+		c->inch = (int unsigned) hints.height_inc;
 	} else {
 		c->incw = c->inch = 0;
 	}
 
 	/* minimum size */
 	if (hints.flags & PMinSize) {
-		c->minw = hints.min_width;
-		c->minh = hints.min_height;
+		c->minw = (int unsigned) hints.min_width;
+		c->minh = (int unsigned) hints.min_height;
 	} else if (hints.flags & PBaseSize) {
-		c->minw = hints.base_width;
-		c->minh = hints.base_height;
+		c->minw = (int unsigned) hints.base_width;
+		c->minh = (int unsigned) hints.base_height;
 	} else {
 		c->minw = c->minh = 0;
 	}
 
 	/* maximum size */
 	if (hints.flags & PMaxSize) {
-		c->maxw = hints.max_width;
-		c->maxw = hints.max_height;
+		c->maxw = (int unsigned) hints.max_width;
+		c->maxw = (int unsigned) hints.max_height;
 	} else {
 		c->maxw = c->maxh = 0;
 	}

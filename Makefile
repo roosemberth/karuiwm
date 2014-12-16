@@ -55,6 +55,8 @@ $(APPNAME): $(OBJECTS)
 
 xephyr:
 	xinit ${XINITRC} -- $(shell which Xephyr) :1
+run:
+	startx ${XINITRC} > log
 
 # Phony targets:
 .PHONY: all
