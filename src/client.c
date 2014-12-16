@@ -42,9 +42,8 @@ client_init(Window win, bool viewable)
 		c->w = wa.width;
 		c->h = wa.height;
 	}
-	c->border = BORDERWIDTH;
 	c->dirty = false;
-	XSetWindowBorderWidth(kwm.dpy, c->win, c->border);
+	XSetWindowBorderWidth(kwm.dpy, c->win, BORDERWIDTH);
 	client_updatesizehints(c);
 	c->name[0] = 0;
 	client_updatename(c);
@@ -53,11 +52,11 @@ client_init(Window win, bool viewable)
 }
 
 void
-client_move(struct monitor *mon, struct client *c, int x, int y)
+client_move(struct client *c, int x, int y)
 {
 	c->x = x;
 	c->y = y;
-	XMoveWindow(kwm.dpy, c->win, mon->x + c->x, mon->y + c->y);
+	XMoveWindow(kwm.dpy, c->win, c->x, c->y);
 }
 
 void

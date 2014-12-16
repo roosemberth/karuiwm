@@ -2,7 +2,6 @@
 #define _KARUIWM_H
 
 #include "client.h"
-#include "workspace.h"
 #include <X11/Xlib.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -61,31 +60,14 @@ struct key {
 	union argument const arg;
 };
 
-struct layout {
-	int long unsigned const *icon_bitfield;
-	void (*func)(struct monitor *);
-	Pixmap icon_norm, icon_sel;
-	int w, h;
-};
-
-struct {
-	struct workspace *target;
-	XSetWindowAttributes wa;
-	bool active;
-} wsm;
-
 struct {
 	Display *dpy;
 } kwm;
 
 /* functions */
-void arrange(struct monitor *mon);
-int gettiled(struct client ***tiled, struct monitor *mon);
 void grabbuttons(struct client *c, bool grab);
-void moveresizeclient(struct monitor *mon, struct client *c, int x, int y, int unsigned w, int unsigned h);
+void moveresizeclient(struct client *c, int x, int y, int unsigned w, int unsigned h);
 void print(FILE *f, enum log_level level, char const *format, ...);
-bool locatews(struct workspace **ws, int unsigned *i, int x, int y, char const *name);
-void initwsmbox(struct workspace *ws);
 
 /* variables */
 Atom wmatom[WMLAST], netatom[NetLAST];
