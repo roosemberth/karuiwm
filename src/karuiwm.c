@@ -1,6 +1,7 @@
 #include "karuiwm.h"
 #include "util.h"
 #include "client.h"
+#include "locate.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,8 +52,6 @@ static void init(void);
 static void keypress(XEvent *);
 static void keyrelease(XEvent *);
 static void killclient(union argument const *);
-static bool locate_window2client(struct client **, int unsigned *, Window);
-static bool locate_client2index(int unsigned *, struct client *);
 static void mappingnotify(XEvent *);
 static void maprequest(XEvent *);
 static void movemouse(union argument const *);
@@ -172,34 +171,6 @@ static struct button const buttons[] = {
 
 /* function implementation */
 
-static bool
-locate_window2client(struct client **client, int unsigned *index, Window win)
-{
-	int unsigned i;
-
-	for (i = 0; i < nc; ++i) {
-		if (clients[i]->win == win) {
-			if (index != NULL)  *index = i;
-			if (client != NULL) *client = clients[i];
-			return true;
-		}
-	}
-	return false;
-}
-
-/* TODO workspaces, pages */
-static bool
-locate_client2index(int unsigned *index, struct client *c)
-{
-	int unsigned i;
-
-	for (i = 0; i < nc && clients[i] != c; ++i);
-	if (i == nc)
-		return false;
-	*index = i;
-	return true;
-}
-
 void
 attachclient(struct client *c)
 {
@@ -214,7 +185,7 @@ buttonpress(XEvent *e)
 	unsigned int i;
 	struct client *c;
 
-	if (!locate_window2client(&c, NULL, e->xbutton.window)) {
+	if (!locate_window2client(clients, nc, e->xbutton.window, &c, NULL)) {
 		WARN("click on unhandled window");
 		return;
 	}
@@ -284,7 +255,7 @@ clientmessage(XEvent *e)
 	struct client *c;
 	XClientMessageEvent *ev = &e->xclient;
 
-	if (!locate_window2client(&c, NULL, e->xclient.window)) {
+	if (!locate_window2client(clients, nc, e->xclient.window, &c, NULL)) {
 		WARN("client message on unhandled window");
 		return;
 	}
@@ -320,7 +291,8 @@ configurerequest(XEvent *e)
 	DEBUG("configurerequest(%lu)", e->xconfigurerequest.window);
 
 	/* forward configuration if not managed (or if we don't force the size) */
-	(void) locate_window2client(&c, NULL, e->xconfigurerequest.window);
+	(void) locate_window2client(clients, nc, e->xconfigurerequest.window,
+	                            &c, NULL);
 	if (c == NULL || c->fullscreen || c->floating) {
 		wc = (XWindowChanges) {
 			.x = ev->x,
@@ -359,7 +331,7 @@ detachclient(struct client *c)
 
 	DEBUG("detachclient");
 
-	if (!locate_client2index(&i, c)) {
+	if (!locate_client2index(clients, nc, c, &i)) {
 		WARN("attempt to detach non-existent client");
 		return;
 	}
@@ -383,7 +355,7 @@ enternotify(XEvent *e)
 
 	struct client *c;
 
-	if (!locate_window2client(&c, NULL, e->xcrossing.window)) {
+	if (!locate_window2client(clients, nc, e->xcrossing.window, &c, NULL)) {
 		WARN("attempt to enter unhandled/invisible window %u",
 		     e->xcrossing.window);
 		return;
@@ -551,7 +523,7 @@ maprequest(XEvent *e)
 	Window win = e->xmaprequest.window;
 
 	/* in case a window gets remapped */
-	if (!locate_window2client(&c, NULL, win)) {
+	if (!locate_window2client(clients, nc, win, &c, NULL)) {
 		detachclient(c);
 		termclient(c);
 	}
@@ -683,7 +655,7 @@ propertynotify(XEvent *e)
 
 	DEBUG("propertynotify(%lu)", e->xproperty.window);
 
-	if (!locate_window2client(&c, NULL, ev->window))
+	if (!locate_window2client(clients, nc, ev->window, &c, NULL))
 		return;
 
 	switch (ev->atom) {
@@ -1067,7 +1039,7 @@ unmapnotify(XEvent *e)
 
 	struct client *c;
 
-	if (!locate_window2client(&c, NULL, e->xunmap.window))
+	if (!locate_window2client(clients, nc, e->xunmap.window, &c, NULL))
 		return;
 
 	detachclient(c);
