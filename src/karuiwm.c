@@ -36,11 +36,9 @@ enum { CurNormal, CurResize, CurMove, CurLAST };
 enum { Left, Right, Up, Down, NoDirection };
 
 /* functions */
-static struct client *locate_window2client(Window);
 static void attachclient(struct client *);
 static void buttonpress(XEvent *);
 static bool checksizehints(struct client *, int unsigned *, int unsigned *);
-static void cleanup(void);
 static void clientmessage(XEvent *);
 static void configurerequest(XEvent *);
 static void configurenotify(XEvent *);
@@ -49,9 +47,12 @@ static void enternotify(XEvent *);
 static void expose(XEvent *);
 static void focusin(XEvent *);
 static void grabkeys(void);
+static void init(void);
 static void keypress(XEvent *);
 static void keyrelease(XEvent *);
 static void killclient(union argument const *);
+static bool locate_window2client(struct client **, int unsigned *, Window);
+static bool locate_client2index(int unsigned *, struct client *);
 static void mappingnotify(XEvent *);
 static void maprequest(XEvent *);
 static void movemouse(union argument const *);
@@ -66,7 +67,6 @@ static void setfloating(struct client *, bool);
 static void setfullscreen(struct client *, bool);
 static void setmfact(union argument const *);
 static void setnmaster(union argument const *);
-static void setup(void);
 static void setupatoms(void);
 static void setupfont(void);
 static void setupsession(void);
@@ -74,6 +74,7 @@ static void shiftclient(union argument const *);
 static void sigchld(int);
 static void spawn(union argument const *);
 static void stepfocus(union argument const *);
+static void term(void);
 static void termclient(struct client *);
 static void togglefloat(union argument const *);
 static void unmapnotify(XEvent *);
@@ -121,12 +122,6 @@ static int unsigned sw, sh;
 /* colours */
 #define CBORDERNORM      0x222222   /* normal windows */
 #define CBORDERSEL       0xAFD700   /* selected windows */
-
-#define CNORM            0x888888   /* status bar */
-#define CBGNORM          0x222222
-
-#define CSEL             0xCCCCCC
-#define CBGSEL           0x444444
 
 /* commands */
 static char const *termcmd[] = { "urxvt", NULL };
@@ -177,15 +172,32 @@ static struct button const buttons[] = {
 
 /* function implementation */
 
-static struct client *
-locate_window2client(Window win)
+static bool
+locate_window2client(struct client **client, int unsigned *index, Window win)
 {
 	int unsigned i;
 
-	for (i = 0; i < nc; ++i)
-		if (clients[i]->win == win)
-			return clients[i];
-	return NULL;
+	for (i = 0; i < nc; ++i) {
+		if (clients[i]->win == win) {
+			if (index != NULL)  *index = i;
+			if (client != NULL) *client = clients[i];
+			return true;
+		}
+	}
+	return false;
+}
+
+/* TODO workspaces, pages */
+static bool
+locate_client2index(int unsigned *index, struct client *c)
+{
+	int unsigned i;
+
+	for (i = 0; i < nc && clients[i] != c; ++i);
+	if (i == nc)
+		return false;
+	*index = i;
+	return true;
 }
 
 void
@@ -202,8 +214,7 @@ buttonpress(XEvent *e)
 	unsigned int i;
 	struct client *c;
 
-	c = locate_window2client(e->xbutton.window);
-	if (c == NULL) {
+	if (!locate_window2client(&c, NULL, e->xbutton.window)) {
 		WARN("click on unhandled window");
 		return;
 	}
@@ -265,41 +276,15 @@ checksizehints(struct client *c, int unsigned *w, int unsigned *h)
 }
 
 void
-cleanup(void)
-{
-	struct client *c;
-
-	while (nc > 0) {
-		c = clients[0];
-		detachclient(c);
-		termclient(c);
-	}
-
-	/* remove X resources */
-	if (dc.font.xfontset) {
-		XFreeFontSet(kwm.dpy, dc.font.xfontset);
-	} else {
-		XFreeFont(kwm.dpy, dc.font.xfontstruct);
-	}
-	XFreeGC(kwm.dpy, dc.gc);
-	XUngrabKey(kwm.dpy, AnyKey, AnyModifier, root);
-	XFreeCursor(kwm.dpy, cursor[CurNormal]);
-	XFreeCursor(kwm.dpy, cursor[CurResize]);
-	XFreeCursor(kwm.dpy, cursor[CurMove]);
-	XSetInputFocus(kwm.dpy, PointerRoot, RevertToPointerRoot, CurrentTime);
-	XCloseDisplay(kwm.dpy);
-}
-
-void
 clientmessage(XEvent *e)
 {
 	DEBUG("clientmessage(%lu)", e->xclient.window);
 
+	bool fullscreen;
 	struct client *c;
 	XClientMessageEvent *ev = &e->xclient;
 
-	c = locate_window2client(e->xclient.window);
-	if (c == NULL) {
+	if (!locate_window2client(&c, NULL, e->xclient.window)) {
 		WARN("client message on unhandled window");
 		return;
 	}
@@ -307,9 +292,10 @@ clientmessage(XEvent *e)
 	if (ev->message_type == netatom[NetWMState]) {
 		if ((Atom) ev->data.l[1] == netatom[NetWMStateFullscreen]
 		|| (Atom) ev->data.l[2] == netatom[NetWMStateFullscreen]) {
-			setfullscreen(c, ev->data.l[0] == 1 || /* _NET_WM_STATE_ADD */
-					(ev->data.l[0] == 2 /* _NET_WM_STATE_TOGGLE */ &&
-					 !c->fullscreen));
+			/* _NET_WM_STATE_ADD || _NET_WM_STATE_TOGGLE */
+			fullscreen = ev->data.l[0] == 1 ||
+			             (ev->data.l[0] == 2 && !c->fullscreen);
+			setfullscreen(c, fullscreen);
 		}
 	}
 }
@@ -334,7 +320,7 @@ configurerequest(XEvent *e)
 	DEBUG("configurerequest(%lu)", e->xconfigurerequest.window);
 
 	/* forward configuration if not managed (or if we don't force the size) */
-	c = locate_window2client(e->xconfigurerequest.window);
+	(void) locate_window2client(&c, NULL, e->xconfigurerequest.window);
 	if (c == NULL || c->fullscreen || c->floating) {
 		wc = (XWindowChanges) {
 			.x = ev->x,
@@ -373,8 +359,7 @@ detachclient(struct client *c)
 
 	DEBUG("detachclient");
 
-	for (i = 0; i < nc && clients[i] != c; ++i);
-	if (i == nc) {
+	if (!locate_client2index(&i, c)) {
 		WARN("attempt to detach non-existent client");
 		return;
 	}
@@ -398,8 +383,7 @@ enternotify(XEvent *e)
 
 	struct client *c;
 
-	c = locate_window2client(e->xcrossing.window);
-	if (c == NULL) {
+	if (!locate_window2client(&c, NULL, e->xcrossing.window)) {
 		WARN("attempt to enter unhandled/invisible window %u",
 		     e->xcrossing.window);
 		return;
@@ -463,16 +447,63 @@ grabkeys(void)
 }
 
 void
+init(void)
+{
+	XSetWindowAttributes wa;
+
+	/* connect to X */
+	if (!(kwm.dpy = XOpenDisplay(NULL))) {
+		DIE("could not open X");
+	}
+
+	/* low: errors, zombies, locale */
+	xerrorxlib = XSetErrorHandler(xerror);
+	sigchld(0);
+	if (!setlocale(LC_ALL, "") || !XSupportsLocale()) {
+		FATAL("could not set locale");
+		exit(EXIT_FAILURE);
+	}
+
+	/* basic: root window, graphic context, atoms */
+	screen = DefaultScreen(kwm.dpy);
+	root = RootWindow(kwm.dpy, screen);
+	dc.gc = XCreateGC(kwm.dpy, root, 0, NULL);
+	dc.depth = DefaultDepth(kwm.dpy, screen);
+	setupatoms();
+
+	/* events */
+	wa.event_mask = SubstructureNotifyMask|SubstructureRedirectMask|
+			KeyPressMask|StructureNotifyMask|ButtonPressMask|PointerMotionMask|
+			FocusChangeMask|PropertyChangeMask;
+	XChangeWindowAttributes(kwm.dpy, root, CWEventMask, &wa);
+
+	/* input: mouse, keyboard */
+	cursor[CurNormal] = XCreateFontCursor(kwm.dpy, XC_left_ptr);
+	cursor[CurResize] = XCreateFontCursor(kwm.dpy, XC_sizing);
+	cursor[CurMove] = XCreateFontCursor(kwm.dpy, XC_fleur);
+	wa.cursor = cursor[CurNormal];
+	XChangeWindowAttributes(kwm.dpy, root, CWCursor, &wa);
+	grabkeys();
+
+	/* fonts */
+	setupfont();
+
+	/* session */
+	setupsession();
+}
+
+void
 keypress(XEvent *e)
 {
-	//debug("keypress()");
+	int unsigned i;
 
-	unsigned int i;
+	DEBUG("keypress()");
+
 	KeySym keysym = XLookupKeysym(&e->xkey, 0);
-
 	for (i = 0; i < LENGTH(keys); i++) {
-		if (e->xkey.state == keys[i].mod && keysym == keys[i].key &&
-				keys[i].func) {
+		if (e->xkey.state == keys[i].mod
+		&& keysym == keys[i].key
+		&& keys[i].func) {
 			keys[i].func(&keys[i].arg);
 			return;
 		}
@@ -516,12 +547,11 @@ maprequest(XEvent *e)
 {
 	DEBUG("maprequest(%lu)", e->xmaprequest.window);
 
-	struct client *c;
+	struct client *c = NULL;
 	Window win = e->xmaprequest.window;
 
 	/* in case a window gets remapped */
-	c = locate_window2client(win);
-	if (c != NULL) {
+	if (!locate_window2client(&c, NULL, win)) {
 		detachclient(c);
 		termclient(c);
 	}
@@ -581,21 +611,21 @@ movemouse(union argument const *arg)
 	do {
 		XMaskEvent(kwm.dpy, MOUSEMASK|ExposureMask|SubstructureRedirectMask, &ev);
 		switch (ev.type) {
-			case ConfigureRequest:
-			case Expose:
-			case MapRequest:
-				handle[ev.type](&ev);
-				break;
-			case MotionNotify:
-				if (!c->floating) {
-					togglefloat(NULL);
-				}
-				cx = cx+(ev.xmotion.x-x);
-				cy = cy+(ev.xmotion.y-y);
-				x = ev.xmotion.x;
-				y = ev.xmotion.y;
-				client_move(c, cx, cy);
-				break;
+		case ConfigureRequest:
+		case Expose:
+		case MapRequest:
+			handle[ev.type](&ev);
+			break;
+		case MotionNotify:
+			if (!c->floating) {
+				togglefloat(NULL);
+			}
+			cx = cx+(ev.xmotion.x-x);
+			cy = cy+(ev.xmotion.y-y);
+			x = ev.xmotion.x;
+			y = ev.xmotion.y;
+			client_move(c, cx, cy);
+			break;
 		}
 	} while (ev.type != ButtonRelease);
 	XUngrabPointer(kwm.dpy, CurrentTime);
@@ -648,26 +678,25 @@ print(FILE *f, enum log_level level, char const *format, ...)
 void
 propertynotify(XEvent *e)
 {
-	DEBUG("propertynotify(%lu)", e->xproperty.window);
-
-	XPropertyEvent *ev;
+	XPropertyEvent *ev = &e->xproperty;
 	struct client *c;
 
-	ev = &e->xproperty;
-	c = locate_window2client(ev->window);
-	if (c == NULL)
+	DEBUG("propertynotify(%lu)", e->xproperty.window);
+
+	if (!locate_window2client(&c, NULL, ev->window))
 		return;
+
 	switch (ev->atom) {
-		case XA_WM_TRANSIENT_FOR:
-			DEBUG("\033[33mwindow %lu is transient!\033[0m", c->win);
-			updatetransient(c);
-			break;
-		case XA_WM_NORMAL_HINTS:
-			client_updatesizehints(c);
-			break;
-		case XA_WM_HINTS:
-			/* TODO urgent hint */
-			break;
+	case XA_WM_TRANSIENT_FOR:
+		DEBUG("\033[33mwindow %lu is transient!\033[0m", c->win);
+		updatetransient(c);
+		break;
+	case XA_WM_NORMAL_HINTS:
+		client_updatesizehints(c);
+		break;
+	case XA_WM_HINTS:
+		/* TODO urgent hint */
+		break;
 	}
 	if (ev->atom == XA_WM_NAME || ev->atom == netatom[NetWMName]) {
 		client_updatename(c);
@@ -844,52 +873,6 @@ setnmaster(union argument const *arg)
 }
 
 void
-setup(void)
-{
-	XSetWindowAttributes wa;
-
-	/* connect to X */
-	if (!(kwm.dpy = XOpenDisplay(NULL))) {
-		DIE("could not open X");
-	}
-
-	/* low: errors, zombies, locale */
-	xerrorxlib = XSetErrorHandler(xerror);
-	sigchld(0);
-	if (!setlocale(LC_ALL, "") || !XSupportsLocale()) {
-		FATAL("could not set locale");
-		exit(EXIT_FAILURE);
-	}
-
-	/* basic: root window, graphic context, atoms */
-	screen = DefaultScreen(kwm.dpy);
-	root = RootWindow(kwm.dpy, screen);
-	dc.gc = XCreateGC(kwm.dpy, root, 0, NULL);
-	dc.depth = DefaultDepth(kwm.dpy, screen);
-	setupatoms();
-
-	/* events */
-	wa.event_mask = SubstructureNotifyMask|SubstructureRedirectMask|
-			KeyPressMask|StructureNotifyMask|ButtonPressMask|PointerMotionMask|
-			FocusChangeMask|PropertyChangeMask;
-	XChangeWindowAttributes(kwm.dpy, root, CWEventMask, &wa);
-
-	/* input: mouse, keyboard */
-	cursor[CurNormal] = XCreateFontCursor(kwm.dpy, XC_left_ptr);
-	cursor[CurResize] = XCreateFontCursor(kwm.dpy, XC_sizing);
-	cursor[CurMove] = XCreateFontCursor(kwm.dpy, XC_fleur);
-	wa.cursor = cursor[CurNormal];
-	XChangeWindowAttributes(kwm.dpy, root, CWCursor, &wa);
-	grabkeys();
-
-	/* fonts */
-	setupfont();
-
-	/* session */
-	setupsession();
-}
-
-void
 setupatoms(void)
 {
 	wmatom[WMProtocols] = XInternAtom(kwm.dpy, "WM_PROTOCOLS", false);
@@ -1035,6 +1018,32 @@ stepfocus(union argument const *arg)
 }
 
 void
+term(void)
+{
+	struct client *c;
+
+	while (nc > 0) {
+		c = clients[0];
+		detachclient(c);
+		termclient(c);
+	}
+
+	/* remove X resources */
+	if (dc.font.xfontset) {
+		XFreeFontSet(kwm.dpy, dc.font.xfontset);
+	} else {
+		XFreeFont(kwm.dpy, dc.font.xfontstruct);
+	}
+	XFreeGC(kwm.dpy, dc.gc);
+	XUngrabKey(kwm.dpy, AnyKey, AnyModifier, root);
+	XFreeCursor(kwm.dpy, cursor[CurNormal]);
+	XFreeCursor(kwm.dpy, cursor[CurResize]);
+	XFreeCursor(kwm.dpy, cursor[CurMove]);
+	XSetInputFocus(kwm.dpy, PointerRoot, RevertToPointerRoot, CurrentTime);
+	XCloseDisplay(kwm.dpy);
+}
+
+void
 termclient(struct client *c)
 {
 	free(c);
@@ -1058,10 +1067,8 @@ unmapnotify(XEvent *e)
 
 	struct client *c;
 
-	c = locate_window2client(e->xunmap.window);
-	if (c == NULL) {
+	if (!locate_window2client(&c, NULL, e->xunmap.window))
 		return;
-	}
 
 	detachclient(c);
 	termclient(c);
@@ -1183,8 +1190,8 @@ main(int argc, char **argv)
 		puts(APPNAME" © 2014 ayekat, see LICENSE for details");
 		return EXIT_FAILURE;
 	}
-	setup();
+	init();
 	run();
-	cleanup();
+	term();
 	return EXIT_SUCCESS;
 }

@@ -139,4 +139,3 @@ client_updatesizehints(struct client *c)
 		c->maxw = c->maxh = 0;
 	}
 }
-

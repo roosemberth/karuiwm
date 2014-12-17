@@ -15,13 +15,14 @@ CFLAGS += -Wcast-align -Wcast-qual -Wconversion -Wwrite-strings -Wfloat-equal
 CFLAGS += -Wlogical-op -Wpointer-arith -Wformat=2
 CFLAGS += -Winit-self -Wuninitialized -Wmaybe-uninitialized
 CFLAGS += -Wstrict-prototypes -Wmissing-declarations -Wmissing-prototypes
-CFLAGS += -Wshadow #-Wpadded
+CFLAGS += -Wshadow -Werror #-Wpadded
 CFLAGS += -std=c99 -O2
 CFLAGS += $(shell pkg-config --cflags xinerama x11)
 LIBS  = $(shell pkg-config --libs xinerama x11)
 
-BUILDDIR = build
+# File names:
 SRCDIR = src
+BUILDDIR = build
 SOURCES = $(wildcard ${SRCDIR}/*.c)
 OBJECTS = $(SOURCES:${SRCDIR}/%.c=${BUILDDIR}/%.o)
 DEPENDS = $(OBJECTS:%.o=%.d)
