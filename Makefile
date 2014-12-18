@@ -7,8 +7,6 @@ PREFIX = /usr/local
 # Application name:
 APPNAME = karuiwm
 
-XINITRC = xinitrc
-
 # Flags:
 CFLAGS  = -W -Wall -Wextra -pedantic -g
 CFLAGS += -Wcast-align -Wcast-qual -Wconversion -Wwrite-strings -Wfloat-equal
@@ -23,12 +21,20 @@ LIBS  = $(shell pkg-config --libs xinerama x11)
 # File names:
 SRCDIR = src
 BUILDDIR = build
-SOURCES = $(wildcard ${SRCDIR}/*.c)
+SOURCES = $(wildcard ${SRCDIR}/*.c ${SRCDIR}/layouts/*.c)
 OBJECTS = $(SOURCES:${SRCDIR}/%.c=${BUILDDIR}/%.o)
 DEPENDS = $(OBJECTS:%.o=%.d)
+XINITRC = xinitrc
+
+-include "config.mk"
 
 # Default: Build application
 all: $(APPNAME)
+
+# Alternative build targets:
+asan: CFLAGS += -fsanitize=address -fno-omit-frame-pointer
+asan: LIBS += -fsanitize=address
+asan: all
 
 # Handy actions:
 clean:
@@ -56,11 +62,14 @@ $(APPNAME): $(OBJECTS)
 
 xephyr:
 	xinit ${XINITRC} -- $(shell which Xephyr) :1
+valphyr:
+	VALGRIND=1 xinit ${XINITRC} -- $(shell which Xephyr) :1
 run:
 	startx ${XINITRC} > log
 
 # Phony targets:
 .PHONY: all
+.PHONY: asan
 .PHONY: clean
 .PHONY: mrproper
 .PHONY: install

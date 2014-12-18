@@ -41,6 +41,9 @@ client_init(Window win, bool viewable)
 		c->y = wa.y;
 		c->w = (int unsigned) wa.width;
 		c->h = (int unsigned) wa.height;
+	} else {
+		c->x = c->y = 0;
+		c->w = c->h = 1;
 	}
 	c->dirty = false;
 	XSetWindowBorderWidth(kwm.dpy, c->win, BORDERWIDTH);

@@ -17,6 +17,6 @@ struct client {
 struct client *client_init(Window win, bool viewable);
 void client_move(struct client *c, int x, int y);
 void client_updatesizehints(struct client *c);
-void client_updatename(struct client *);
+void client_updatename(struct client *c);
 
 #endif /* _CLIENT_H */

@@ -16,7 +16,6 @@ locate_window2client(struct client **clients, size_t nc, Window win,
 	return false;
 }
 
-/* TODO workspaces, pages */
 bool
 locate_client2index(struct client **clients, size_t nc, struct client *c,
                     int unsigned *index)
