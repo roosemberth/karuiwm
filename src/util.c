@@ -2,6 +2,28 @@
 #include "karuiwm.h"
 #include <stdlib.h>
 
+/* implementation */
+void
+attach(void ***l, size_t *lsize, void *e, size_t esize, char const *ctx)
+{
+	*l = srealloc(*l, ++(*lsize)*esize, ctx);
+	*(*l+*lsize-1) = e;
+}
+
+int
+detach(void ***l, size_t *lsize, void *e, size_t esize, char const *ctx)
+{
+	int unsigned i;
+
+	for (i = 0; i < *lsize && *(*l+i) != e; ++i);
+	if (i == *lsize)
+		return -1;
+	for (; i < *lsize-1; ++i)
+		*(*l+i) = *(*l+i+1);
+	*l = srealloc(*l, --(*lsize)*esize, ctx);
+	return 0;
+}
+
 void *
 scalloc(size_t nmemb, size_t size, char const *context)
 {

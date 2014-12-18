@@ -31,6 +31,9 @@
 	((MAX(0, MIN((X)+(W),(MON)->x+(MON)->w) - MAX((MON)->x, X))) * \
 	 (MAX(0, MIN((Y)+(H),(MON)->y+(MON)->h) - MAX((MON)->y, Y))))
 #define MOUSEMASK (BUTTONMASK|PointerMotionMask)
+#define MODKEY Mod1Mask
+#define CBORDERNORM      0x222222   /* normal windows */
+#define CBORDERSEL       0xAFD700   /* selected windows */
 
 /* enums */
 enum { CurNormal, CurResize, CurMove, CurLAST };
@@ -83,6 +86,22 @@ static int xerror(Display *, XErrorEvent *);
 static int (*xerrorxlib)(Display *, XErrorEvent *);
 static void zoom(union argument const *);
 
+/* variables */
+static bool running;                          /* application state */
+static int screen;                            /* screen */
+static Window root;                           /* root window */
+static Cursor cursor[CurLAST];                /* cursors */
+static enum log_level log_level;
+static struct client **clients, *selcli;
+static size_t nc, nmaster = 1;
+static float mfact = 0.5;
+static int unsigned sw, sh;
+static char const *termcmd[] = { "urxvt", NULL };
+static char const *scrotcmd[] = { "prtscr", NULL };
+static char const *volupcmd[] = { "amixer", "set", "Master", "2+", "unmute", NULL };
+static char const *voldowncmd[] = { "amixer", "set", "Master", "2-", "unmute", NULL };
+static char const *volmutecmd[] = { "amixer", "set", "Master", "toggle", NULL };
+
 /* event handlers, as array to allow O(1) access; codes in X.h */
 static void (*handle[LASTEvent])(XEvent *) = {
 	[ButtonPress]      = buttonpress,      /* 4*/
@@ -100,73 +119,44 @@ static void (*handle[LASTEvent])(XEvent *) = {
 	[UnmapNotify]      = unmapnotify       /*18*/
 };
 
-/* variables */
-static bool running;                          /* application state */
-static int screen;                            /* screen */
-static Window root;                           /* root window */
-static Cursor cursor[CurLAST];                /* cursors */
-static enum log_level log_level;
-static struct client **clients, *selcli;
-static size_t nc, nmaster = 1;
-static float mfact = 0.5;
-static int unsigned sw, sh;
-
-/* colours */
-#define CBORDERNORM      0x222222   /* normal windows */
-#define CBORDERSEL       0xAFD700   /* selected windows */
-
-/* commands */
-static char const *termcmd[] = { "urxvt", NULL };
-static char const *scrotcmd[] = { "prtscr", NULL };
-static char const *volupcmd[] = { "amixer", "set", "Master", "2+", "unmute", NULL };
-static char const *voldowncmd[] = { "amixer", "set", "Master", "2-", "unmute", NULL };
-static char const *volmutecmd[] = { "amixer", "set", "Master", "toggle", NULL };
-
-#define MODKEY Mod1Mask
-
-/* normal keys */
+/* keys and mouse buttons */
 static struct key const keys[] = {
 	/* applications */
-	{ MODKEY,                       XK_n,       spawn,            { .v=termcmd } },
-	{ MODKEY,                       XK_Print,   spawn,            { .v=scrotcmd } },
+	{ MODKEY,           XK_n,       spawn,       { .v=termcmd } },
+	{ MODKEY,           XK_Print,   spawn,       { .v=scrotcmd } },
 
 	/* hardware */
-	{ 0,                            0x1008FF11, spawn,            { .v=voldowncmd } },
-	{ 0,                            0x1008FF12, spawn,            { .v=volmutecmd } },
-	{ 0,                            0x1008FF13, spawn,            { .v=volupcmd } },
+	{ 0,                0x1008FF11, spawn,       { .v=voldowncmd } },
+	{ 0,                0x1008FF12, spawn,       { .v=volmutecmd } },
+	{ 0,                0x1008FF13, spawn,       { .v=volupcmd } },
 
 	/* windows */
-	{ MODKEY,                       XK_j,       stepfocus,        { .i=+1 } },
-	{ MODKEY,                       XK_k,       stepfocus,        { .i=-1 } },
-	{ MODKEY,                       XK_l,       setmfact,         { .f=+0.02f } },
-	{ MODKEY,                       XK_h,       setmfact,         { .f=-0.02f } },
-	{ MODKEY,                       XK_t,       togglefloat,      { 0 } },
-	{ MODKEY|ShiftMask,             XK_c,       killclient,       { 0 } },
+	{ MODKEY,           XK_j,       stepfocus,   { .i=+1 } },
+	{ MODKEY,           XK_k,       stepfocus,   { .i=-1 } },
+	{ MODKEY,           XK_l,       setmfact,    { .f=+0.02f } },
+	{ MODKEY,           XK_h,       setmfact,    { .f=-0.02f } },
+	{ MODKEY,           XK_t,       togglefloat, { 0 } },
+	{ MODKEY|ShiftMask, XK_c,       killclient,  { 0 } },
 
 	/* layout */
-	{ MODKEY|ShiftMask,             XK_j,       shiftclient,      { .i=+1 } },
-	{ MODKEY|ShiftMask,             XK_k,       shiftclient,      { .i=-1 } },
-	{ MODKEY,                       XK_comma,   setnmaster,       { .i=+1 } },
-	{ MODKEY,                       XK_period,  setnmaster,       { .i=-1 } },
-	{ MODKEY,                       XK_Return,  zoom,             { 0 } },
+	{ MODKEY|ShiftMask, XK_j,       shiftclient, { .i=+1 } },
+	{ MODKEY|ShiftMask, XK_k,       shiftclient, { .i=-1 } },
+	{ MODKEY,           XK_comma,   setnmaster,  { .i=+1 } },
+	{ MODKEY,           XK_period,  setnmaster,  { .i=-1 } },
+	{ MODKEY,           XK_Return,  zoom,        { 0 } },
 
 	/* session */
-	{ MODKEY|ShiftMask,             XK_q,       quit,             { 0 } },
+	{ MODKEY|ShiftMask, XK_q,       quit,        { 0 } },
 };
-
-/* mouse buttons */
 static struct button const buttons[] = {
-	{ MODKEY,                       Button1,    movemouse,        { 0 } },
+	{ MODKEY,           Button1,    movemouse,   { 0 } },
 };
 
-
-/* function implementation */
-
+/* implementation */
 void
 attachclient(struct client *c)
 {
-	clients = srealloc(clients, ++nc*sizeof(struct client *),"client list");
-	clients[nc-1] = c;
+	attach((void ***) &clients, &nc, c, sizeof(c), "client list");
 	selcli = c;
 }
 
@@ -197,10 +187,8 @@ buttonpress(XEvent *xe)
 bool
 checksizehints(struct client *c, int unsigned *w, int unsigned *h)
 {
-	int unsigned u;
+	int unsigned u; /* unit size */
 	bool change = false;
-
-	DEBUG("checksizehints: *w=%u, c->w=%u, *h=%u, c->h=%u", *w, c->w, *h, c->h);
 
 	/* don't respect size hints for untiled or fullscreen windows */
 	if (!c->floating || c->fullscreen) {
@@ -209,33 +197,25 @@ checksizehints(struct client *c, int unsigned *w, int unsigned *h)
 
 	if (*w != c->w) {
 		if (c->basew > 0 && c->incw > 0) {
-			u = (*w-c->basew)/c->incw;
-			*w = c->basew+u*c->incw;
+			u = (*w - c->basew)/c->incw;
+			*w = c->basew + u*c->incw;
 		}
-		if (c->minw > 0) {
+		if (c->minw > 0)
 			*w = MAX(*w, c->minw);
-		}
-		if (c->maxw > 0) {
+		if (c->maxw > 0)
 			*w = MIN(*w, c->maxw);
-		}
-		if (*w != c->w) {
-			change = true;
-		}
+		change |= *w != c->w;
 	}
 	if (*h != c->h) {
 		if (c->baseh > 0 && c->inch > 0) {
-			u = (*h-c->baseh)/c->inch;
-			*h = c->baseh+u*c->inch;
+			u = (*h - c->baseh)/c->inch;
+			*h = c->baseh + u*c->inch;
 		}
-		if (c->minh > 0) {
+		if (c->minh > 0)
 			*h = MAX(*h, c->minh);
-		}
-		if (c->maxh > 0) {
+		if (c->maxh > 0)
 			*h = MIN(*h, c->maxh);
-		}
-		if (*h != c->h) {
-			change = true;
-		}
+		change |= *h != c->h;
 	}
 	return change;
 }
@@ -272,9 +252,8 @@ configurenotify(XEvent *xe)
 
 	//EVENT("configurenotify(%lu)", e->window);
 
-	if (e->window == root) {
+	if (e->window == root)
 		updategeom();
-	}
 }
 
 void
@@ -305,42 +284,28 @@ configurerequest(XEvent *xe)
 	}
 
 	/* force size with XSendEvent() instead of ordinary XConfigureWindow() */
-	cev = (XConfigureEvent) {
-		.type = ConfigureNotify,
-		.display = kwm.dpy,
-		.event = c->win,
-		.window = c->win,
-		.x = c->x,
-		.y = c->y,
-		.width = (int) c->w,
-		.height = (int) c->h,
-		.border_width = BORDERWIDTH,
-		.above = None,
-		.override_redirect = False,
-	};
-	XSendEvent(kwm.dpy, c->win, false, StructureNotifyMask, (XEvent *) &cev);
+	cev.type = ConfigureNotify;
+	cev.display = kwm.dpy;
+	cev.event = c->win;
+	cev.window = c->win;
+	cev.x = c->x;
+	cev.y = c->y;
+	cev.width = (int) c->w;
+	cev.height = (int) c->h;
+	cev.border_width = BORDERWIDTH;
+	cev.above = None;
+	cev.override_redirect = False;
+	XSendEvent(kwm.dpy, c->win, False, StructureNotifyMask, (XEvent *) &cev);
 }
 
 void
 detachclient(struct client *c)
 {
-	int unsigned i;
-
-	if (!locate_client2index(clients, nc, c, &i)) {
-		WARN("attempt to detach non-existent client");
+	if (detach((void ***) &clients, &nc, c, sizeof(c), "client list") < 0) {
+		WARN("attempt to detach unhandled client(%lu)", c->win);
 		return;
 	}
-
-	/* update focus */
 	selcli = nc > 0 ? clients[0] : NULL;
-
-	/* remove from list, shift */
-	--nc;
-	for (; i < nc; i++) {
-		clients[i] = clients[i+1];
-	}
-	clients = srealloc(clients, nc*sizeof(struct client *),
-	                   "client list");
 }
 
 void
@@ -599,9 +564,8 @@ movemouse(union argument const *arg)
 			handle[ev.type](&ev);
 			break;
 		case MotionNotify:
-			if (!c->floating) {
+			if (!c->floating)
 				togglefloat(NULL);
-			}
 			cx = cx+(ev.xmotion.x-x);
 			cy = cy+(ev.xmotion.y-y);
 			x = ev.xmotion.x;
@@ -682,12 +646,10 @@ propertynotify(XEvent *xe)
 		/* TODO */
 		break;
 	}
-	if (e->atom == XA_WM_NAME || e->atom == netatom[NetWMName]) {
+	if (e->atom == XA_WM_NAME || e->atom == netatom[NetWMName])
 		client_updatename(c);
-	}
-	if (e->atom == netatom[NetWMWindowType]) {
+	if (e->atom == netatom[NetWMWindowType])
 		updateclient(c);
-	}
 }
 
 void
