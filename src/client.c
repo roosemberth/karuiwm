@@ -7,6 +7,9 @@
 
 #define BORDERWIDTH 1
 
+static bool checksizehints(struct client *, int unsigned *, int unsigned *);
+static int get_name(struct client *);
+
 struct client *
 client_init(Window win, bool viewable)
 {
@@ -47,9 +50,9 @@ client_init(Window win, bool viewable)
 	}
 	c->dirty = false;
 	XSetWindowBorderWidth(kwm.dpy, c->win, BORDERWIDTH);
-	client_updatesizehints(c);
+	client_refreshsizehints(c);
 	c->name[0] = 0;
-	client_updatename(c);
+	client_refreshname(c);
 	grabbuttons(c, false);
 	return c;
 }
@@ -63,38 +66,25 @@ client_move(struct client *c, int x, int y)
 }
 
 void
-client_updatename(struct client *c)
+client_moveresize(struct client *c, int x, int y, int unsigned w,
+                  int unsigned h)
 {
-	XTextProperty xtp;
-	int n;
-	char **list;
-	bool broken=false;
-
-	XGetTextProperty(kwm.dpy, c->win, &xtp, netatom[NetWMName]);
-	if (!xtp.nitems) {
-		broken = true;
-	} else {
-		if (xtp.encoding == XA_STRING) {
-			strncpy(c->name, (char const *) xtp.value, 255);
-		} else {
-			if (XmbTextPropertyToTextList(kwm.dpy, &xtp, &list, &n) >= Success &&
-					n > 0 && list) {
-				strncpy(c->name, list[0], 255);
-				XFreeStringList(list);
-			}
-		}
-	}
-	if (broken || c->name[0] == 0) {
-		strcpy(c->name, "[broken]");
-	}
-	c->name[255] = 0;
-	XFree(xtp.value);
-
-	DEBUG("window %lu has name '%s'", c->win, c->name);
+	client_move(c, x, y);
+	client_resize(c, w, h);
 }
 
 void
-client_updatesizehints(struct client *c)
+client_refreshname(struct client *c)
+{
+	if (get_name(c) < 0 || c->name[0] == '\0')
+		strcpy(c->name, "[broken]");
+	c->name[BUFSIZ-1] = '\0';
+
+	DEBUG("client(%lu)->name = %s", c->win, c->name);
+}
+
+void
+client_refreshsizehints(struct client *c)
 {
 	long size;
 	XSizeHints hints;
@@ -141,4 +131,87 @@ client_updatesizehints(struct client *c)
 	} else {
 		c->maxw = c->maxh = 0;
 	}
+}
+
+void
+client_resize(struct client *c, int unsigned w, int unsigned h)
+{
+	bool change = checksizehints(c, &w, &h);
+
+	if (change) {
+		c->w = w;
+		c->h = h;
+		XResizeWindow(kwm.dpy, c->win, c->w, c->h);
+	}
+}
+
+void
+client_setfloating(struct client *c, bool floating)
+{
+	c->floating = floating;
+}
+
+void
+client_term(struct client *c)
+{
+	free(c);
+}
+
+static bool
+checksizehints(struct client *c, int unsigned *w, int unsigned *h)
+{
+	int unsigned u; /* unit size */
+	bool change = false;
+
+	/* don't respect size hints for untiled or fullscreen windows */
+	if (!c->floating || c->fullscreen) {
+		return *w != c->w || *h != c->h;
+	}
+
+	if (*w != c->w) {
+		if (c->basew > 0 && c->incw > 0) {
+			u = (*w - c->basew)/c->incw;
+			*w = c->basew + u*c->incw;
+		}
+		if (c->minw > 0)
+			*w = MAX(*w, c->minw);
+		if (c->maxw > 0)
+			*w = MIN(*w, c->maxw);
+		change |= *w != c->w;
+	}
+	if (*h != c->h) {
+		if (c->baseh > 0 && c->inch > 0) {
+			u = (*h - c->baseh)/c->inch;
+			*h = c->baseh + u*c->inch;
+		}
+		if (c->minh > 0)
+			*h = MAX(*h, c->minh);
+		if (c->maxh > 0)
+			*h = MIN(*h, c->maxh);
+		change |= *h != c->h;
+	}
+	return change;
+}
+
+static int
+get_name(struct client *c)
+{
+	XTextProperty xtp;
+	int n;
+	char **list;
+
+	XGetTextProperty(kwm.dpy, c->win, &xtp, netatom[NetWMName]);
+	if (!xtp.nitems)
+		return -1;
+	if (xtp.encoding == XA_STRING) {
+		strncpy(c->name, (char const *) xtp.value, 255);
+		//XFree(xtp.value);
+		return 0;
+	}
+	if (XmbTextPropertyToTextList(kwm.dpy, &xtp, &list, &n) != Success
+	|| n <= 0)
+		return -1;
+	strncpy(c->name, list[0], 255);
+	//XFreeStringList(list);
+	return 0;
 }

@@ -64,8 +64,6 @@ xephyr:
 	xinit ${XINITRC} -- $(shell which Xephyr) :1
 valphyr:
 	VALGRIND=1 xinit ${XINITRC} -- $(shell which Xephyr) :1
-run:
-	startx ${XINITRC} > log
 
 # Phony targets:
 .PHONY: all
