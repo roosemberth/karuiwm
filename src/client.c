@@ -10,6 +10,29 @@
 static bool checksizehints(struct client *c, int unsigned *w, int unsigned *h);
 static Atom get_atom(Window win, Atom property);
 static int get_name(char *buf, Window win);
+static void grab_buttons(struct client *c, bool focus);
+static int send_atom(Window win, Atom atom);
+
+/* TODO hack */
+static struct button const buttons[] = {
+	{ MODKEY,           Button1,    movemouse,   { 0 } },
+};
+
+void
+client_kill(struct client *c)
+{
+	/* send WM_DELETE_WINDOW atom */
+	if (send_atom(c->win, wmatom[WMDeleteWindow]) == 0) {
+		return;
+	}
+
+	/* otherwise massacre the client */
+	XGrabServer(kwm.dpy);
+	XSetCloseDownMode(kwm.dpy, DestroyAll);
+	XKillClient(kwm.dpy, c->win);
+	XSync(kwm.dpy, false);
+	XUngrabServer(kwm.dpy);
+}
 
 struct client *
 client_init(Window win)
@@ -28,7 +51,7 @@ client_init(Window win)
 	/* initialise client with default values */
 	c = smalloc(sizeof(struct client), "client");
 	c->win = win;
-	c->floating = true;
+	c->floating = false;
 
 	/* query client properties */
 	client_querydialog(c);
@@ -46,6 +69,10 @@ client_move(struct client *c, int x, int y)
 {
 	c->x = x;
 	c->y = y;
+	if (c->floating) {
+		c->floatx = x;
+		c->floaty = y;
+	}
 	XMoveWindow(kwm.dpy, c->win, c->x, c->y);
 }
 
@@ -197,6 +224,16 @@ client_setfloating(struct client *c, bool floating)
 }
 
 void
+client_setfocus(struct client *c, bool focus)
+{
+	XSetWindowBorder(kwm.dpy, c->win, focus ? CBORDERSEL : CBORDERNORM);
+	if (focus)
+		XSetInputFocus(kwm.dpy, c->win, RevertToPointerRoot,
+		               CurrentTime);
+	grab_buttons(c, true);
+}
+
+void
 client_setfullscreen(struct client *c, bool fullscreen)
 {
 	c->fullscreen = fullscreen;
@@ -286,4 +323,50 @@ get_name(char *buf, Window win)
 	strncpy(buf, list[0], 255);
 	//XFreeStringList(list);
 	return 0;
+}
+
+static int
+send_atom(Window win, Atom atom)
+{
+	int n;
+	Atom *supported;
+	bool exists = false;
+	XEvent ev;
+
+	if (XGetWMProtocols(kwm.dpy, win, &supported, &n)) {
+		while (!exists && n--) {
+			exists = supported[n] == atom;
+		}
+		XFree(supported);
+	}
+	if (!exists) {
+		return false;
+	}
+	ev.type = ClientMessage;
+	ev.xclient.window = win;
+	ev.xclient.message_type = wmatom[WMProtocols];
+	ev.xclient.format = 32;
+	ev.xclient.data.l[0] = (int long) atom;
+	ev.xclient.data.l[1] = CurrentTime;
+	XSendEvent(kwm.dpy, win, false, NoEventMask, &ev);
+	return true;
+}
+
+static void
+grab_buttons(struct client *c, bool focus)
+{
+	int unsigned i;
+
+	XUngrabButton(kwm.dpy, AnyButton, AnyModifier, c->win);
+	if (focus) {
+		for (i = 0; i < LENGTH(buttons); ++i) {
+			XGrabButton(kwm.dpy, buttons[i].button, buttons[i].mod,
+			            c->win, False, BUTTONMASK, GrabModeAsync,
+			            GrabModeAsync, None, None);
+		}
+	} else {
+		XGrabButton(kwm.dpy, AnyButton, AnyModifier, c->win, False,
+		            BUTTONMASK, GrabModeAsync, GrabModeAsync, None,
+		            None);
+	}
 }

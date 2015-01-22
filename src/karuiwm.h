@@ -1,13 +1,18 @@
 #ifndef _KARUIWM_H
 #define _KARUIWM_H
 
-#include "client.h"
 #include <X11/Xlib.h>
 #include <stdbool.h>
 #include <stdio.h>
 
 /* macros */
-#define BORDERWIDTH 1    /* window border width */
+#define BORDERWIDTH 1          /* window border width */
+#define CBORDERNORM 0x222222   /* normal windows */
+#define CBORDERSEL  0xAFD700   /* selected windows */
+
+#define BUTTONMASK (ButtonPressMask|ButtonReleaseMask)
+#define MODKEY Mod1Mask
+
 #define LENGTH(ARR) (sizeof(ARR)/sizeof(ARR[0]))
 #define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
@@ -28,7 +33,7 @@ enum { WMProtocols, WMDeleteWindow, WMState, WMTakeFocus, WMLAST };
 enum { NetActiveWindow, NetSupported, NetWMName, NetWMState,
        NetWMStateFullscreen, NetWMWindowType, NetWMWindowTypeDialog, NetLAST };
 
-/* structures/unions */
+/* unions, structures */
 union argument {
 	int i;
 	float f;
@@ -49,18 +54,16 @@ struct key {
 	union argument const arg;
 };
 
-struct {
-	Display *dpy;
-} kwm;
-
 /* functions */
-void grabbuttons(struct client *c, bool grab);
-void moveresizeclient(struct client *c, int x, int y, int unsigned w, int unsigned h);
+void movemouse(union argument const *);
 void print(FILE *f, enum log_level level, char const *filename,
            int unsigned line, char const *format, ...);
 void setclientmask(bool);
 
 /* variables */
 Atom wmatom[WMLAST], netatom[NetLAST];
+struct {
+	Display *dpy;
+} kwm;
 
 #endif /* _KARUIWM_H */

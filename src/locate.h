@@ -2,6 +2,7 @@
 #define _LOCATE_H
 
 #include "karuiwm.h"
+#include "client.h"
 
 bool locate_window2client(struct client **clients, size_t nc, Window win,
                           struct client **client, int unsigned *index);

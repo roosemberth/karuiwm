@@ -17,6 +17,7 @@ struct client {
 };
 
 struct client *client_init(Window win);
+void client_kill(struct client *c);
 void client_move(struct client *c, int x, int y);
 void client_moveresize(struct client *c, int x, int y, int unsigned w,
                        int unsigned h);
@@ -30,6 +31,7 @@ void client_resize(struct client *c, int unsigned w, int unsigned h);
 void client_setborder(struct client *c, int unsigned border);
 void client_setdialog(struct client *c, bool dialog);
 void client_setfloating(struct client *c, bool floating);
+void client_setfocus(struct client *c, bool focus);
 void client_setfullscreen(struct client *c, bool fullscreen);
 void client_term(struct client *);
 

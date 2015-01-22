@@ -25,15 +25,11 @@
 /* macros */
 #define APPNAME "karuiwm"
 #define APPVERSION "0.1"
-#define BUTTONMASK (ButtonPressMask|ButtonReleaseMask)
-#define CLIENTMASK (EnterWindowMask|PropertyChangeMask|StructureNotifyMask)
+#define CLIENTMASK (EnterWindowMask | PropertyChangeMask | StructureNotifyMask)
 #define INTERSECT(MON, X, Y, W, H) \
-	((MAX(0, MIN((X)+(W),(MON)->x+(MON)->w) - MAX((MON)->x, X))) * \
-	 (MAX(0, MIN((Y)+(H),(MON)->y+(MON)->h) - MAX((MON)->y, Y))))
+        ((MAX(0, MIN((X) + (W), (MON)->x + (MON)->w) - MAX((MON)->x, X))) * \
+         (MAX(0, MIN((Y) + (H), (MON)->y + (MON)->h) - MAX((MON)->y, Y))))
 #define MOUSEMASK (BUTTONMASK|PointerMotionMask)
-#define MODKEY Mod1Mask
-#define CBORDERNORM      0x222222   /* normal windows */
-#define CBORDERSEL       0xAFD700   /* selected windows */
 
 /* enums */
 enum { CurNormal, CurResize, CurMove, CurLAST };
@@ -41,46 +37,44 @@ enum { Left, Right, Up, Down, NoDirection };
 
 /* functions */
 static void arrange(void);
-static void attachclient(struct client *);
-static void buttonpress(XEvent *);
-static void clientmessage(XEvent *);
-static void configurerequest(XEvent *);
-static void configurenotify(XEvent *);
-static void detachclient(struct client *);
-static void enternotify(XEvent *);
-static void expose(XEvent *);
-static void focusin(XEvent *);
+static void attachclient(struct client *c);
+static void buttonpress(XEvent *xe);
+static void clientmessage(XEvent *xe);
+static void configurerequest(XEvent *xe);
+static void configurenotify(XEvent *xe);
+static void detachclient(struct client *c);
+static void enternotify(XEvent *xe);
+static void expose(XEvent *xe);
+static void focusin(XEvent *xe);
 static void grabkeys(void);
 static void init(void);
 static void init_atoms(void);
-static void keypress(XEvent *);
-static void keyrelease(XEvent *);
-static void killclient(union argument const *);
-static void mappingnotify(XEvent *);
-static void maprequest(XEvent *);
-static void movemouse(union argument const *);
-static void propertynotify(XEvent *);
-static void quit(union argument const *);
+static void keypress(XEvent *xe);
+static void keyrelease(XEvent *xe);
+static void killclient(union argument const *arg);
+static void mappingnotify(XEvent *xe);
+static void maprequest(XEvent *xe);
+static void propertynotify(XEvent *xe);
+static void quit(union argument const *arg);
 static void restack(size_t ntiled, struct client **tiled,
                     size_t nfloating, struct client **floating,
                     size_t nfullscreen, struct client **fullscreen);
 static void run(void);
-static bool sendevent(struct client *, Atom);
-static void setmfact(union argument const *);
-static void setnmaster(union argument const *);
+static void setmfact(union argument const *arg);
+static void setnmaster(union argument const *arg);
 static void setupsession(void);
-static void shiftclient(union argument const *);
+static void shiftclient(union argument const *arg);
 static void sigchld(int);
-static void spawn(union argument const *);
-static void stepfocus(union argument const *);
+static void spawn(union argument const *arg);
+static void stepfocus(union argument const *arg);
 static void term(void);
-static void togglefloat(union argument const *);
-static void unmapnotify(XEvent *);
+static void togglefloat(union argument const *arg);
+static void unmapnotify(XEvent *xe);
 static void updatefocus(void);
 static void updategeom(void);
-static int xerror(Display *, XErrorEvent *);
-static int (*xerrorxlib)(Display *, XErrorEvent *);
-static void zoom(union argument const *);
+static int xerror(Display *dpy, XErrorEvent *xe);
+static int (*xerrorxlib)(Display *dpy, XErrorEvent *xe);
+static void zoom(union argument const *arg);
 
 /* variables */
 static bool running;                          /* application state */
@@ -97,6 +91,11 @@ static char const *scrotcmd[] = { "prtscr", NULL };
 static char const *volupcmd[] = { "amixer", "set", "Master", "2+", "unmute", NULL };
 static char const *voldowncmd[] = { "amixer", "set", "Master", "2-", "unmute", NULL };
 static char const *volmutecmd[] = { "amixer", "set", "Master", "toggle", NULL };
+
+/* TODO hack */
+static struct button const buttons[] = {
+	{ MODKEY,           Button1,    movemouse,   { 0 } },
+};
 
 /* event handlers, as array to allow O(1) access; codes in X.h */
 static void (*handle[LASTEvent])(XEvent *) = {
@@ -115,7 +114,7 @@ static void (*handle[LASTEvent])(XEvent *) = {
 	[UnmapNotify]      = unmapnotify       /*18*/
 };
 
-/* keys and mouse buttons */
+/* keys */
 static struct key const keys[] = {
 	/* applications */
 	{ MODKEY,           XK_n,       spawn,       { .v=termcmd } },
@@ -143,9 +142,6 @@ static struct key const keys[] = {
 
 	/* session */
 	{ MODKEY|ShiftMask, XK_q,       quit,        { 0 } },
-};
-static struct button const buttons[] = {
-	{ MODKEY,           Button1,    movemouse,   { 0 } },
 };
 
 /* implementation */
@@ -269,24 +265,23 @@ configurerequest(XEvent *xe)
 
 	//EVENT("configurerequest(%lu)", e->window);
 
-	/* forward configuration if not managed (or if we don't force the size) */
+	/* forward configuration if unmanaged (or if we don't force the size) */
 	(void) locate_window2client(clients, nc, e->window, &c, NULL);
-	if (c == NULL || c->fullscreen || c->floating) {
-		wc = (XWindowChanges) {
-			.x = e->x,
-			.y = e->y,
-			.width = e->width,
-			.height = e->height,
-			.border_width = e->border_width,
-			.sibling = e->above,
-			.stack_mode = e->detail
-		};
+	//if (c == NULL || c->fullscreen || c->floating) {
+		wc.x = e->x;
+		wc.y = e->y;
+		wc.width = e->width;
+		wc.height = e->height;
+		wc.border_width = e->border_width;
+		wc.sibling = e->above;
+		wc.stack_mode = e->detail;
 		XConfigureWindow(kwm.dpy, e->window,
 		                 (int unsigned) e->value_mask, &wc);
 		return;
-	}
+	//}
 
-	/* force size with XSendEvent() instead of ordinary XConfigureWindow() */
+	/* force size with XSendEvent instead of ordinary XConfigureWindow */
+	/* TODO necessary? */
 	cev.type = ConfigureNotify;
 	cev.display = kwm.dpy;
 	cev.event = c->win;
@@ -355,26 +350,6 @@ focusin(XEvent *xe)
 		WARN("focusin on unfocused window %lu (focus is on %lu)",
 		      e->window, nc > 0 ? selcli->win : 0);
 		updatefocus();
-	}
-}
-
-void
-grabbuttons(struct client *c, bool focused)
-{
-	int unsigned i;
-
-	/* TODO figure out what this does */
-	XUngrabButton(kwm.dpy, AnyButton, AnyModifier, c->win);
-	if (focused) {
-		for (i = 0; i < LENGTH(buttons); ++i) {
-			XGrabButton(kwm.dpy, buttons[i].button, buttons[i].mod,
-			            c->win, False, BUTTONMASK, GrabModeAsync,
-			            GrabModeAsync, None, None);
-		}
-	} else {
-		XGrabButton(kwm.dpy, AnyButton, AnyModifier, c->win, False,
-		            BUTTONMASK, GrabModeAsync, GrabModeAsync, None,
-		            None);
 	}
 }
 
@@ -476,26 +451,10 @@ keyrelease(XEvent *xe)
 static void
 killclient(union argument const *arg)
 {
-	struct client *c;
 	(void) arg;
 
-	/* nothing to kill */
-	if (nc == 0) {
-		return;
-	}
-
-	/* try to kill the client via the WM_DELETE_WINDOW atom */
-	c = selcli;
-	if (sendevent(c, wmatom[WMDeleteWindow])) {
-		return;
-	}
-
-	/* otherwise massacre the client */
-	XGrabServer(kwm.dpy);
-	XSetCloseDownMode(kwm.dpy, DestroyAll);
-	XKillClient(kwm.dpy, selcli->win);
-	XSync(kwm.dpy, false);
-	XUngrabServer(kwm.dpy);
+	if (selcli != NULL)
+		client_kill(selcli);
 }
 
 static void
@@ -527,10 +486,11 @@ maprequest(XEvent *xe)
 	c = client_init(e->window);
 	if (c == NULL)
 		return;
-	if (c->floating) {
-		c->x = MAX(c->x, 0);
-		c->y = MAX(c->y, 0);
-	}
+
+	/* fix dimension */
+	if (c->floating)
+		client_moveresize(c, MAX(c->x, 0), MAX(c->y, 0),
+		                     MIN(c->w, sw), MIN(c->h, sh));
 
 	XMapWindow(kwm.dpy, c->win);
 
@@ -539,7 +499,7 @@ maprequest(XEvent *xe)
 	updatefocus();
 }
 
-static void
+void
 movemouse(union argument const *arg)
 {
 	XEvent ev;
@@ -584,8 +544,8 @@ movemouse(union argument const *arg)
 		case MotionNotify:
 			if (!c->floating)
 				togglefloat(NULL);
-			cx = cx+(ev.xmotion.x - x);
-			cy = cy+(ev.xmotion.y - y);
+			cx = cx + (ev.xmotion.x - x);
+			cy = cy + (ev.xmotion.y - y);
 			x = ev.xmotion.x;
 			y = ev.xmotion.y;
 			client_move(c, cx, cy);
@@ -719,33 +679,6 @@ run(void)
 	}
 }
 
-static bool
-sendevent(struct client *c, Atom atom)
-{
-	int n;
-	Atom *supported;
-	bool exists = false;
-	XEvent ev;
-
-	if (XGetWMProtocols(kwm.dpy, c->win, &supported, &n)) {
-		while (!exists && n--) {
-			exists = supported[n] == atom;
-		}
-		XFree(supported);
-	}
-	if (!exists) {
-		return false;
-	}
-	ev.type = ClientMessage;
-	ev.xclient.window = c->win;
-	ev.xclient.message_type = wmatom[WMProtocols];
-	ev.xclient.format = 32;
-	ev.xclient.data.l[0] = (int long) atom;
-	ev.xclient.data.l[1] = CurrentTime;
-	XSendEvent(kwm.dpy, c->win, false, NoEventMask, &ev);
-	return true;
-}
-
 void
 setclientmask(bool set)
 {
@@ -760,18 +693,9 @@ setclientmask(bool set)
 }
 
 static void
-setfloating(struct client *c, bool floating)
-{
-	if (c->floating == floating)
-		return;
-	client_setfloating(c, floating);
-	arrange();
-}
-
-static void
 setmfact(union argument const *arg)
 {
-	mfact = MAX(0.1f, MIN(0.9f, mfact+arg->f));
+	mfact = MAX(0.1f, MIN(0.9f, mfact + arg->f));
 	arrange();
 }
 
@@ -856,7 +780,7 @@ spawn(union argument const *arg)
 static void
 stepfocus(union argument const *arg)
 {
-	unsigned int pos;
+	int unsigned pos;
 
 	if (nc < 2) {
 		return;
@@ -896,7 +820,8 @@ togglefloat(union argument const *arg)
 
 	if (selcli == NULL)
 		return;
-	setfloating(selcli, !selcli->floating);
+	client_setfloating(selcli, !selcli->floating);
+	arrange();
 }
 
 static void
@@ -920,24 +845,14 @@ static void
 updatefocus(void)
 {
 	int unsigned i;
-	struct client *c;
 
 	if (nc == 0) {
 		XSetInputFocus(kwm.dpy, root, RevertToPointerRoot, CurrentTime);
 		return;
 	}
 
-	for (i = 0; i < nc; ++i) {
-		c = clients[i];
-		if (selcli == c) {
-			XSetWindowBorder(kwm.dpy, c->win, CBORDERSEL);
-			XSetInputFocus(kwm.dpy, c->win, RevertToPointerRoot, CurrentTime);
-			grabbuttons(c, true);
-		} else {
-			XSetWindowBorder(kwm.dpy, c->win, CBORDERNORM);
-			grabbuttons(c, false);
-		}
-	}
+	for (i = 0; i < nc; ++i)
+		client_setfocus(clients[i], clients[i] == selcli);
 }
 
 static void
@@ -954,14 +869,15 @@ xerror(Display *dpy, XErrorEvent *ee)
 
 	XGetErrorText(dpy, ee->error_code, es, 256);
 	ERROR("%s (ID %d) after request %d", es, ee->error_code, ee->error_code);
-	/* default error handler (will likely call exit) */
+
+	/* call default error handler (very likely to exit) */
 	return xerrorxlib(dpy, ee);
 }
 
 static void
 zoom(union argument const *arg)
 {
-	unsigned int pos;
+	int unsigned pos;
 	(void) arg;
 
 	if (nc < 2)
@@ -986,7 +902,6 @@ zoom(union argument const *arg)
 int
 main(int argc, char **argv)
 {
-	(void) argc;
 	(void) argv;
 
 	log_level = LOG_DEBUG;

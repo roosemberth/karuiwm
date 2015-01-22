@@ -2,6 +2,7 @@
 #define _LAYOUT_RSTACK_H
 
 #include "../karuiwm.h"
+#include "../client.h"
 
 void rstack(struct client **clients, size_t nc, size_t nmaster, float mfact,
             int unsigned sw, int unsigned sh);
