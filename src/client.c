@@ -7,8 +7,9 @@
 
 #define BORDERWIDTH 1
 
-static int get_name(char *buf, Window win);
 static bool checksizehints(struct client *c, int unsigned *w, int unsigned *h);
+static Atom get_atom(Window win, Atom property);
+static int get_name(char *buf, Window win);
 
 struct client *
 client_init(Window win)
@@ -59,24 +60,10 @@ client_moveresize(struct client *c, int x, int y,
 void
 client_querydialog(struct client *c)
 {
-	int i, ret;
-	int long unsigned l;
-	char unsigned *p = NULL;
-	bool dialog;
-	Atom a = None;
+	Atom type;
 
-	/* dialog */
-	ret = XGetWindowProperty(kwm.dpy, c->win, netatom[NetWMWindowType], 0L,
-	                         sizeof(Atom), False, XA_ATOM, &a, &i, &l, &l,
-	                         &p);
-	if (ret != Success) {
-		WARN("failed to obtain property for window %lu", c->win);
-		return;
-	}
-	dialog = p != NULL && *(Atom *) p == netatom[NetWMWindowTypeDialog];
-	client_setdialog(c, dialog);
-	if (p != NULL)
-		XFree(p);
+	type = get_atom(c->win, netatom[NetWMWindowType]);
+	client_setdialog(c, type == netatom[NetWMWindowTypeDialog]);
 }
 
 void
@@ -101,23 +88,10 @@ client_querydimension(struct client *c)
 void
 client_queryfullscreen(struct client *c)
 {
-	int i, ret;
-	int long unsigned l;
-	char unsigned *p = NULL;
-	bool fullscreen;
-	Atom a = None;
+	Atom state;
 
-	ret = XGetWindowProperty(kwm.dpy, c->win, netatom[NetWMState], 0L,
-	                         sizeof(Atom), False, XA_ATOM, &a, &i, &l, &l,
-	                         &p);
-	if (ret != Success) {
-		WARN("refreshstate: ret = %d, p = %p", ret, p);
-		return;
-	}
-	fullscreen = p != NULL && *(Atom *) p == netatom[NetWMStateFullscreen];
-	client_setfullscreen(c, fullscreen);
-	if (p != NULL)
-		XFree(p);
+	state = get_atom(c->win, netatom[NetWMState]);
+	client_setfullscreen(c, state == netatom[NetWMStateFullscreen]);
 }
 
 void
@@ -270,6 +244,25 @@ checksizehints(struct client *c, int unsigned *w, int unsigned *h)
 		change |= *h != c->h;
 	}
 	return change;
+}
+
+static Atom
+get_atom(Window win, Atom property)
+{
+	int ret, i;
+	int long unsigned lu;
+	char unsigned *atomp = NULL;
+	Atom a, atom = None;
+
+	ret = XGetWindowProperty(kwm.dpy, win, property, 0L, sizeof(Atom),
+	                         False, XA_ATOM, &a, &i, &lu, &lu, &atomp);
+	if (ret != Success) {
+		WARN("%lu: could not get property", win);
+	} else if (atomp != NULL) {
+		atom = *(Atom *) atomp;
+		XFree(atomp);
+	}
+	return atom;
 }
 
 static int
