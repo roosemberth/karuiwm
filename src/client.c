@@ -1,59 +1,42 @@
 #include "karuiwm.h"
 #include "client.h"
-#include <stdlib.h>
+#include "util.h"
 #include <string.h>
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
 
 #define BORDERWIDTH 1
 
-static bool checksizehints(struct client *, int unsigned *, int unsigned *);
-static int get_name(struct client *);
+static int get_name(char *buf, Window win);
+static bool checksizehints(struct client *c, int unsigned *w, int unsigned *h);
 
 struct client *
-client_init(Window win, bool viewable)
+client_init(Window win)
 {
 	struct client *c;
 	XWindowAttributes wa;
 
-	/* ignore buggy windows or windows with override_redirect */
+	/* ignore buggy windows and windows with override_redirect */
 	if (!XGetWindowAttributes(kwm.dpy, win, &wa)) {
 		WARN("XGetWindowAttributes() failed for window %d", win);
 		return NULL;
 	}
-	if (wa.override_redirect) {
+	if (wa.override_redirect)
 		return NULL;
-	}
 
-	/* ignore unviewable windows if we request for viewable windows */
-	if (viewable && wa.map_state != IsViewable) {
-		return NULL;
-	}
-
-	/* create client */
-	c = malloc(sizeof(struct client));
-	if (!c) {
-		ERROR("could not allocate %zu bytes for client", sizeof(struct client));
-		exit(EXIT_FAILURE);
-	}
+	/* initialise client with default values */
+	c = smalloc(sizeof(struct client), "client");
 	c->win = win;
-	c->floating = false;
-	c->fullscreen = false;
-	if (c->floating) {
-		c->x = wa.x;
-		c->y = wa.y;
-		c->w = (int unsigned) wa.width;
-		c->h = (int unsigned) wa.height;
-	} else {
-		c->x = c->y = 0;
-		c->w = c->h = 1;
-	}
-	c->dirty = false;
-	XSetWindowBorderWidth(kwm.dpy, c->win, BORDERWIDTH);
-	client_refreshsizehints(c);
-	c->name[0] = 0;
-	client_refreshname(c);
-	grabbuttons(c, false);
+	c->floating = true;
+
+	/* query client properties */
+	client_querydialog(c);
+	client_querydimension(c);
+	client_queryfullscreen(c);
+	client_queryname(c);
+	client_querysizehints(c);
+	client_querytransient(c);
+
 	return c;
 }
 
@@ -66,25 +49,87 @@ client_move(struct client *c, int x, int y)
 }
 
 void
-client_moveresize(struct client *c, int x, int y, int unsigned w,
-                  int unsigned h)
+client_moveresize(struct client *c, int x, int y,
+                  int unsigned w, int unsigned h)
 {
 	client_move(c, x, y);
 	client_resize(c, w, h);
 }
 
 void
-client_refreshname(struct client *c)
+client_querydialog(struct client *c)
 {
-	if (get_name(c) < 0 || c->name[0] == '\0')
-		strcpy(c->name, "[broken]");
-	c->name[BUFSIZ-1] = '\0';
+	int i, ret;
+	int long unsigned l;
+	char unsigned *p = NULL;
+	bool dialog;
+	Atom a = None;
 
-	DEBUG("client(%lu)->name = %s", c->win, c->name);
+	/* dialog */
+	ret = XGetWindowProperty(kwm.dpy, c->win, netatom[NetWMWindowType], 0L,
+	                         sizeof(Atom), False, XA_ATOM, &a, &i, &l, &l,
+	                         &p);
+	if (ret != Success) {
+		WARN("failed to obtain property for window %lu", c->win);
+		return;
+	}
+	dialog = p != NULL && *(Atom *) p == netatom[NetWMWindowTypeDialog];
+	client_setdialog(c, dialog);
+	if (p != NULL)
+		XFree(p);
 }
 
 void
-client_refreshsizehints(struct client *c)
+client_querydimension(struct client *c)
+{
+	Window root;
+	int unsigned u;
+
+	if (!XGetGeometry(kwm.dpy, c->win, &root, &c->floatx, &c->floaty,
+	                  &c->floatw, &c->floath, &c->border, &u)) {
+		WARN("window %lu: could not get geometry", c->win);
+		return;
+	}
+	if (c->floating) {
+		c->x = c->floatx;
+		c->y = c->floaty;
+		c->w = c->floatw;
+		c->h = c->floath;
+	}
+}
+
+void
+client_queryfullscreen(struct client *c)
+{
+	int i, ret;
+	int long unsigned l;
+	char unsigned *p = NULL;
+	bool fullscreen;
+	Atom a = None;
+
+	ret = XGetWindowProperty(kwm.dpy, c->win, netatom[NetWMState], 0L,
+	                         sizeof(Atom), False, XA_ATOM, &a, &i, &l, &l,
+	                         &p);
+	if (ret != Success) {
+		WARN("refreshstate: ret = %d, p = %p", ret, p);
+		return;
+	}
+	fullscreen = p != NULL && *(Atom *) p == netatom[NetWMStateFullscreen];
+	client_setfullscreen(c, fullscreen);
+	if (p != NULL)
+		XFree(p);
+}
+
+void
+client_queryname(struct client *c)
+{
+	if (get_name(c->name, c->win) < 0 || c->name[0] == '\0')
+		strcpy(c->name, "[broken]");
+	c->name[BUFSIZ-1] = '\0';
+}
+
+void
+client_querysizehints(struct client *c)
 {
 	long size;
 	XSizeHints hints;
@@ -134,6 +179,16 @@ client_refreshsizehints(struct client *c)
 }
 
 void
+client_querytransient(struct client *c)
+{
+	Window trans = 0;
+
+	if (!XGetTransientForHint(kwm.dpy, c->win, &trans))
+		return;
+	DEBUG("window %lu is transient", c->win);
+}
+
+void
 client_resize(struct client *c, int unsigned w, int unsigned h)
 {
 	bool change = checksizehints(c, &w, &h);
@@ -146,17 +201,41 @@ client_resize(struct client *c, int unsigned w, int unsigned h)
 }
 
 void
+client_setborder(struct client *c, int unsigned border)
+{
+	c->border = border;
+	XSetWindowBorderWidth(kwm.dpy, c->win, border);
+}
+
+void
+client_setdialog(struct client *c, bool dialog)
+{
+	c->dialog = dialog;
+	client_setfloating(c, c->dialog || c->floating);
+}
+
+void
 client_setfloating(struct client *c, bool floating)
 {
 	c->floating = floating;
+	if (c->floating)
+		client_moveresize(c, c->floatx, c->floaty, c->floatw,c->floath);
+}
+
+void
+client_setfullscreen(struct client *c, bool fullscreen)
+{
+	c->fullscreen = fullscreen;
+	client_setborder(c, fullscreen ? 0 : BORDERWIDTH);
 }
 
 void
 client_term(struct client *c)
 {
-	free(c);
+	sfree(c);
 }
 
+/* implementation (static) */
 static bool
 checksizehints(struct client *c, int unsigned *w, int unsigned *h)
 {
@@ -194,24 +273,24 @@ checksizehints(struct client *c, int unsigned *w, int unsigned *h)
 }
 
 static int
-get_name(struct client *c)
+get_name(char *buf, Window win)
 {
 	XTextProperty xtp;
 	int n;
 	char **list;
 
-	XGetTextProperty(kwm.dpy, c->win, &xtp, netatom[NetWMName]);
+	XGetTextProperty(kwm.dpy, win, &xtp, netatom[NetWMName]);
 	if (!xtp.nitems)
 		return -1;
 	if (xtp.encoding == XA_STRING) {
-		strncpy(c->name, (char const *) xtp.value, 255);
+		strncpy(buf, (char const *) xtp.value, 255);
 		//XFree(xtp.value);
 		return 0;
 	}
 	if (XmbTextPropertyToTextList(kwm.dpy, &xtp, &list, &n) != Success
 	|| n <= 0)
 		return -1;
-	strncpy(c->name, list[0], 255);
+	strncpy(buf, list[0], 255);
 	//XFreeStringList(list);
 	return 0;
 }

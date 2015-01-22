@@ -52,6 +52,7 @@ static void expose(XEvent *);
 static void focusin(XEvent *);
 static void grabkeys(void);
 static void init(void);
+static void init_atoms(void);
 static void keypress(XEvent *);
 static void keyrelease(XEvent *);
 static void killclient(union argument const *);
@@ -60,14 +61,13 @@ static void maprequest(XEvent *);
 static void movemouse(union argument const *);
 static void propertynotify(XEvent *);
 static void quit(union argument const *);
-static void restack(void);
+static void restack(size_t ntiled, struct client **tiled,
+                    size_t nfloating, struct client **floating,
+                    size_t nfullscreen, struct client **fullscreen);
 static void run(void);
 static bool sendevent(struct client *, Atom);
-static void setfloating(struct client *, bool);
-static void setfullscreen(struct client *, bool);
 static void setmfact(union argument const *);
 static void setnmaster(union argument const *);
-static void setupatoms(void);
 static void setupsession(void);
 static void shiftclient(union argument const *);
 static void sigchld(int);
@@ -76,10 +76,8 @@ static void stepfocus(union argument const *);
 static void term(void);
 static void togglefloat(union argument const *);
 static void unmapnotify(XEvent *);
-static void updateclient(struct client *);
 static void updatefocus(void);
 static void updategeom(void);
-static void updatetransient(struct client *);
 static int xerror(Display *, XErrorEvent *);
 static int (*xerrorxlib)(Display *, XErrorEvent *);
 static void zoom(union argument const *);
@@ -172,8 +170,9 @@ arrange(void)
 			tiled[ntiled++] = c;
 	}
 
-	/* arrange */
 	setclientmask(false);
+
+	/* arrange */
 	if (ntiled > 0) {
 		/* TODO modular layout management */
 		rstack(tiled, ntiled, MIN(nmaster, ntiled), mfact, sw, sh);
@@ -188,7 +187,7 @@ arrange(void)
 	}
 
 	/* restack */
-	restack();
+	restack(ntiled, tiled, nfloating, floating, nfullscreen, fullscreen);
 
 	setclientmask(true);
 }
@@ -243,7 +242,8 @@ clientmessage(XEvent *xe)
 			/* _NET_WM_STATE_ADD || _NET_WM_STATE_TOGGLE */
 			fullscreen = e->data.l[0] == 1 ||
 			             (e->data.l[0] == 2 && !c->fullscreen);
-			setfullscreen(c, fullscreen);
+			client_setfullscreen(c, fullscreen);
+			arrange();
 		}
 	}
 }
@@ -304,11 +304,13 @@ configurerequest(XEvent *xe)
 static void
 detachclient(struct client *c)
 {
-	if (detach((void ***) &clients, &nc, c, sizeof(c), "client list") < 0) {
+	int pos = detach((void ***) &clients, &nc, c, sizeof(struct client),
+	                 "client list");
+	if (pos < 0) {
 		WARN("attempt to detach unhandled client(%lu)", c->win);
 		return;
 	}
-	selcli = nc > 0 ? clients[0] : NULL;
+	selcli = nc > 0 ? clients[MIN((int unsigned) pos, nc - 1)] : NULL;
 }
 
 static void
@@ -347,9 +349,8 @@ focusin(XEvent *xe)
 
 	//EVENT("focusin(%lu)", e->window);
 
-	if (e->window == root) {
+	if (e->window == root)
 		return;
-	}
 	if (nc == 0 || e->window != selcli->win) {
 		WARN("focusin on unfocused window %lu (focus is on %lu)",
 		      e->window, nc > 0 ? selcli->win : 0);
@@ -360,11 +361,12 @@ focusin(XEvent *xe)
 void
 grabbuttons(struct client *c, bool focused)
 {
-	unsigned int i;
+	int unsigned i;
 
+	/* TODO figure out what this does */
 	XUngrabButton(kwm.dpy, AnyButton, AnyModifier, c->win);
 	if (focused) {
-		for (i = 0; i < LENGTH(buttons); i++) {
+		for (i = 0; i < LENGTH(buttons); ++i) {
 			XGrabButton(kwm.dpy, buttons[i].button, buttons[i].mod,
 			            c->win, False, BUTTONMASK, GrabModeAsync,
 			            GrabModeAsync, None, None);
@@ -379,7 +381,7 @@ grabbuttons(struct client *c, bool focused)
 static void
 grabkeys(void)
 {
-	unsigned int i;
+	int unsigned i;
 
 	XUngrabKey(kwm.dpy, AnyKey, AnyModifier, root);
 	for (i = 0; i < LENGTH(keys); i++)
@@ -402,15 +404,15 @@ init(void)
 	if (setlocale(LC_ALL, "") == NULL || !XSupportsLocale())
 		DIE("could not set locale");
 
-	/* basic: root window, graphic context, atoms */
+	/* root window, graphic context, atoms */
 	screen = DefaultScreen(kwm.dpy);
 	root = RootWindow(kwm.dpy, screen);
-	setupatoms();
+	init_atoms();
 
 	/* events */
-	wa.event_mask = SubstructureNotifyMask|SubstructureRedirectMask|
-			KeyPressMask|StructureNotifyMask|ButtonPressMask|PointerMotionMask|
-			FocusChangeMask|PropertyChangeMask;
+	wa.event_mask = SubstructureNotifyMask | SubstructureRedirectMask |
+	                PropertyChangeMask | FocusChangeMask | ButtonPressMask |
+	                KeyPressMask | PointerMotionMask | StructureNotifyMask;
 	XChangeWindowAttributes(kwm.dpy, root, CWEventMask, &wa);
 
 	/* input: mouse, keyboard */
@@ -423,6 +425,22 @@ init(void)
 
 	/* session */
 	setupsession();
+}
+
+static void
+init_atoms(void)
+{
+	wmatom[WMProtocols] = XInternAtom(kwm.dpy, "WM_PROTOCOLS", false);
+	wmatom[WMDeleteWindow] = XInternAtom(kwm.dpy, "WM_DELETE_WINDOW", false);
+	wmatom[WMState] = XInternAtom(kwm.dpy, "WM_STATE", false);
+	wmatom[WMTakeFocus] = XInternAtom(kwm.dpy, "WM_TAKE_FOCUS", false);
+	netatom[NetActiveWindow] = XInternAtom(kwm.dpy, "_NET_ACTIVE_WINDOW", false);
+	netatom[NetSupported] = XInternAtom(kwm.dpy, "_NET_SUPPORTED", false);
+	netatom[NetWMName] = XInternAtom(kwm.dpy, "_NET_WM_NAME", false);
+	netatom[NetWMState] = XInternAtom(kwm.dpy, "_NET_WM_STATE", false);
+	netatom[NetWMStateFullscreen] = XInternAtom(kwm.dpy, "_NET_WM_STATE_FULLSCREEN", false);
+	netatom[NetWMWindowType] = XInternAtom(kwm.dpy, "_NET_WM_WINDOW_TYPE", false);
+	netatom[NetWMWindowTypeDialog] = XInternAtom(kwm.dpy, "_NET_WM_WINDOW_TYPE_DIALOG", false);
 }
 
 static void
@@ -499,23 +517,25 @@ maprequest(XEvent *xe)
 
 	//EVENT("maprequest(%lu)", e->window);
 
-	/* in case a window gets remapped */
+	/* in case of remap */
 	if (locate_window2client(clients, nc, e->window, &c, NULL)) {
 		detachclient(c);
 		client_term(c);
 	}
-	c = client_init(e->window, false);
+
+	/* initialise */
+	c = client_init(e->window);
 	if (c == NULL)
 		return;
+	if (c->floating) {
+		c->x = MAX(c->x, 0);
+		c->y = MAX(c->y, 0);
+	}
 
-	/* display */
-	attachclient(c);
-	arrange();
 	XMapWindow(kwm.dpy, c->win);
 
-	/* update client information (fullscreen/dialog/transient) and focus */
-	updateclient(c);
-	updatetransient(c);
+	attachclient(c);
+	arrange();
 	updatefocus();
 }
 
@@ -578,7 +598,8 @@ movemouse(union argument const *arg)
 }
 
 void
-print(FILE *f, enum log_level level, char const *format, ...)
+print(FILE *f, enum log_level level, char const *filename, int unsigned line,
+      char const *format, ...)
 {
 	va_list args;
 	time_t rawtime;
@@ -597,14 +618,19 @@ print(FILE *f, enum log_level level, char const *format, ...)
 
 	/* log level */
 	switch (level) {
-	case LOG_FATAL: col = "\033[31mFATAL\033[0m "; break;
-	case LOG_ERROR: col = "\033[31mERROR\033[0m "; break;
-	case LOG_WARN : col = "\033[33mWARN\033[0m " ; break;
-	case LOG_EVENT: col = "\033[35mEVENT\033[0m "; break;
-	case LOG_DEBUG: col = "\033[34mDEBUG\033[0m "; break;
-	default       : col = "";
+	case LOG_FATAL : col = "\033[31mFATAL\033[0m "; break;
+	case LOG_ERROR : col = "\033[31mERROR\033[0m "; break;
+	case LOG_WARN  : col = "\033[33mWARN\033[0m " ; break;
+	case LOG_NOTICE: col = "\033[1mNOTICE\033[0m "; break;
+	case LOG_EVENT : col = "\033[35mEVENT\033[0m "; break;
+	case LOG_DEBUG : col = "\033[34mDEBUG\033[0m "; break;
+	default        : col = "";
 	}
 	(void) fprintf(f, "%s", col);
+
+	/* position */
+	if (level == LOG_DEBUG)
+		(void) fprintf(f, "\033[32m%s:%u\033[0m ", filename, line);
 
 	/* message */
 	va_start(args, format);
@@ -626,14 +652,20 @@ propertynotify(XEvent *xe)
 	if (!locate_window2client(clients, nc, e->window, &c, NULL))
 		return;
 
+	if (e->state == PropertyDelete) {
+		/* dwm ignores this */
+		NOTICE("property_delete");
+		return;
+	}
+
 	switch (e->atom) {
 	case XA_WM_TRANSIENT_FOR:
 		DEBUG("transient property changed for window %lu", c->win);
-		updatetransient(c);
+		client_querytransient(c);
 		break;
 	case XA_WM_NORMAL_HINTS:
 		DEBUG("size hints changed for window %lu", c->win);
-		client_refreshsizehints(c);
+		client_querysizehints(c);
 		break;
 	case XA_WM_HINTS:
 		DEBUG("urgent hint changed for window %u", c->win);
@@ -641,9 +673,12 @@ propertynotify(XEvent *xe)
 		break;
 	}
 	if (e->atom == XA_WM_NAME || e->atom == netatom[NetWMName])
-		client_refreshname(c);
-	if (e->atom == netatom[NetWMWindowType])
-		updateclient(c);
+		client_queryname(c);
+	if (e->atom == netatom[NetWMWindowType]) {
+		client_queryfullscreen(c);
+		client_querydialog(c);
+	}
+	arrange();
 }
 
 static void
@@ -655,23 +690,20 @@ quit(union argument const *arg)
 }
 
 static void
-restack(void)
+restack(size_t ntiled, struct client **tiled,
+        size_t nfloating, struct client **floating,
+        size_t nfullscreen, struct client **fullscreen)
 {
 	int unsigned i, m = 0;
-	Window *wins;
+	Window wins[nc];
 
-	wins = scalloc(nc, sizeof(Window), "window list");
-	for (i = 0; i < nc; ++i)
-		if (clients[i]->fullscreen)
-			wins[m++] = clients[i]->win;
-	for (i = 0; i < nc; ++i)
-		if (clients[i]->floating && !clients[i]->fullscreen)
-			wins[m++] = clients[i]->win;
-	for (i = 0; i < nc; ++i)
-		if (!clients[i]->floating && !clients[i]->fullscreen)
-			wins[m++] = clients[i]->win;
+	for (i = 0; i < nfullscreen; ++i)
+		wins[m++] = fullscreen[i]->win;
+	for (i = 0; i < nfloating; ++i)
+		wins[m++] = floating[i]->win;
+	for (i = 0; i < ntiled; ++i)
+		wins[m++] = tiled[i]->win;
 	XRestackWindows(kwm.dpy, wins, (int) nc);
-	sfree(wins);
 }
 
 static void
@@ -737,25 +769,6 @@ setfloating(struct client *c, bool floating)
 }
 
 static void
-setfullscreen(struct client *c, bool fullscreen)
-{
-	c->fullscreen = fullscreen;
-	if (fullscreen) {
-		c->oldx = c->x;
-		c->oldy = c->y;
-		c->oldw = c->w;
-		c->oldh = c->h;
-		XSetWindowBorderWidth(kwm.dpy, c->win, 0);
-	} else {
-		c->x = c->oldx;
-		c->y = c->oldy;
-		c->w = c->oldw;
-		c->h = c->oldh;
-		XSetWindowBorderWidth(kwm.dpy, c->win, BORDERWIDTH);
-	}
-}
-
-static void
 setmfact(union argument const *arg)
 {
 	mfact = MAX(0.1f, MIN(0.9f, mfact+arg->f));
@@ -769,22 +782,6 @@ setnmaster(union argument const *arg)
 		return;
 	nmaster = (size_t) ((int) nmaster + arg->i);
 	arrange();
-}
-
-static void
-setupatoms(void)
-{
-	wmatom[WMProtocols] = XInternAtom(kwm.dpy, "WM_PROTOCOLS", false);
-	wmatom[WMDeleteWindow] = XInternAtom(kwm.dpy, "WM_DELETE_WINDOW", false);
-	wmatom[WMState] = XInternAtom(kwm.dpy, "WM_STATE", false);
-	wmatom[WMTakeFocus] = XInternAtom(kwm.dpy, "WM_TAKE_FOCUS", false);
-	netatom[NetActiveWindow] = XInternAtom(kwm.dpy, "_NET_ACTIVE_WINDOW", false);
-	netatom[NetSupported] = XInternAtom(kwm.dpy, "_NET_SUPPORTED", false);
-	netatom[NetWMName] = XInternAtom(kwm.dpy, "_NET_WM_NAME", false);
-	netatom[NetWMState] = XInternAtom(kwm.dpy, "_NET_WM_STATE", false);
-	netatom[NetWMStateFullscreen] = XInternAtom(kwm.dpy, "_NET_WM_STATE_FULLSCREEN", false);
-	netatom[NetWMWindowType] = XInternAtom(kwm.dpy, "_NET_WM_WINDOW_TYPE", false);
-	netatom[NetWMWindowTypeDialog] = XInternAtom(kwm.dpy, "_NET_WM_WINDOW_TYPE_DIALOG", false);
 }
 
 static void
@@ -802,9 +799,9 @@ setupsession(void)
 
 	/* create clients if they do not already exist */
 	for (i = 0; i < nwins; i++) {
-		c = client_init(wins[i], true);
+		c = client_init(wins[i]);
 		if (c != NULL) {
-			WARN("scanned unhandled window %lu", c->win);
+			NOTICE("detected existing window %lu", c->win);
 			attachclient(c);
 		}
 	}
@@ -915,31 +912,8 @@ unmapnotify(XEvent *xe)
 
 	detachclient(c);
 	client_term(c);
+	updatefocus();
 	arrange();
-}
-
-static void
-updateclient(struct client *c)
-{
-	int di;
-	unsigned long dl;
-	unsigned char *p = NULL;
-	Atom da;
-
-	if (XGetWindowProperty(kwm.dpy, c->win, netatom[NetWMState], 0, sizeof(da),
-			false, XA_ATOM, &da, &di, &dl, &dl, &p) == Success && p) {
-		if ((Atom) *p == netatom[NetWMStateFullscreen]) {
-			setfullscreen(c, true);
-		}
-		free(p);
-	}
-	if (XGetWindowProperty(kwm.dpy, c->win, netatom[NetWMWindowType], 0, sizeof(da),
-			false, XA_ATOM, &da, &di, &dl, &dl, &p) == Success && p) {
-		if ((Atom) *p == netatom[NetWMWindowTypeDialog]) {
-			c->dialog = true;
-			setfloating(c, true);
-		}
-	}
 }
 
 static void
@@ -957,7 +931,7 @@ updatefocus(void)
 		c = clients[i];
 		if (selcli == c) {
 			XSetWindowBorder(kwm.dpy, c->win, CBORDERSEL);
-			XSetInputFocus(kwm.dpy, root, RevertToPointerRoot, CurrentTime);
+			XSetInputFocus(kwm.dpy, c->win, RevertToPointerRoot, CurrentTime);
 			grabbuttons(c, true);
 		} else {
 			XSetWindowBorder(kwm.dpy, c->win, CBORDERNORM);
@@ -971,18 +945,6 @@ updategeom(void)
 {
 	sw = (int unsigned) DisplayWidth(kwm.dpy, screen);
 	sh = (int unsigned) DisplayHeight(kwm.dpy, screen);
-}
-
-static void
-updatetransient(struct client *c)
-{
-	Window trans = 0;
-
-	if (!XGetTransientForHint(kwm.dpy, c->win, &trans)) {
-		DEBUG("window %lu is not transient", c->win);
-		return;
-	}
-	setfloating(c, true);
 }
 
 static int

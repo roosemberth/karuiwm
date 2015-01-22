@@ -13,15 +13,15 @@ attach(void ***l, size_t *lsize, void *e, size_t esize, char const *ctx)
 int
 detach(void ***l, size_t *lsize, void *e, size_t esize, char const *ctx)
 {
-	int unsigned i;
+	int unsigned i, pos;
 
-	for (i = 0; i < *lsize && *(*l+i) != e; ++i);
-	if (i == *lsize)
+	for (pos = 0; pos < *lsize && *(*l+pos) != e; ++pos);
+	if (pos == *lsize)
 		return -1;
-	for (; i < *lsize-1; ++i)
+	for (i = pos; i < *lsize-1; ++i)
 		*(*l+i) = *(*l+i+1);
 	*l = srealloc(*l, --(*lsize)*esize, ctx);
-	return 0;
+	return (int) pos;
 }
 
 void *
