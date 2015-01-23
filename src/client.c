@@ -13,7 +13,11 @@ static int get_name(char *buf, Window win);
 static void grab_buttons(struct client *c, bool focus);
 static int send_atom(Window win, Atom atom);
 
-/* TODO hack */
+/* TODO this is a hack, the same buttons are defined in karuiwm.c:
+ * Make static grab_buttons to public client_grab_button(s) and let KWM pass the
+ * button(s) as argument.
+ * Button definitions clearly don't belong here.
+ */
 static struct button const buttons[] = {
 	{ MODKEY,           Button1,    movemouse,   { 0 } },
 };
@@ -21,17 +25,14 @@ static struct button const buttons[] = {
 void
 client_kill(struct client *c)
 {
-	/* send WM_DELETE_WINDOW atom */
-	if (send_atom(c->win, wmatom[WMDeleteWindow]) == 0) {
-		return;
+	if (send_atom(c->win, wmatom[WMDeleteWindow]) < 0) {
+		/* massacre! */
+		XGrabServer(kwm.dpy);
+		XSetCloseDownMode(kwm.dpy, DestroyAll);
+		XKillClient(kwm.dpy, c->win);
+		XSync(kwm.dpy, false);
+		XUngrabServer(kwm.dpy);
 	}
-
-	/* otherwise massacre the client */
-	XGrabServer(kwm.dpy);
-	XSetCloseDownMode(kwm.dpy, DestroyAll);
-	XKillClient(kwm.dpy, c->win);
-	XSync(kwm.dpy, false);
-	XUngrabServer(kwm.dpy);
 }
 
 struct client *
@@ -334,14 +335,13 @@ send_atom(Window win, Atom atom)
 	XEvent ev;
 
 	if (XGetWMProtocols(kwm.dpy, win, &supported, &n)) {
-		while (!exists && n--) {
+		while (!exists && n--)
 			exists = supported[n] == atom;
-		}
 		XFree(supported);
 	}
-	if (!exists) {
-		return false;
-	}
+	if (!exists)
+		return -1;
+
 	ev.type = ClientMessage;
 	ev.xclient.window = win;
 	ev.xclient.message_type = wmatom[WMProtocols];
@@ -349,7 +349,7 @@ send_atom(Window win, Atom atom)
 	ev.xclient.data.l[0] = (int long) atom;
 	ev.xclient.data.l[1] = CurrentTime;
 	XSendEvent(kwm.dpy, win, false, NoEventMask, &ev);
-	return true;
+	return 0;
 }
 
 static void
@@ -359,12 +359,14 @@ grab_buttons(struct client *c, bool focus)
 
 	XUngrabButton(kwm.dpy, AnyButton, AnyModifier, c->win);
 	if (focus) {
+		/* only grab special buttons */
 		for (i = 0; i < LENGTH(buttons); ++i) {
 			XGrabButton(kwm.dpy, buttons[i].button, buttons[i].mod,
 			            c->win, False, BUTTONMASK, GrabModeAsync,
 			            GrabModeAsync, None, None);
 		}
 	} else {
+		/* grab all buttons */
 		XGrabButton(kwm.dpy, AnyButton, AnyModifier, c->win, False,
 		            BUTTONMASK, GrabModeAsync, GrabModeAsync, None,
 		            None);
