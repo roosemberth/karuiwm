@@ -53,6 +53,8 @@ client_init(Window win)
 	c = smalloc(sizeof(struct client), "client");
 	c->win = win;
 	c->floating = false;
+	c->w = c->h = c->floatw = c->floath = 1;
+	c->x = c->y = c->floatx = c->floaty = 0;
 
 	/* query client properties */
 	client_querydialog(c);
@@ -307,7 +309,7 @@ static int
 get_name(char *buf, Window win)
 {
 	XTextProperty xtp;
-	int n;
+	int n, ret, fret = 0;
 	char **list;
 
 	XGetTextProperty(kwm.dpy, win, &xtp, netatom[NetWMName]);
@@ -315,15 +317,18 @@ get_name(char *buf, Window win)
 		return -1;
 	if (xtp.encoding == XA_STRING) {
 		strncpy(buf, (char const *) xtp.value, 255);
-		//XFree(xtp.value);
-		return 0;
+		goto get_name_out;
 	}
-	if (XmbTextPropertyToTextList(kwm.dpy, &xtp, &list, &n) != Success
-	|| n <= 0)
-		return -1;
+	ret = XmbTextPropertyToTextList(kwm.dpy, &xtp, &list, &n);
+	if (ret != Success || n <= 0) {
+		fret = -1;
+		goto get_name_out;
+	}
 	strncpy(buf, list[0], 255);
-	//XFreeStringList(list);
-	return 0;
+	XFreeStringList(list);
+ get_name_out:
+	XFree(xtp.value);
+	return fret;
 }
 
 static int

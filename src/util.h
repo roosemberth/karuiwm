@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-/* data structure */
+/* data structure (TODO prefix with list_) */
 void attach(void ***l, size_t *lsize, void *e, size_t esize, char const *ctx);
 int detach(void ***l, size_t *lsize, void *e, size_t esize, char const *ctx);
 

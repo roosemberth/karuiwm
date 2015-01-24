@@ -24,7 +24,6 @@
 
 /* macros */
 #define APPNAME "karuiwm"
-#define APPVERSION "0.1"
 #define CLIENTMASK (EnterWindowMask | PropertyChangeMask | StructureNotifyMask)
 #define INTERSECT(MON, X, Y, W, H) \
         ((MAX(0, MIN((X) + (W), (MON)->x + (MON)->w) - MAX((MON)->x, X))) * \
@@ -92,7 +91,7 @@ static char const *volupcmd[] = { "amixer", "set", "Master", "2+", "unmute", NUL
 static char const *voldowncmd[] = { "amixer", "set", "Master", "2-", "unmute", NULL };
 static char const *volmutecmd[] = { "amixer", "set", "Master", "toggle", NULL };
 
-/* TODO hack */
+/* TODO hack (see comment in client.c) */
 static struct button const buttons[] = {
 	{ MODKEY,           Button1,    movemouse,   { 0 } },
 };
@@ -182,7 +181,7 @@ arrange(void)
 		client_moveresize(c, 0, 0, sw, sh);
 	}
 
-	/* restack */
+	/* TODO not necessary: whoever needs restack should do it explicitely */
 	restack(ntiled, tiled, nfloating, floating, nfullscreen, fullscreen);
 
 	setclientmask(true);
@@ -370,14 +369,17 @@ init(void)
 	XSetWindowAttributes wa;
 
 	/* connect to X */
-	if (!(kwm.dpy = XOpenDisplay(NULL)))
+	kwm.dpy = XOpenDisplay(NULL);
+	if (kwm.dpy == NULL)
 		DIE("could not open X");
 
 	/* low: errors, zombies, locale */
 	xerrorxlib = XSetErrorHandler(xerror);
 	sigchld(0);
-	if (setlocale(LC_ALL, "") == NULL || !XSupportsLocale())
+	if (setlocale(LC_ALL, "") == NULL)
 		DIE("could not set locale");
+	if (!XSupportsLocale())
+		DIE("X does not support locale");
 
 	/* root window, graphic context, atoms */
 	screen = DefaultScreen(kwm.dpy);
@@ -432,7 +434,7 @@ keypress(XEvent *xe)
 		&& keysym == keys[i].key
 		&& keys[i].func) {
 			keys[i].func(&keys[i].arg);
-			return;
+			break;
 		}
 	}
 }
@@ -499,6 +501,7 @@ maprequest(XEvent *xe)
 	updatefocus();
 }
 
+/* TODO split up */
 void
 movemouse(union argument const *arg)
 {
@@ -679,6 +682,7 @@ run(void)
 	}
 }
 
+/* TODO move XSelectInput to client */
 void
 setclientmask(bool set)
 {
@@ -788,9 +792,9 @@ stepfocus(union argument const *arg)
 	for (pos = 0; pos < nc && clients[pos] != selcli; ++pos);
 	selcli = clients[(pos + (size_t) ((int) nc + arg->i))%nc];
 	updatefocus();
-	if (selcli->floating) {
+	if (selcli->floating)
+		/* TODO restack instead (see TODO in arrange) */
 		XRaiseWindow(kwm.dpy, selcli->win);
-	}
 }
 
 static void
@@ -865,10 +869,10 @@ updategeom(void)
 static int
 xerror(Display *dpy, XErrorEvent *ee)
 {
-	char es[256];
+	char s[256];
 
-	XGetErrorText(dpy, ee->error_code, es, 256);
-	ERROR("%s (ID %d) after request %d", es, ee->error_code, ee->error_code);
+	XGetErrorText(dpy, ee->error_code, s, 256);
+	ERROR("%s (ID %d) after request %d", s, ee->error_code, ee->error_code);
 
 	/* call default error handler (very likely to exit) */
 	return xerrorxlib(dpy, ee);
@@ -907,7 +911,7 @@ main(int argc, char **argv)
 	log_level = LOG_DEBUG;
 
 	if (argc > 1) {
-		puts(APPNAME" © 2014 ayekat, see LICENSE for details");
+		puts(APPNAME" © 2015 ayekat, see LICENSE for details");
 		return EXIT_FAILURE;
 	}
 	init();
