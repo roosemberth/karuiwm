@@ -72,6 +72,11 @@ client_move(struct client *c, int x, int y)
 {
 	c->x = x;
 	c->y = y;
+	/* TODO floating *and* fullscreen?
+	 * also: very inconsistent with client_resize!
+	 * => split mode (tiled, floating) from state (fullscreen, scratchpad)
+	 *    will need enums instead of booleans
+	 */
 	if (c->floating) {
 		c->floatx = x;
 		c->floaty = y;
@@ -340,7 +345,7 @@ send_atom(Window win, Atom atom)
 	XEvent ev;
 
 	if (XGetWMProtocols(kwm.dpy, win, &supported, &n)) {
-		while (!exists && n--)
+		while (!exists && n-- > 0)
 			exists = supported[n] == atom;
 		XFree(supported);
 	}

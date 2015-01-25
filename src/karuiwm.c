@@ -34,7 +34,7 @@
 enum { CurNormal, CurResize, CurMove, CurLAST };
 enum { Left, Right, Up, Down, NoDirection };
 
-/* functions */
+/* functions (TODO prepend with action_ and event_ accordingly) */
 static void arrange(void);
 static void attachclient(struct client *c);
 static void buttonpress(XEvent *xe);
@@ -373,7 +373,7 @@ init(void)
 	if (kwm.dpy == NULL)
 		DIE("could not open X");
 
-	/* low: errors, zombies, locale */
+	/* errors, zombies, locale */
 	xerrorxlib = XSetErrorHandler(xerror);
 	sigchld(0);
 	if (setlocale(LC_ALL, "") == NULL)
@@ -392,7 +392,7 @@ init(void)
 	                KeyPressMask | PointerMotionMask | StructureNotifyMask;
 	XChangeWindowAttributes(kwm.dpy, root, CWEventMask, &wa);
 
-	/* input: mouse, keyboard */
+	/* input (mouse, keyboard) */
 	cursor[CurNormal] = XCreateFontCursor(kwm.dpy, XC_left_ptr);
 	cursor[CurResize] = XCreateFontCursor(kwm.dpy, XC_sizing);
 	cursor[CurMove] = XCreateFontCursor(kwm.dpy, XC_fleur);
