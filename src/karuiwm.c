@@ -23,7 +23,6 @@
 #include <X11/cursorfont.h>
 
 /* macros */
-#define APPNAME "karuiwm"
 #define CLIENTMASK (EnterWindowMask | PropertyChangeMask | StructureNotifyMask)
 #define INTERSECT(MON, X, Y, W, H) \
         ((MAX(0, MIN((X) + (W), (MON)->x + (MON)->w) - MAX((MON)->x, X))) * \
@@ -82,7 +81,6 @@ static bool running;                          /* application state */
 static signed screen;                            /* screen */
 static Window root;                           /* root window */
 static Cursor cursor[CurLAST];                /* cursors */
-static enum log_level log_level;
 static struct client **clients = NULL, *selcli = NULL;
 static size_t nc = 0, nmaster = 1;
 static unsigned imaster = 0;
@@ -543,7 +541,7 @@ handle_enternotify(XEvent *xe)
 	//EVENT("enternotify(%lu)", e->window);
 
 	if (!locate_window2client(clients, nc, e->window, &c, NULL)) {
-		WARN("attempt to enter unhandled/invisible window %u",
+		WARN("attempt to enter unhandled/invisible window %lu",
 		     e->window);
 		return;
 	}
@@ -680,7 +678,7 @@ handle_propertynotify(XEvent *xe)
 		client_query_sizehints(c);
 		break;
 	case XA_WM_HINTS:
-		WARN("urgent hint changed for window %u", c->win);
+		WARN("urgent hint changed for window %lu", c->win);
 		/* TODO implement urgent hint handling */
 		break;
 	}
@@ -805,50 +803,6 @@ locate_neighbour(struct client **n, unsigned *npos,
 	if (n != NULL)
 		*n = clients[dst];
 	return true;
-}
-
-void
-print(FILE *f, enum log_level level, char const *filename, unsigned line,
-      char const *format, ...)
-{
-	va_list args;
-	time_t rawtime;
-	struct tm *date;
-	char const *col;
-
-	if (level > log_level)
-		return;
-
-	/* application name & timestamp */
-	rawtime = time(NULL);
-	date = localtime(&rawtime);
-	(void) fprintf(f, APPNAME" [%04d-%02d-%02d %02d:%02d:%02d] ",
-	               date->tm_year+1900, date->tm_mon, date->tm_mday,
-	               date->tm_hour, date->tm_min, date->tm_sec);
-
-	/* log level */
-	switch (level) {
-	case LOG_FATAL : col = "\033[31mFATAL\033[0m "; break;
-	case LOG_ERROR : col = "\033[31mERROR\033[0m "; break;
-	case LOG_WARN  : col = "\033[33mWARN\033[0m " ; break;
-	case LOG_NOTICE: col = "\033[1mNOTICE\033[0m "; break;
-	case LOG_EVENT : col = "\033[35mEVENT\033[0m "; break;
-	case LOG_DEBUG : col = "\033[34mDEBUG\033[0m "; break;
-	default        : col = "";
-	}
-	(void) fprintf(f, "%s", col);
-
-	/* position */
-	if (level >= LOG_EVENT)
-		(void) fprintf(f, "\033[32m%s:%u\033[0m ", filename, line);
-
-	/* message */
-	va_start(args, format);
-	(void) vfprintf(f, format, args);
-	va_end(args);
-
-	(void) fprintf(f, "\n");
-	(void) fflush(f);
 }
 
 static void
@@ -979,7 +933,7 @@ main(signed argc, char **argv)
 {
 	(void) argv;
 
-	log_level = LOG_DEBUG;
+	set_log_level(LOG_DEBUG);
 
 	if (argc > 1) {
 		puts(APPNAME" © 2015 ayekat, see LICENSE for details");

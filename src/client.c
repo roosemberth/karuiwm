@@ -74,7 +74,7 @@ client_new(Window win)
 
 	/* ignore buggy windows and windows with override_redirect */
 	if (!XGetWindowAttributes(kwm.dpy, win, &wa)) {
-		WARN("XGetWindowAttributes() failed for window %d", win);
+		WARN("XGetWindowAttributes() failed for window %lu", win);
 		return NULL;
 	}
 	if (wa.override_redirect)
