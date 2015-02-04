@@ -20,12 +20,9 @@ enum log_level { LOG_FATAL, LOG_ERROR, LOG_WARN, LOG_NOTICE, LOG_NORMAL,
                  LOG_VERBOSE, LOG_EVENT, LOG_DEBUG };
 
 /* list actions */
-void list_append(void ***l, size_t *lsize, void *e, size_t esize,
-                 char const *ctx);
-void list_prepend(void ***l, size_t *lsize, void *e, size_t esize,
-                  char const *ctx);
-signed list_remove(void ***l, size_t *lsize, void *e, size_t esize,
-                char const *ctx);
+void list_append(void ***l, size_t *lsize, void *e, char const *ctx);
+void list_prepend(void ***l, size_t *lsize, void *e, char const *ctx);
+signed list_remove(void ***l, size_t *lsize, void *e, char const *ctx);
 void list_shift(void **l, unsigned dst, unsigned src);
 
 /* output */

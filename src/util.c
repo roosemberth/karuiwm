@@ -9,27 +9,27 @@ static enum log_level log_level;
 
 /* implementation */
 void
-list_append(void ***l, size_t *lsize, void *e, size_t esize, char const *ctx)
+list_append(void ***l, size_t *lsize, void *e, char const *ctx)
 {
 	void **nl;
-	nl = srealloc(*l, ++(*lsize) * esize, ctx);
+	nl = srealloc(*l, ++(*lsize) * sizeof(void *), ctx);
 	*l = nl;
 	(*l)[*lsize - 1] = e;
 }
 
 void
-list_prepend(void ***l, size_t *lsize, void *e, size_t esize, char const *ctx)
+list_prepend(void ***l, size_t *lsize, void *e, char const *ctx)
 {
 	unsigned i;
 
-	*l = srealloc(*l, ++(*lsize) * esize, ctx);
+	*l = srealloc(*l, ++(*lsize) * sizeof(void *), ctx);
 	for (i = (unsigned) *lsize - 1; i > 0; --i)
 		(*l)[i] = (*l)[i - 1];
 	(*l)[0] = e;
 }
 
 signed
-list_remove(void ***l, size_t *lsize, void *e, size_t esize, char const *ctx)
+list_remove(void ***l, size_t *lsize, void *e, char const *ctx)
 {
 	unsigned i, pos;
 
@@ -38,7 +38,7 @@ list_remove(void ***l, size_t *lsize, void *e, size_t esize, char const *ctx)
 		return -1;
 	for (i = pos; i < *lsize - 1; ++i)
 		(*l)[i] = (*l)[i + 1];
-	*l = srealloc(*l, --(*lsize) * esize, ctx);
+	*l = srealloc(*l, --(*lsize) * sizeof(void *), ctx);
 	return (signed) pos;
 }
 
