@@ -53,9 +53,8 @@ uninstall:
 # Compile:
 $(BUILDDIR)/%.o: KWM_CFLAGS += ${CFLAGS}
 $(BUILDDIR)/%.o: ${SRCDIR}/%.c
-	@if [ ! -d ${BUILDDIR} ]; then mkdir ${BUILDDIR}; fi
-	if [ ! -d $(shell dirname $@) ]; then mkdir $(shell dirname $@); fi
 	@printf "compiling \033[1m%s\033[0m ...\n" $@
+	mkdir -p "$(shell dirname $@)"
 	$(CC) ${KWM_CFLAGS} -c $< -o $@
 	$(CC) ${KWM_CFLAGS} -MM -MT $@ $< > ${BUILDDIR}/$*.d
 

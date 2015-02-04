@@ -7,20 +7,30 @@
 
 #define BORDERWIDTH 1
 
-static bool checksizehints(struct client *c, int unsigned *w, int unsigned *h);
+static bool check_sizehints(struct client *c, unsigned *w, unsigned *h);
 static Atom get_atom(Window win, Atom property);
-static int get_name(char *buf, Window win);
-static void grab_buttons(struct client *c, bool focus);
-static int send_atom(Window win, Atom atom);
+static signed get_name(char *buf, Window win);
+static signed send_atom(Window win, Atom atom);
 
-/* TODO this is a hack, the same buttons are defined in karuiwm.c:
- * Make static grab_buttons to public client_grab_button(s) and let KWM pass the
- * button(s) as argument.
- * Button definitions clearly don't belong here.
- */
-static struct button const buttons[] = {
-	{ MODKEY,           Button1,    movemouse,   { 0 } },
-};
+void
+client_delete(struct client *c)
+{
+	sfree(c);
+}
+
+void
+client_grab_buttons(struct client *c, size_t nb, struct button *buttons)
+{
+	unsigned i;
+
+	XUngrabButton(kwm.dpy, AnyButton, AnyModifier, c->win);
+	//XGrabButton(kwm.dpy, AnyButton, AnyModifier, c->win, False, BUTTONMASK,
+	//            GrabModeAsync, GrabModeAsync, None, None);
+	for (i = 0; i < nb; ++i)
+		XGrabButton(kwm.dpy, buttons[i].button, buttons[i].mod,
+		            c->win, False, BUTTONMASK, GrabModeAsync,
+		            GrabModeAsync, None, None);
+}
 
 void
 client_kill(struct client *c)
@@ -35,8 +45,29 @@ client_kill(struct client *c)
 	}
 }
 
+void
+client_move(struct client *c, signed x, signed y)
+{
+	if (c->x == x && c->y == y)
+		return;
+	c->x = x;
+	c->y = y;
+	if (c->floating && c->state == STATE_NORMAL) {
+		c->floatx = x;
+		c->floaty = y;
+	}
+	XMoveWindow(kwm.dpy, c->win, c->x, c->y);
+}
+
+void
+client_moveresize(struct client *c, signed x, signed y, unsigned w, unsigned h)
+{
+	client_move(c, x, y);
+	client_resize(c, w, h);
+}
+
 struct client *
-client_init(Window win)
+client_new(Window win)
 {
 	struct client *c;
 	XWindowAttributes wa;
@@ -53,59 +84,36 @@ client_init(Window win)
 	c = smalloc(sizeof(struct client), "client");
 	c->win = win;
 	c->floating = false;
+	c->dialog = false;
+	c->state = STATE_NORMAL;
 	c->w = c->h = c->floatw = c->floath = 1;
 	c->x = c->y = c->floatx = c->floaty = 0;
 
 	/* query client properties */
-	client_querydialog(c);
-	client_querydimension(c);
-	client_queryfullscreen(c);
-	client_queryname(c);
-	client_querysizehints(c);
-	client_querytransient(c);
+	client_query_dialog(c);
+	client_query_dimension(c);
+	client_query_fullscreen(c);
+	client_query_name(c);
+	client_query_sizehints(c);
+	client_query_transient(c);
 
 	return c;
 }
 
 void
-client_move(struct client *c, int x, int y)
-{
-	c->x = x;
-	c->y = y;
-	/* TODO floating *and* fullscreen?
-	 * also: very inconsistent with client_resize!
-	 * => split mode (tiled, floating) from state (fullscreen, scratchpad)
-	 *    will need enums instead of booleans
-	 */
-	if (c->floating) {
-		c->floatx = x;
-		c->floaty = y;
-	}
-	XMoveWindow(kwm.dpy, c->win, c->x, c->y);
-}
-
-void
-client_moveresize(struct client *c, int x, int y,
-                  int unsigned w, int unsigned h)
-{
-	client_move(c, x, y);
-	client_resize(c, w, h);
-}
-
-void
-client_querydialog(struct client *c)
+client_query_dialog(struct client *c)
 {
 	Atom type;
 
 	type = get_atom(c->win, netatom[NetWMWindowType]);
-	client_setdialog(c, type == netatom[NetWMWindowTypeDialog]);
+	client_set_dialog(c, type == netatom[NetWMWindowTypeDialog]);
 }
 
 void
-client_querydimension(struct client *c)
+client_query_dimension(struct client *c)
 {
 	Window root;
-	int unsigned u;
+	unsigned u;
 
 	if (!XGetGeometry(kwm.dpy, c->win, &root, &c->floatx, &c->floaty,
 	                  &c->floatw, &c->floath, &c->border, &u)) {
@@ -121,16 +129,16 @@ client_querydimension(struct client *c)
 }
 
 void
-client_queryfullscreen(struct client *c)
+client_query_fullscreen(struct client *c)
 {
 	Atom state;
 
 	state = get_atom(c->win, netatom[NetWMState]);
-	client_setfullscreen(c, state == netatom[NetWMStateFullscreen]);
+	client_set_fullscreen(c, state == netatom[NetWMStateFullscreen]);
 }
 
 void
-client_queryname(struct client *c)
+client_query_name(struct client *c)
 {
 	if (get_name(c->name, c->win) < 0 || c->name[0] == '\0')
 		strcpy(c->name, "[broken]");
@@ -138,7 +146,7 @@ client_queryname(struct client *c)
 }
 
 void
-client_querysizehints(struct client *c)
+client_query_sizehints(struct client *c)
 {
 	long size;
 	XSizeHints hints;
@@ -150,45 +158,45 @@ client_querysizehints(struct client *c)
 
 	/* base size */
 	if (hints.flags & PBaseSize) {
-		c->basew = (int unsigned) hints.base_width;
-		c->baseh = (int unsigned) hints.base_height;
+		c->basew = (unsigned) hints.base_width;
+		c->baseh = (unsigned) hints.base_height;
 	} else if (hints.flags & PMinSize) {
-		c->basew = (int unsigned) hints.min_width;
-		c->baseh = (int unsigned) hints.min_height;
+		c->basew = (unsigned) hints.min_width;
+		c->baseh = (unsigned) hints.min_height;
 	} else {
 		c->basew = c->baseh = 0;
 	}
 
 	/* resize steps */
 	if (hints.flags & PResizeInc) {
-		c->incw = (int unsigned) hints.width_inc;
-		c->inch = (int unsigned) hints.height_inc;
+		c->incw = (unsigned) hints.width_inc;
+		c->inch = (unsigned) hints.height_inc;
 	} else {
 		c->incw = c->inch = 0;
 	}
 
 	/* minimum size */
 	if (hints.flags & PMinSize) {
-		c->minw = (int unsigned) hints.min_width;
-		c->minh = (int unsigned) hints.min_height;
+		c->minw = (unsigned) hints.min_width;
+		c->minh = (unsigned) hints.min_height;
 	} else if (hints.flags & PBaseSize) {
-		c->minw = (int unsigned) hints.base_width;
-		c->minh = (int unsigned) hints.base_height;
+		c->minw = (unsigned) hints.base_width;
+		c->minh = (unsigned) hints.base_height;
 	} else {
 		c->minw = c->minh = 0;
 	}
 
 	/* maximum size */
 	if (hints.flags & PMaxSize) {
-		c->maxw = (int unsigned) hints.max_width;
-		c->maxw = (int unsigned) hints.max_height;
+		c->maxw = (unsigned) hints.max_width;
+		c->maxw = (unsigned) hints.max_height;
 	} else {
 		c->maxw = c->maxh = 0;
 	}
 }
 
 void
-client_querytransient(struct client *c)
+client_query_transient(struct client *c)
 {
 	Window trans = 0;
 
@@ -198,33 +206,37 @@ client_querytransient(struct client *c)
 }
 
 void
-client_resize(struct client *c, int unsigned w, int unsigned h)
+client_resize(struct client *c, unsigned w, unsigned h)
 {
-	bool change = checksizehints(c, &w, &h);
+	bool change = check_sizehints(c, &w, &h);
 
 	if (change) {
 		c->w = w;
 		c->h = h;
+		if (c->floating && c->state == STATE_NORMAL) {
+			c->floatw = w;
+			c->floath = h;
+		}
 		XResizeWindow(kwm.dpy, c->win, c->w, c->h);
 	}
 }
 
 void
-client_setborder(struct client *c, int unsigned border)
+client_set_border(struct client *c, unsigned border)
 {
 	c->border = border;
 	XSetWindowBorderWidth(kwm.dpy, c->win, border);
 }
 
 void
-client_setdialog(struct client *c, bool dialog)
+client_set_dialog(struct client *c, bool dialog)
 {
 	c->dialog = dialog;
-	client_setfloating(c, c->dialog || c->floating);
+	client_set_floating(c, c->dialog || c->floating);
 }
 
 void
-client_setfloating(struct client *c, bool floating)
+client_set_floating(struct client *c, bool floating)
 {
 	c->floating = floating;
 	if (c->floating)
@@ -232,39 +244,31 @@ client_setfloating(struct client *c, bool floating)
 }
 
 void
-client_setfocus(struct client *c, bool focus)
+client_set_focus(struct client *c, bool focus)
 {
 	XSetWindowBorder(kwm.dpy, c->win, focus ? CBORDERSEL : CBORDERNORM);
 	if (focus)
 		XSetInputFocus(kwm.dpy, c->win, RevertToPointerRoot,
 		               CurrentTime);
-	grab_buttons(c, true);
 }
 
 void
-client_setfullscreen(struct client *c, bool fullscreen)
+client_set_fullscreen(struct client *c, bool fullscreen)
 {
-	c->fullscreen = fullscreen;
-	client_setborder(c, fullscreen ? 0 : BORDERWIDTH);
-}
-
-void
-client_term(struct client *c)
-{
-	sfree(c);
+	c->state = fullscreen ? STATE_FULLSCREEN : STATE_NORMAL;
+	client_set_border(c, fullscreen ? 0 : BORDERWIDTH);
 }
 
 /* implementation (static) */
 static bool
-checksizehints(struct client *c, int unsigned *w, int unsigned *h)
+check_sizehints(struct client *c, unsigned *w, unsigned *h)
 {
-	int unsigned u; /* unit size */
+	unsigned u; /* unit size */
 	bool change = false;
 
 	/* don't respect size hints for untiled or fullscreen windows */
-	if (!c->floating || c->fullscreen) {
+	if (!c->floating || c->state == STATE_FULLSCREEN)
 		return *w != c->w || *h != c->h;
-	}
 
 	if (*w != c->w) {
 		if (c->basew > 0 && c->incw > 0) {
@@ -294,8 +298,8 @@ checksizehints(struct client *c, int unsigned *w, int unsigned *h)
 static Atom
 get_atom(Window win, Atom property)
 {
-	int ret, i;
-	int long unsigned lu;
+	signed ret, i;
+	long unsigned lu;
 	char unsigned *atomp = NULL;
 	Atom a, atom = None;
 
@@ -310,11 +314,11 @@ get_atom(Window win, Atom property)
 	return atom;
 }
 
-static int
+static signed
 get_name(char *buf, Window win)
 {
 	XTextProperty xtp;
-	int n, ret, fret = 0;
+	signed n, ret, fret = 0;
 	char **list;
 
 	XGetTextProperty(kwm.dpy, win, &xtp, netatom[NetWMName]);
@@ -336,10 +340,10 @@ get_name(char *buf, Window win)
 	return fret;
 }
 
-static int
+static signed
 send_atom(Window win, Atom atom)
 {
-	int n;
+	signed n;
 	Atom *supported;
 	bool exists = false;
 	XEvent ev;
@@ -356,29 +360,8 @@ send_atom(Window win, Atom atom)
 	ev.xclient.window = win;
 	ev.xclient.message_type = wmatom[WMProtocols];
 	ev.xclient.format = 32;
-	ev.xclient.data.l[0] = (int long) atom;
+	ev.xclient.data.l[0] = (long) atom;
 	ev.xclient.data.l[1] = CurrentTime;
 	XSendEvent(kwm.dpy, win, false, NoEventMask, &ev);
 	return 0;
-}
-
-static void
-grab_buttons(struct client *c, bool focus)
-{
-	int unsigned i;
-
-	XUngrabButton(kwm.dpy, AnyButton, AnyModifier, c->win);
-	if (focus) {
-		/* only grab special buttons */
-		for (i = 0; i < LENGTH(buttons); ++i) {
-			XGrabButton(kwm.dpy, buttons[i].button, buttons[i].mod,
-			            c->win, False, BUTTONMASK, GrabModeAsync,
-			            GrabModeAsync, None, None);
-		}
-	} else {
-		/* grab all buttons */
-		XGrabButton(kwm.dpy, AnyButton, AnyModifier, c->win, False,
-		            BUTTONMASK, GrabModeAsync, GrabModeAsync, None,
-		            None);
-	}
 }

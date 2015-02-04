@@ -10,7 +10,7 @@
 #define CBORDERNORM 0x222222   /* normal windows */
 #define CBORDERSEL  0xAFD700   /* selected windows */
 
-#define BUTTONMASK (ButtonPressMask|ButtonReleaseMask)
+#define BUTTONMASK (ButtonPressMask | ButtonReleaseMask)
 #define MODKEY Mod1Mask
 
 #define LENGTH(ARR) (sizeof(ARR)/sizeof(ARR[0]))
@@ -55,7 +55,6 @@ struct key {
 };
 
 /* functions */
-void movemouse(union argument const *);
 void print(FILE *f, enum log_level level, char const *filename,
            int unsigned line, char const *format, ...);
 void setclientmask(bool);
