@@ -9,6 +9,7 @@
 #define CBORDERNORM 0x222222   /* normal windows */
 #define CBORDERSEL  0xAFD700   /* selected windows */
 
+#define CLIENTMASK (EnterWindowMask | PropertyChangeMask | StructureNotifyMask)
 #define BUTTONMASK (ButtonPressMask | ButtonReleaseMask)
 #define MODKEY Mod1Mask
 
@@ -43,13 +44,11 @@ struct key {
 	union argument const arg;
 };
 
-/* functions */
-void setclientmask(bool);
-
 /* variables */
 Atom wmatom[WMLAST], netatom[NetLAST];
 struct {
 	Display *dpy;
+	Window root;
 } kwm;
 
 #endif /* _KARUIWM_H */

@@ -1,8 +1,6 @@
 #include "karuiwm.h"
 #include "util.h"
 #include "client.h"
-#include "locate.h"
-#include "layout.h"
 #include "desktop.h"
 
 #include <stdio.h>
@@ -24,7 +22,6 @@
 #include <X11/cursorfont.h>
 
 /* macros */
-#define CLIENTMASK (EnterWindowMask | PropertyChangeMask | StructureNotifyMask)
 #define INTERSECT(MON, X, Y, W, H) \
         ((MAX(0, MIN((X) + (W), (MON)->x + (MON)->w) - MAX((MON)->x, X))) * \
          (MAX(0, MIN((Y) + (H), (MON)->y + (MON)->h) - MAX((MON)->y, Y))))
@@ -45,9 +42,6 @@ static void action_spawn(union argument const *arg);
 static void action_stepfocus(union argument const *arg);
 static void action_togglefloat(union argument const *arg);
 static void action_zoom(union argument const *arg);
-static void arrange(void);
-static void floatclient(struct client *c, bool floating);
-static void fullscreenclient(struct client *c, bool fullscreen);
 static void grabkeys(void);
 static void handle_buttonpress(XEvent *xe);
 static void handle_clientmessage(XEvent *xe);
@@ -65,23 +59,16 @@ static void handle_unmapnotify(XEvent *xe);
 static signed handle_xerror(Display *dpy, XErrorEvent *xe);
 static void init(void);
 static void init_atoms(void);
-static bool locate_neighbour(struct client **n, unsigned *npos,
-                             struct client *c, unsigned cpos, signed dir);
-static void restack(void);
 static void run(void);
 static void setupsession(void);
 static void sigchld(signed);
 static void term(void);
-static void updatefocus(void);
-static void updategeom(void);
 
 /* variables */
 static struct desktop *seldt;
 static bool running;                          /* application state */
 static signed screen;                            /* screen */
-static Window root;                           /* root window */
 static Cursor cursor[CurLAST];                /* cursors */
-static unsigned sw, sh;
 static char const *termcmd[] = { "urxvt", NULL };
 static char const *scrotcmd[] = { "prtscr", NULL };
 static char const *volupcmd[] = { "amixer", "set", "Master", "2+", "unmute", NULL };
@@ -165,10 +152,10 @@ action_movemouse(union argument const *arg)
 	if (c->state == STATE_FULLSCREEN)
 		return;
 	if (!c->floating)
-		floatclient(c, true);
+		desktop_float_client(seldt, c, true);
 
 	/* grab the pointer and change the cursor appearance */
-	i = XGrabPointer(kwm.dpy, root, true, MOUSEMASK, GrabModeAsync,
+	i = XGrabPointer(kwm.dpy, kwm.root, true, MOUSEMASK, GrabModeAsync,
 		         GrabModeAsync, None, cursor[CurMove], CurrentTime);
 	if (i != GrabSuccess) {
 		WARN("XGrabPointer() failed");
@@ -176,7 +163,7 @@ action_movemouse(union argument const *arg)
 	}
 
 	/* get initial pointer position */
-	if (!XQueryPointer(kwm.dpy, root, &w, &w, &x, &y, &i, &i, &ui)) {
+	if (!XQueryPointer(kwm.dpy, kwm.root, &w, &w, &x, &y, &i, &i, &ui)) {
 		WARN("XQueryPointer() failed");
 		return;
 	}
@@ -217,8 +204,8 @@ action_quit(union argument const *arg)
 static void
 action_setmfact(union argument const *arg)
 {
-	seldt->mfact = MAX(0.1f, MIN(0.9f, seldt->mfact + arg->f));
-	arrange();
+	desktop_set_mfact(seldt, MAX(0.1f, MIN(0.9f, seldt->mfact + arg->f)));
+	desktop_arrange(seldt);
 }
 
 static void
@@ -226,10 +213,11 @@ action_setnmaster(union argument const *arg)
 {
 	if (arg->i < 0 && (size_t) (-arg->i) > seldt->nmaster)
 		return;
-	seldt->nmaster = (size_t) ((signed) seldt->nmaster + arg->i);
-	arrange();
+	desktop_set_nmaster(seldt, (size_t) ((signed) seldt->nmaster + arg->i));
+	desktop_arrange(seldt);
 }
 
+/* TODO move to desktop_swap_clients */
 static void
 action_shiftclient(union argument const *arg)
 {
@@ -237,15 +225,16 @@ action_shiftclient(union argument const *arg)
 
 	if (seldt->selcli == NULL)
 		return;
-	if (!locate_client2index(seldt->clients, seldt->nc, seldt->selcli, &pos)) {
+	if (!desktop_locate_client(seldt, seldt->selcli, &pos)) {
 		WARN("attempt to shift from unhandled client");
 		return;
 	}
-	if (!locate_neighbour(NULL, &npos, seldt->selcli, pos, arg->i))
+	if (!desktop_locate_neighbour(seldt, seldt->selcli, pos, arg->i,
+	                              NULL, &npos))
 		return;
 	seldt->clients[pos] = seldt->clients[npos];
 	seldt->clients[npos] = seldt->selcli;
-	arrange();
+	desktop_arrange(seldt);
 }
 
 static void
@@ -269,15 +258,14 @@ action_stepfocus(union argument const *arg)
 
 	if (seldt->selcli == NULL)
 		return;
-	if (!locate_client2index(seldt->clients, seldt->nc, seldt->selcli,
-	                         &pos)) {
+	if (!desktop_locate_client(seldt, seldt->selcli, &pos)) {
 		WARN("attempt to step from unfocused client");
 		return;
 	}
 	npos = (pos + (unsigned) ((signed) seldt->nc + arg->i))
                % (unsigned) seldt->nc;
 	seldt->selcli = seldt->clients[npos];
-	updatefocus();
+	desktop_update_focus(seldt);
 }
 
 static void
@@ -287,7 +275,7 @@ action_togglefloat(union argument const *arg)
 
 	if (seldt->selcli == NULL)
 		return;
-	floatclient(seldt->selcli, !seldt->selcli->floating);
+	desktop_float_client(seldt, seldt->selcli, !seldt->selcli->floating);
 }
 
 static void
@@ -299,8 +287,7 @@ action_zoom(union argument const *arg)
 	if (seldt->nc < 2)
 		return;
 
-	if (!locate_client2index(seldt->clients, seldt->nc, seldt->selcli,
-	                         &pos)) {
+	if (!desktop_locate_client(seldt, seldt->selcli, &pos)) {
 		WARN("attempt to zoom unhandled client");
 		return;
 	}
@@ -311,80 +298,13 @@ action_zoom(union argument const *arg)
 		seldt->clients[seldt->imaster] = seldt->clients[seldt->imaster + 1];
 		seldt->clients[seldt->imaster + 1] = seldt->selcli;
 		seldt->selcli = seldt->clients[seldt->imaster];
-		updatefocus();
+		desktop_update_focus(seldt);
 	} else {
 		/* window is somewhere else: swap with top */
 		seldt->clients[pos] = seldt->clients[seldt->imaster];
 		seldt->clients[seldt->imaster] = seldt->selcli;
 	}
-	arrange();
-}
-
-static void
-arrange(void)
-{
-	unsigned i, is = 0;
-	size_t ntiled = seldt->nc - seldt->imaster;
-	struct client *c, **tiled = seldt->clients + seldt->imaster;
-	Window stack[seldt->nc];
-
-	if (seldt->nc == 0)
-		return;
-
-	setclientmask(false);
-	if (ntiled > 0) {
-		/* TODO modular layout management */
-		rstack(tiled, ntiled, MIN(seldt->nmaster, ntiled), seldt->mfact,
-		       sw, sh);
-	}
-	for (i = 0; i < seldt->imaster; ++i) {
-		c = seldt->clients[i];
-		client_moveresize(c, c->x, c->y, c->w, c->h);
-	}
-	for (i = 0; i < seldt->nc; ++i) {
-		c = seldt->clients[i];
-		if (c->state == STATE_FULLSCREEN) {
-			client_moveresize(c, 0, 0, sw, sh);
-			stack[is++] = c->win;
-		}
-	}
-	for (i = 0; i < seldt->nc; ++i) {
-		c = seldt->clients[i];
-		if (c->state != STATE_FULLSCREEN)
-			stack[is++] = c->win;
-	}
-	XRestackWindows(kwm.dpy, stack, (signed) seldt->nc);
-	setclientmask(true);
-}
-
-static void
-floatclient(struct client *c, bool floating)
-{
-	unsigned pos;
-
-	if (c->floating == floating)
-		return;
-
-	if (!locate_client2index(seldt->clients, seldt->nc, c, &pos)) {
-		WARN("attempt to float unhandled window");
-		return;
-	}
-	client_set_floating(c, floating);
-	list_shift((void **) seldt->clients,
-	           floating ? 0 : (unsigned) seldt->nc - 1, pos);
-	seldt->imaster = (unsigned) ((signed) seldt->imaster
-	                               + (floating ? 1 : -1));
-	arrange();
-}
-
-static void
-fullscreenclient(struct client *c, bool fullscreen)
-{
-	if ((c->state == STATE_FULLSCREEN) == fullscreen)
-		return;
-
-	client_set_fullscreen(c, fullscreen);
-	arrange();
+	desktop_arrange(seldt);
 }
 
 static void
@@ -392,10 +312,11 @@ grabkeys(void)
 {
 	unsigned i;
 
-	XUngrabKey(kwm.dpy, AnyKey, AnyModifier, root);
+	XUngrabKey(kwm.dpy, AnyKey, AnyModifier, kwm.root);
 	for (i = 0; i < LENGTH(keys); i++)
 		XGrabKey(kwm.dpy, XKeysymToKeycode(kwm.dpy, keys[i].key),
-		         keys[i].mod, root, True, GrabModeAsync, GrabModeAsync);
+		         keys[i].mod, kwm.root, True, GrabModeAsync,
+		         GrabModeAsync);
 }
 
 static void
@@ -407,8 +328,7 @@ handle_buttonpress(XEvent *xe)
 
 	//EVENT("buttonpress(%lu)", e->window);
 
-	if (!locate_window2client(seldt->clients, seldt->nc, e->window, &c,
-	                          NULL)) {
+	if (!desktop_locate_window(seldt, e->window, &c, NULL)) {
 		WARN("click on unhandled window");
 		return;
 	}
@@ -422,20 +342,19 @@ handle_buttonpress(XEvent *xe)
 
 	/* update focus */
 	seldt->selcli = c;
-	updatefocus();
+	desktop_update_focus(seldt);
 }
 
 static void
 handle_clientmessage(XEvent *xe)
 {
-	bool fullscreen, change;
+	bool fullscreen;
 	struct client *c;
 	XClientMessageEvent *e = &xe->xclient;
 
 	//EVENT("clientmessage(%lu)", e->window);
 
-	if (!locate_window2client(seldt->clients, seldt->nc, e->window, &c,
-	                          NULL))
+	if (!desktop_locate_window(seldt, e->window, &c, NULL))
 		return;
 	if (e->message_type != netatom[NetWMState]) {
 		WARN("received client message for other than WM state");
@@ -447,9 +366,7 @@ handle_clientmessage(XEvent *xe)
 		fullscreen = e->data.l[0] == 1 ||
 			    (e->data.l[0] == 2 &&
 			     c->state != STATE_FULLSCREEN);
-		change = fullscreen != (c->state == STATE_FULLSCREEN);
-		if (change)
-			fullscreenclient(c, fullscreen);
+		desktop_fullscreen_client(seldt, c, fullscreen);
 	}
 }
 
@@ -460,55 +377,30 @@ handle_configurenotify(XEvent *xe)
 
 	//EVENT("configurenotify(%lu)", e->window);
 
-	if (e->window == root)
-		updategeom();
+	if (e->window == kwm.root)
+		/* TODO Xinerama */
+		desktop_update_geometry(seldt, 0, 0,
+		                     (unsigned) DisplayWidth(kwm.dpy, screen),
+		                     (unsigned) DisplayHeight(kwm.dpy, screen));
 }
 
 static void
 handle_configurerequest(XEvent *xe)
 {
-#if 0
-	struct client *c = NULL;
-	XConfigureEvent cev;
-#endif
 	XWindowChanges wc;
 	XConfigureRequestEvent *e = &xe->xconfigurerequest;
 
 	//EVENT("configurerequest(%lu)", e->window);
 
-	/* forward configuration if unmanaged (or if we don't force the size) */
-#if 0
-	(void) locate_window2client(seldt->clients, seldt->nc, e->window,
-	                            &c, NULL);
-	if (c == NULL || c->fullscreen || c->floating) {
-#endif
-		wc.x = e->x;
-		wc.y = e->y;
-		wc.width = e->width;
-		wc.height = e->height;
-		wc.border_width = e->border_width;
-		wc.sibling = e->above;
-		wc.stack_mode = e->detail;
-		XConfigureWindow(kwm.dpy, e->window,
-		                 (unsigned) e->value_mask, &wc);
-#if 0
-	}
-
-	/* force size with XSendEvent instead of ordinary XConfigureWindow */
-	/* TODO necessary? */
-	cev.type = ConfigureNotify;
-	cev.display = kwm.dpy;
-	cev.event = c->win;
-	cev.window = c->win;
-	cev.x = c->x;
-	cev.y = c->y;
-	cev.width = (signed) c->w;
-	cev.height = (signed) c->h;
-	cev.border_width = BORDERWIDTH;
-	cev.above = None;
-	cev.override_redirect = False;
-	XSendEvent(kwm.dpy, c->win, False, StructureNotifyMask, (XEvent *) &cev);
-#endif
+	wc.x = e->x;
+	wc.y = e->y;
+	wc.width = e->width;
+	wc.height = e->height;
+	wc.border_width = e->border_width;
+	wc.sibling = e->above;
+	wc.stack_mode = e->detail;
+	XConfigureWindow(kwm.dpy, e->window,
+			 (unsigned) e->value_mask, &wc);
 }
 
 static void
@@ -519,14 +411,13 @@ handle_enternotify(XEvent *xe)
 
 	//EVENT("enternotify(%lu)", e->window);
 
-	if (!locate_window2client(seldt->clients, seldt->nc, e->window, &c,
-	                          NULL)) {
+	if (!desktop_locate_window(seldt, e->window, &c, NULL)) {
 		WARN("attempt to enter unhandled/invisible window %lu",
 		     e->window);
 		return;
 	}
 	seldt->selcli = c;
-	updatefocus();
+	desktop_update_focus(seldt);
 }
 
 static void
@@ -548,12 +439,12 @@ handle_focusin(XEvent *xe)
 
 	//EVENT("focusin(%lu)", e->window);
 
-	if (e->window == root)
+	if (e->window == kwm.root)
 		return;
 	if (seldt->nc == 0 || e->window != seldt->selcli->win) {
 		WARN("focusin on unfocused window %lu (focus is on %lu)",
 		      e->window, seldt->nc > 0 ? seldt->selcli->win : 0);
-		updatefocus();
+		desktop_update_focus(seldt);
 	}
 }
 
@@ -606,9 +497,8 @@ handle_maprequest(XEvent *xe)
 
 	//EVENT("maprequest(%lu)", e->window);
 
-	/* in case of remap */
-	if (locate_window2client(seldt->clients, seldt->nc, e->window, &c,
-	                         NULL)) {
+	/* window is remapped */
+	if (desktop_locate_window(seldt, e->window, &c, NULL)) {
 		desktop_detach_client(seldt, c);
 		client_delete(c);
 	}
@@ -621,13 +511,13 @@ handle_maprequest(XEvent *xe)
 	/* fix floating dimensions */
 	if (c->floating)
 		client_moveresize(c, MAX(c->x, 0), MAX(c->y, 0),
-		                     MIN(c->w, sw), MIN(c->h, sh));
+		                     MIN(c->w, seldt->w), MIN(c->h, seldt->h));
 
 	XMapWindow(kwm.dpy, c->win);
 	client_grab_buttons(c, LENGTH(buttons), buttons);
 	desktop_attach_client(seldt, c);
-	arrange();
-	updatefocus();
+	desktop_arrange(seldt);
+	desktop_update_focus(seldt);
 }
 
 static void
@@ -638,8 +528,7 @@ handle_propertynotify(XEvent *xe)
 
 	//EVENT("propertynotify(%lu)", e->window);
 
-	if (!locate_window2client(seldt->clients, seldt->nc, e->window, &c,
-	                          NULL))
+	if (!desktop_locate_window(seldt, e->window, &c, NULL))
 		return;
 
 	if (e->state == PropertyDelete) {
@@ -652,8 +541,8 @@ handle_propertynotify(XEvent *xe)
 	case XA_WM_TRANSIENT_FOR:
 		DEBUG("transient property changed for window %lu", c->win);
 		client_query_transient(c);
-		restack();
-		arrange();
+		desktop_restack(seldt);
+		desktop_arrange(seldt);
 		break;
 	case XA_WM_NORMAL_HINTS:
 		//DEBUG("size hints changed for window %lu", c->win);
@@ -669,8 +558,8 @@ handle_propertynotify(XEvent *xe)
 	if (e->atom == netatom[NetWMWindowType]) {
 		client_query_fullscreen(c);
 		client_query_dialog(c);
-		restack();
-		arrange();
+		desktop_restack(seldt);
+		desktop_arrange(seldt);
 	}
 }
 
@@ -682,14 +571,13 @@ handle_unmapnotify(XEvent *xe)
 
 	//EVENT("unmapnotify(%lu)", e->window);
 
-	if (!locate_window2client(seldt->clients, seldt->nc, e->window, &c,
-	                          NULL))
+	if (!desktop_locate_window(seldt, e->window, &c, NULL))
 		return;
 
 	desktop_detach_client(seldt, c);
 	client_delete(c);
-	arrange();
-	updatefocus();
+	desktop_arrange(seldt);
+	desktop_update_focus(seldt);
 }
 
 static signed
@@ -724,23 +612,23 @@ init(void)
 	if (!XSupportsLocale())
 		DIE("X does not support locale");
 
-	/* root window, graphic context, atoms */
+	/* kwm.root window, graphic context, atoms */
 	screen = DefaultScreen(kwm.dpy);
-	root = RootWindow(kwm.dpy, screen);
+	kwm.root = RootWindow(kwm.dpy, screen);
 	init_atoms();
 
 	/* events */
 	wa.event_mask = SubstructureNotifyMask | SubstructureRedirectMask |
 	                PropertyChangeMask | FocusChangeMask | ButtonPressMask |
 	                KeyPressMask | PointerMotionMask | StructureNotifyMask;
-	XChangeWindowAttributes(kwm.dpy, root, CWEventMask, &wa);
+	XChangeWindowAttributes(kwm.dpy, kwm.root, CWEventMask, &wa);
 
 	/* input (mouse, keyboard) */
 	cursor[CurNormal] = XCreateFontCursor(kwm.dpy, XC_left_ptr);
 	cursor[CurResize] = XCreateFontCursor(kwm.dpy, XC_sizing);
 	cursor[CurMove] = XCreateFontCursor(kwm.dpy, XC_fleur);
 	wa.cursor = cursor[CurNormal];
-	XChangeWindowAttributes(kwm.dpy, root, CWCursor, &wa);
+	XChangeWindowAttributes(kwm.dpy, kwm.root, CWCursor, &wa);
 	grabkeys();
 
 	/* session */
@@ -763,50 +651,6 @@ init_atoms(void)
 	netatom[NetWMWindowTypeDialog] = XInternAtom(kwm.dpy, "_NET_WM_WINDOW_TYPE_DIALOG", false);
 }
 
-static bool
-locate_neighbour(struct client **n, unsigned *npos,
-                 struct client *c, unsigned cpos, signed dir)
-{
-	unsigned relsrc, reldst, dst;
-	size_t offset, mod;
-
-	/* do not rely on client information */
-	bool floating = cpos < seldt->imaster;
-
-	if (seldt->nc < 2)
-		return false;
-	if (c->state == STATE_FULLSCREEN)
-		return false;
-	mod = floating ? seldt->imaster : seldt->nc - seldt->imaster;
-	offset = floating ? 0 : seldt->imaster;
-	relsrc = floating ? cpos : cpos - seldt->imaster;
-	reldst = (unsigned) (relsrc + (size_t) ((signed) mod + dir))
-	         % (unsigned) mod;
-	dst = reldst + (unsigned) offset;
-	if (npos != NULL)
-		*npos = dst;
-	if (n != NULL)
-		*n = seldt->clients[dst];
-	return true;
-}
-
-static void
-restack(void)
-{
-	unsigned i, i_fl, i_tl, nfloating;
-	struct client *c, *restacked[seldt->nc];
-
-	for (i = nfloating = 0; i < seldt->nc; ++i)
-		nfloating += seldt->clients[i]->floating;
-	for (i = i_fl = i_tl = 0; i < seldt->nc; ++i) {
-		c = seldt->clients[i];
-		restacked[c->floating ? i_fl++ : nfloating + i_tl++] = c;
-	}
-	for (i = 0; i < seldt->nc; ++i)
-		seldt->clients[i] = restacked[i];
-	seldt->imaster = nfloating;
-}
-
 static void
 run(void)
 {
@@ -820,21 +664,6 @@ run(void)
 	}
 }
 
-/* TODO move XSelectInput to client */
-void
-setclientmask(bool set)
-{
-	unsigned i;
-
-	if (set)
-		for (i = 0; i < seldt->nc; ++i)
-			XSelectInput(kwm.dpy, seldt->clients[i]->win,
-			             CLIENTMASK);
-	else
-		for (i = 0; i < seldt->nc; ++i)
-			XSelectInput(kwm.dpy, seldt->clients[i]->win, 0);
-}
-
 static void
 setupsession(void)
 {
@@ -846,7 +675,7 @@ setupsession(void)
 	seldt = desktop_new();
 
 	/* scan existing windows */
-	if (!XQueryTree(kwm.dpy, root, &r, &p, &wins, &nwins)) {
+	if (!XQueryTree(kwm.dpy, kwm.root, &r, &p, &wins, &nwins)) {
 		WARN("XQueryTree() failed");
 		return;
 	}
@@ -861,7 +690,9 @@ setupsession(void)
 	}
 
 	/* setup monitors */
-	updategeom();
+	desktop_update_geometry(seldt, 0, 0,
+	                        (unsigned) DisplayWidth(kwm.dpy, screen),
+	                        (unsigned) DisplayHeight(kwm.dpy, screen));
 }
 
 static void
@@ -888,34 +719,12 @@ term(void)
 	}
 
 	/* remove X resources */
-	XUngrabKey(kwm.dpy, AnyKey, AnyModifier, root);
+	XUngrabKey(kwm.dpy, AnyKey, AnyModifier, kwm.root);
 	XFreeCursor(kwm.dpy, cursor[CurNormal]);
 	XFreeCursor(kwm.dpy, cursor[CurResize]);
 	XFreeCursor(kwm.dpy, cursor[CurMove]);
 	XSetInputFocus(kwm.dpy, PointerRoot, RevertToPointerRoot, CurrentTime);
 	XCloseDisplay(kwm.dpy);
-}
-
-static void
-updatefocus(void)
-{
-	unsigned i;
-
-	if (seldt->nc == 0) {
-		XSetInputFocus(kwm.dpy, root, RevertToPointerRoot, CurrentTime);
-		return;
-	}
-
-	for (i = 0; i < seldt->nc; ++i)
-		client_set_focus(seldt->clients[i],
-		                 seldt->clients[i] == seldt->selcli);
-}
-
-static void
-updategeom(void)
-{
-	sw = (unsigned) DisplayWidth(kwm.dpy, screen);
-	sh = (unsigned) DisplayHeight(kwm.dpy, screen);
 }
 
 signed
