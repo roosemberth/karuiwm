@@ -9,21 +9,21 @@
 enum client_state { STATE_NORMAL, STATE_FULLSCREEN, STATE_SCRATCHPAD };
 
 struct client {
-	signed x, y, floatx, floaty;
-	unsigned w, h, floatw, floath, border;
+	int x, y, floatx, floaty;
+	int unsigned w, h, floatw, floath, border;
 	char name[BUFSIZ];
 	Window win;
 	bool floating, dialog;
 	enum client_state state;
-	unsigned basew, baseh, incw, inch, maxw, maxh, minw, minh;
+	int unsigned basew, baseh, incw, inch, maxw, maxh, minw, minh;
 };
 
 void client_delete(struct client *);
 void client_grab_buttons(struct client *c, size_t nb, struct button *buttons);
 void client_kill(struct client *c);
-void client_move(struct client *c, signed x, signed y);
-void client_moveresize(struct client *c, signed x, signed y, unsigned w,
-                       unsigned h);
+void client_move(struct client *c, int x, int y);
+void client_moveresize(struct client *c, int x, int y,
+                       int unsigned w, int unsigned h);
 struct client *client_new(Window win);
 void client_query_dialog(struct client *);
 void client_query_dimension(struct client *c);
@@ -31,8 +31,8 @@ void client_query_fullscreen(struct client *);
 void client_query_name(struct client *c);
 void client_query_sizehints(struct client *c);
 void client_query_transient(struct client *c);
-void client_resize(struct client *c, unsigned w, unsigned h);
-void client_set_border(struct client *c, unsigned border);
+void client_resize(struct client *c, int unsigned w, int unsigned h);
+void client_set_border(struct client *c, int unsigned border);
 void client_set_dialog(struct client *c, bool dialog);
 void client_set_floating(struct client *c, bool floating);
 void client_set_focus(struct client *c, bool focus);

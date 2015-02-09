@@ -2,10 +2,13 @@
 #include "util.h"
 #include "layout.h"
 
+/* Propagate the client arrangement to the X server by applying the selected
+ * layout and enforcing the window stack.
+ */
 void
 desktop_arrange(struct desktop *d)
 {
-	unsigned i, is = 0;
+	int unsigned i, is = 0;
 	size_t ntiled = d->nc - d->imaster;
 	struct client *c, **tiled = d->clients + d->imaster;
 	Window stack[d->nc];
@@ -35,10 +38,12 @@ desktop_arrange(struct desktop *d)
 		if (c->state != STATE_FULLSCREEN)
 			stack[is++] = c->win;
 	}
-	XRestackWindows(kwm.dpy, stack, (signed) d->nc);
+	XRestackWindows(kwm.dpy, stack, (int signed) d->nc);
 	desktop_set_clientmask(d, CLIENTMASK);
 }
 
+/* Attach a client to a desktop.
+ */
 void
 desktop_attach_client(struct desktop *d, struct client *c)
 {
@@ -51,6 +56,8 @@ desktop_attach_client(struct desktop *d, struct client *c)
 	d->selcli = c;
 }
 
+/* Properly delete a desktop and all its contained elements.
+ */
 void
 desktop_delete(struct desktop *d)
 {
@@ -67,34 +74,38 @@ desktop_delete(struct desktop *d)
 	free(d);
 }
 
+/* Detach a client from a desktop.
+ */
 void
 desktop_detach_client(struct desktop *d, struct client *c)
 {
-	signed pos;
-	unsigned oldpos, nextpos;
+	int pos;
+	int unsigned oldpos, nextpos;
 
 	pos = list_remove((void ***) &d->clients, &d->nc, c, "client list");
 	if (pos < 0) {
 		WARN("attempt to detach unhandled client");
 		return;
 	}
-	oldpos = (unsigned) pos;
+	oldpos = (int unsigned) pos;
 	if (oldpos < d->imaster)
 		--d->imaster;
 	if (c == d->selcli) {
 		if (d->nc == 0) {
 			d->selcli = NULL;
 		} else {
-			nextpos = MIN(oldpos, (unsigned) (d->nc - 1));
+			nextpos = MIN(oldpos, (int unsigned) (d->nc - 1));
 			d->selcli = d->clients[nextpos];
 		}
 	}
 }
 
+/* Set the floating mode of a client in the context of a desktop.
+ */
 void
 desktop_float_client(struct desktop *d, struct client *c, bool floating)
 {
-	unsigned pos;
+	int unsigned pos;
 
 	if (c->floating == floating)
 		return;
@@ -105,11 +116,14 @@ desktop_float_client(struct desktop *d, struct client *c, bool floating)
 	}
 	client_set_floating(c, floating);
 	list_shift((void **) d->clients,
-	           floating ? 0 : (unsigned) d->nc - 1, pos);
-	d->imaster = (unsigned) ((signed) d->imaster + (floating ? 1 : -1));
+	           floating ? 0 : (int unsigned) d->nc - 1, pos);
+	d->imaster = (int unsigned) ((int signed) d->imaster
+	                             + (floating ? 1 : -1));
 	desktop_arrange(d);
 }
 
+/* Set the fullscreen mode of a client in the context of a desktop.
+ */
 void
 desktop_fullscreen_client(struct desktop *d, struct client *c, bool fullscreen)
 {
@@ -120,10 +134,13 @@ desktop_fullscreen_client(struct desktop *d, struct client *c, bool fullscreen)
 	desktop_arrange(d);
 }
 
+/* Determine if a client is on a given desktop, and locate the client's position
+ * in the desktop's client list.
+ */
 bool
-desktop_locate_client(struct desktop *d, struct client *c, unsigned *pos)
+desktop_locate_client(struct desktop *d, struct client *c, int unsigned *pos)
 {
-	unsigned i;
+	int unsigned i;
 
 	for (i = 0; i < d->nc && d->clients[i] != c; ++i);
 	if (i == d->nc)
@@ -135,10 +152,10 @@ desktop_locate_client(struct desktop *d, struct client *c, unsigned *pos)
 
 /* TODO replace by desktop_swap_clients */
 bool
-desktop_locate_neighbour(struct desktop *d, struct client *c, unsigned cpos,
-                         signed dir, struct client **n, unsigned *npos)
+desktop_locate_neighbour(struct desktop *d, struct client *c, int unsigned cpos,
+                         int dir, struct client **n, int unsigned *npos)
 {
-	unsigned relsrc, reldst, dst;
+	int unsigned relsrc, reldst, dst;
 	size_t offset, mod;
 
 	/* do not rely on client information */
@@ -151,9 +168,9 @@ desktop_locate_neighbour(struct desktop *d, struct client *c, unsigned cpos,
 	mod = floating ? d->imaster : d->nc - d->imaster;
 	offset = floating ? 0 : d->imaster;
 	relsrc = floating ? cpos : cpos - d->imaster;
-	reldst = (unsigned) (relsrc + (size_t) ((signed) mod + dir))
-	         % (unsigned) mod;
-	dst = reldst + (unsigned) offset;
+	reldst = (int unsigned) (relsrc + (size_t) ((int signed) mod + dir))
+	         % (int unsigned) mod;
+	dst = reldst + (int unsigned) offset;
 	if (npos != NULL)
 		*npos = dst;
 	if (n != NULL)
@@ -161,11 +178,14 @@ desktop_locate_neighbour(struct desktop *d, struct client *c, unsigned cpos,
 	return true;
 }
 
+/* Determine if a window is contained in a given desktop, and locate both the
+ * corresponding client and the client's position in the desktop's client list.
+ */
 bool
 desktop_locate_window(struct desktop *d, Window win,
-                      struct client **c, unsigned *pos)
+                      struct client **c, int unsigned *pos)
 {
-	unsigned i;
+	int unsigned i;
 	bool found = false;
 
 	for (i = 0; i < d->nc; ++i) {
@@ -181,6 +201,8 @@ desktop_locate_window(struct desktop *d, Window win,
 	return found;
 }
 
+/* Create and initialise a new desktop.
+ */
 struct desktop *
 desktop_new(void)
 {
@@ -198,10 +220,12 @@ desktop_new(void)
 	return d;
 }
 
+/* Check that the client stacking order is correct.
+ */
 void
 desktop_restack(struct desktop *d)
 {
-	unsigned i, i_fl, i_tl, nfloating;
+	int unsigned i, i_fl, i_tl, nfloating;
 	struct client *c, *restacked[d->nc];
 
 	for (i = nfloating = 0; i < d->nc; ++i)
@@ -215,32 +239,41 @@ desktop_restack(struct desktop *d)
 	d->imaster = nfloating;
 }
 
+/* Apply an event mask on all clients on a desktop.
+ */
 void
 desktop_set_clientmask(struct desktop *d, long mask)
 {
-	unsigned i;
+	int unsigned i;
 
 	for (i = 0; i < d->nc; ++i)
 		/* TODO move XSelectInput to client */
 		XSelectInput(kwm.dpy, d->clients[i]->win, mask);
 }
 
+/* Set the factor of space the master area takes on a desktop (between 0.0 and
+ * 1.0).
+ */
 void
 desktop_set_mfact(struct desktop *d, float mfact)
 {
 	d->mfact = MAX(0.1f, MIN(0.9f, mfact));
 }
 
+/* Set the number of clients in the master area of the desktop.
+ */
 void
 desktop_set_nmaster(struct desktop *d, size_t nmaster)
 {
 	d->nmaster = nmaster;
 }
 
+/* Set the X input focus to the currently selected client on a desktop.
+ */
 void
 desktop_update_focus(struct desktop *d)
 {
-	unsigned i;
+	int unsigned i;
 
 	if (d->nc == 0) {
 		XSetInputFocus(kwm.dpy, kwm.root, RevertToPointerRoot,
@@ -251,9 +284,11 @@ desktop_update_focus(struct desktop *d)
 		client_set_focus(d->clients[i], d->clients[i] == d->selcli);
 }
 
+/* Update the dimension at which the desktop is to be displayed.
+ */
 void
 desktop_update_geometry(struct desktop *d,
-                        signed x, signed y, unsigned w, unsigned h)
+                        int x, int y, int unsigned w, int unsigned h)
 {
 	d->x = x;
 	d->y = y;

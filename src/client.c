@@ -7,31 +7,35 @@
 
 #define BORDERWIDTH 1
 
-static bool check_sizehints(struct client *c, unsigned *w, unsigned *h);
+static bool check_sizehints(struct client *c, int unsigned *w, int unsigned *h);
 static Atom get_atom(Window win, Atom property);
-static signed get_name(char *buf, Window win);
-static signed send_atom(Window win, Atom atom);
+static int get_name(char *buf, Window win);
+static int send_atom(Window win, Atom atom);
 
+/* Properly delete a client all its contained elements.
+ */
 void
 client_delete(struct client *c)
 {
 	sfree(c);
 }
 
+/* Make the client trigger button-click events for given buttons.
+ */
 void
 client_grab_buttons(struct client *c, size_t nb, struct button *buttons)
 {
-	unsigned i;
+	int unsigned i;
 
 	XUngrabButton(kwm.dpy, AnyButton, AnyModifier, c->win);
-	//XGrabButton(kwm.dpy, AnyButton, AnyModifier, c->win, False, BUTTONMASK,
-	//            GrabModeAsync, GrabModeAsync, None, None);
 	for (i = 0; i < nb; ++i)
 		XGrabButton(kwm.dpy, buttons[i].button, buttons[i].mod,
 		            c->win, False, BUTTONMASK, GrabModeAsync,
 		            GrabModeAsync, None, None);
 }
 
+/* Close a client's window.
+ */
 void
 client_kill(struct client *c)
 {
@@ -45,8 +49,10 @@ client_kill(struct client *c)
 	}
 }
 
+/* Move a client to a given position.
+ */
 void
-client_move(struct client *c, signed x, signed y)
+client_move(struct client *c, int x, int y)
 {
 	if (c->x == x && c->y == y)
 		return;
@@ -60,12 +66,15 @@ client_move(struct client *c, signed x, signed y)
 }
 
 void
-client_moveresize(struct client *c, signed x, signed y, unsigned w, unsigned h)
+client_moveresize(struct client *c, int x, int y,
+                  int unsigned w, int unsigned h)
 {
 	client_move(c, x, y);
 	client_resize(c, w, h);
 }
 
+/* Create and initialise a new client.
+ */
 struct client *
 client_new(Window win)
 {
@@ -100,6 +109,8 @@ client_new(Window win)
 	return c;
 }
 
+/* Check and update if a client is a dialog box.
+ */
 void
 client_query_dialog(struct client *c)
 {
@@ -109,11 +120,13 @@ client_query_dialog(struct client *c)
 	client_set_dialog(c, type == netatom[NetWMWindowTypeDialog]);
 }
 
+/* Check and update client-requested dimension information.
+ */
 void
 client_query_dimension(struct client *c)
 {
 	Window root;
-	unsigned u;
+	int unsigned u;
 
 	if (!XGetGeometry(kwm.dpy, c->win, &root, &c->floatx, &c->floaty,
 	                  &c->floatw, &c->floath, &c->border, &u)) {
@@ -128,6 +141,8 @@ client_query_dimension(struct client *c)
 	}
 }
 
+/* Check and update if a client is fullscreen.
+ */
 void
 client_query_fullscreen(struct client *c)
 {
@@ -137,6 +152,8 @@ client_query_fullscreen(struct client *c)
 	client_set_fullscreen(c, state == netatom[NetWMStateFullscreen]);
 }
 
+/* Update a client's name.
+ */
 void
 client_query_name(struct client *c)
 {
@@ -145,6 +162,8 @@ client_query_name(struct client *c)
 	c->name[BUFSIZ-1] = '\0';
 }
 
+/* Check and update client-requested size hints.
+ */
 void
 client_query_sizehints(struct client *c)
 {
@@ -158,43 +177,45 @@ client_query_sizehints(struct client *c)
 
 	/* base size */
 	if (hints.flags & PBaseSize) {
-		c->basew = (unsigned) hints.base_width;
-		c->baseh = (unsigned) hints.base_height;
+		c->basew = (int unsigned) hints.base_width;
+		c->baseh = (int unsigned) hints.base_height;
 	} else if (hints.flags & PMinSize) {
-		c->basew = (unsigned) hints.min_width;
-		c->baseh = (unsigned) hints.min_height;
+		c->basew = (int unsigned) hints.min_width;
+		c->baseh = (int unsigned) hints.min_height;
 	} else {
 		c->basew = c->baseh = 0;
 	}
 
 	/* resize steps */
 	if (hints.flags & PResizeInc) {
-		c->incw = (unsigned) hints.width_inc;
-		c->inch = (unsigned) hints.height_inc;
+		c->incw = (int unsigned) hints.width_inc;
+		c->inch = (int unsigned) hints.height_inc;
 	} else {
 		c->incw = c->inch = 0;
 	}
 
 	/* minimum size */
 	if (hints.flags & PMinSize) {
-		c->minw = (unsigned) hints.min_width;
-		c->minh = (unsigned) hints.min_height;
+		c->minw = (int unsigned) hints.min_width;
+		c->minh = (int unsigned) hints.min_height;
 	} else if (hints.flags & PBaseSize) {
-		c->minw = (unsigned) hints.base_width;
-		c->minh = (unsigned) hints.base_height;
+		c->minw = (int unsigned) hints.base_width;
+		c->minh = (int unsigned) hints.base_height;
 	} else {
 		c->minw = c->minh = 0;
 	}
 
 	/* maximum size */
 	if (hints.flags & PMaxSize) {
-		c->maxw = (unsigned) hints.max_width;
-		c->maxw = (unsigned) hints.max_height;
+		c->maxw = (int unsigned) hints.max_width;
+		c->maxw = (int unsigned) hints.max_height;
 	} else {
 		c->maxw = c->maxh = 0;
 	}
 }
 
+/* Check and update if the client is a transient for another client.
+ */
 void
 client_query_transient(struct client *c)
 {
@@ -205,8 +226,10 @@ client_query_transient(struct client *c)
 	DEBUG("window %lu is transient", c->win);
 }
 
+/* Change the size of a client.
+ */
 void
-client_resize(struct client *c, unsigned w, unsigned h)
+client_resize(struct client *c, int unsigned w, int unsigned h)
 {
 	bool change = check_sizehints(c, &w, &h);
 
@@ -221,13 +244,17 @@ client_resize(struct client *c, unsigned w, unsigned h)
 	}
 }
 
+/* Set the thickness of a client's border.
+ */
 void
-client_set_border(struct client *c, unsigned border)
+client_set_border(struct client *c, int unsigned border)
 {
 	c->border = border;
 	XSetWindowBorderWidth(kwm.dpy, c->win, border);
 }
 
+/* Set the dialog mode of a client.
+ */
 void
 client_set_dialog(struct client *c, bool dialog)
 {
@@ -235,6 +262,8 @@ client_set_dialog(struct client *c, bool dialog)
 	client_set_floating(c, c->dialog || c->floating);
 }
 
+/* Set the floating mode of a client.
+ */
 void
 client_set_floating(struct client *c, bool floating)
 {
@@ -243,6 +272,8 @@ client_set_floating(struct client *c, bool floating)
 		client_moveresize(c, c->floatx, c->floaty, c->floatw,c->floath);
 }
 
+/* Set/unset the X input focus on a client.
+ */
 void
 client_set_focus(struct client *c, bool focus)
 {
@@ -252,6 +283,8 @@ client_set_focus(struct client *c, bool focus)
 		               CurrentTime);
 }
 
+/* Set the fullscreen mode of a client.
+ */
 void
 client_set_fullscreen(struct client *c, bool fullscreen)
 {
@@ -259,11 +292,13 @@ client_set_fullscreen(struct client *c, bool fullscreen)
 	client_set_border(c, fullscreen ? 0 : BORDERWIDTH);
 }
 
-/* implementation (static) */
+/* Check and enforce client-requested size hints on a server-requested client
+ * resize.
+ */
 static bool
-check_sizehints(struct client *c, unsigned *w, unsigned *h)
+check_sizehints(struct client *c, int unsigned *w, int unsigned *h)
 {
-	unsigned u; /* unit size */
+	int unsigned u; /* unit size */
 	bool change = false;
 
 	/* don't respect size hints for untiled or fullscreen windows */
@@ -295,11 +330,13 @@ check_sizehints(struct client *c, unsigned *w, unsigned *h)
 	return change;
 }
 
+/* Get an Atom from a client.
+ */
 static Atom
 get_atom(Window win, Atom property)
 {
-	signed ret, i;
-	long unsigned lu;
+	int ret, i;
+	int long unsigned lu;
 	char unsigned *atomp = NULL;
 	Atom a, atom = None;
 
@@ -314,11 +351,13 @@ get_atom(Window win, Atom property)
 	return atom;
 }
 
-static signed
+/* Get a client's window's name.
+ */
+static int
 get_name(char *buf, Window win)
 {
 	XTextProperty xtp;
-	signed n, ret, fret = 0;
+	int n, ret, fret = 0;
 	char **list;
 
 	XGetTextProperty(kwm.dpy, win, &xtp, netatom[NetWMName]);
@@ -340,10 +379,10 @@ get_name(char *buf, Window win)
 	return fret;
 }
 
-static signed
+static int
 send_atom(Window win, Atom atom)
 {
-	signed n;
+	int n;
 	Atom *supported;
 	bool exists = false;
 	XEvent ev;
