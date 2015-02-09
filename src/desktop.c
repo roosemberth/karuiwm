@@ -21,7 +21,7 @@ desktop_arrange(struct desktop *d)
 	if (ntiled > 0) {
 		/* TODO modular layout management */
 		rstack(tiled, ntiled, MIN(d->nmaster, ntiled), d->mfact,
-		       d->w, d->h);
+		       d->x, d->y, d->w, d->h);
 	}
 	for (i = 0; i < d->nc; ++i) {
 		c = d->clients[i];
@@ -57,7 +57,7 @@ desktop_delete(struct desktop *d)
 	struct client *c;
 
 	if (d->nc > 0) {
-		WARN("deleting desktop containing clients");
+		WARN("deleting desktop that still contains clients");
 		while (d->nc > 0) {
 			c = d->clients[0];
 			desktop_detach_client(d, c);
@@ -228,7 +228,7 @@ desktop_set_clientmask(struct desktop *d, long mask)
 void
 desktop_set_mfact(struct desktop *d, float mfact)
 {
-	d->mfact = mfact;
+	d->mfact = MAX(0.1f, MIN(0.9f, mfact));
 }
 
 void
