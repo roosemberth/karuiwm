@@ -4,6 +4,18 @@
 #include <time.h>
 #include <string.h>
 
+#define ESC "\033"
+#define ESC_BOLD    ESC"[1m"
+#define ESC_BLACK   ESC"[30m"
+#define ESC_RED     ESC"[31m"
+#define ESC_GREEN   ESC"[32m"
+#define ESC_YELLOW  ESC"[33m"
+#define ESC_BLUE    ESC"[34m"
+#define ESC_MAGENTA ESC"[35m"
+#define ESC_CYAN    ESC"[36m"
+#define ESC_WHITE   ESC"[37m"
+#define ESC_RESET   ESC"[0m"
+
 /* variables */
 static enum log_level log_level;
 
@@ -73,18 +85,18 @@ print(FILE *f, enum log_level level, char const *filename, unsigned line,
 	rawtime = time(NULL);
 	date = localtime(&rawtime);
 	(void) fprintf(f, APPNAME" [%04d-%02d-%02d %02d:%02d:%02d] ",
-	               date->tm_year+1900, date->tm_mon, date->tm_mday,
+	               date->tm_year+1900, date->tm_mon + 1, date->tm_mday,
 	               date->tm_hour, date->tm_min, date->tm_sec);
 
 	/* log level */
 	switch (level) {
-	case LOG_FATAL : col = "\033[31mFATAL\033[0m "; break;
-	case LOG_ERROR : col = "\033[31mERROR\033[0m "; break;
-	case LOG_WARN  : col = "\033[33mWARN\033[0m " ; break;
-	case LOG_NOTICE: col = "\033[1mNOTICE\033[0m "; break;
-	case LOG_EVENT : col = "\033[35mEVENT\033[0m "; break;
-	case LOG_DEBUG : col = "\033[34mDEBUG\033[0m "; break;
-	default        : col = "";
+	case LOG_FATAL : col = ESC_BOLD ESC_RED    "FATAL" ESC_RESET " "; break;
+	case LOG_ERROR : col = ESC_BOLD ESC_RED    "ERROR" ESC_RESET " "; break;
+	case LOG_WARN  : col = ESC_BOLD ESC_YELLOW "WARN"  ESC_RESET " "; break;
+	case LOG_NOTICE: col =          ESC_CYAN   "NOTICE"ESC_RESET " "; break;
+	case LOG_EVENT : col =          ESC_MAGENTA"EVENT" ESC_RESET " "; break;
+	case LOG_DEBUG : col =          ESC_BLUE   "DEBUG" ESC_RESET " "; break;
+	default        : col =                                        "";
 	}
 	(void) fprintf(f, "%s", col);
 
