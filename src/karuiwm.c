@@ -35,6 +35,7 @@ enum { Left, Right, Up, Down, NoDirection };
 static void action_killclient(union argument *arg);
 static void action_movemouse(union argument *);
 static void action_quit(union argument *arg);
+static void action_restart(union argument *arg);
 static void action_setmfact(union argument *arg);
 static void action_setnmaster(union argument *arg);
 static void action_shiftclient(union argument *arg);
@@ -66,7 +67,7 @@ static void term(void);
 
 /* variables */
 static struct desktop *seldt;
-static bool running;                          /* application state */
+static bool running, restarting;              /* application state */
 static int screen;                            /* screen */
 static Cursor cursor[CurLAST];                /* cursors */
 static char const *termcmd[] = { "urxvt", NULL };
@@ -111,6 +112,7 @@ static struct key keys[] = {
 	{ MODKEY,           XK_Return,  action_zoom,        { 0 } },
 
 	/* session */
+	{ MODKEY,           XK_q,       action_restart,     { 0 } },
 	{ MODKEY|ShiftMask, XK_q,       action_quit,        { 0 } },
 };
 static struct button buttons[] = {
@@ -196,6 +198,15 @@ action_quit(union argument *arg)
 	(void) arg;
 
 	running = false;
+}
+
+/* Handler for restarting karuiwm.
+ */
+static void
+action_restart(union argument *arg)
+{
+	restarting = true;
+	action_quit(arg);
 }
 
 /* Handler for changing the factor the master area takes in the layout.
@@ -707,6 +718,7 @@ run(void)
 	XEvent xe;
 
 	running = true;
+	restarting = false;
 	while (running && !XNextEvent(kwm.dpy, &xe)) {
 		//DEBUG("run(): e.type = %d", xe.type);
 		if (handle[xe.type] != NULL)
@@ -791,6 +803,11 @@ main(int argc, char **argv)
 	init();
 	run();
 	term();
-	VERBOSE("shutting down");
+	if (restarting) {
+		VERBOSE("restarting ...");
+		execvp(argv[0], argv);
+		ERROR("restart failed: %s", strerror(errno));
+	}
+	VERBOSE("shutting down ...");
 	return EXIT_SUCCESS;
 }
