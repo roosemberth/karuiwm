@@ -154,8 +154,7 @@ action_movemouse(union argument const *arg)
 
 	if (c->state == STATE_FULLSCREEN)
 		return;
-	if (!c->floating)
-		desktop_float_client(seldt, c, true);
+	desktop_float_client(seldt, c, true);
 
 	/* grab the pointer and change the cursor appearance */
 	i = XGrabPointer(kwm.dpy, kwm.root, true, MOUSEMASK, GrabModeAsync,
@@ -168,7 +167,7 @@ action_movemouse(union argument const *arg)
 	/* get initial pointer position */
 	if (!XQueryPointer(kwm.dpy, kwm.root, &w, &w, &x, &y, &i, &i, &ui)) {
 		WARN("XQueryPointer() failed");
-		return;
+		goto action_movemouse_out;
 	}
 
 	/* handle motions */
@@ -193,6 +192,7 @@ action_movemouse(union argument const *arg)
 			WARN("unhandled event %d", ev.type);
 		}
 	} while (ev.type != ButtonRelease);
+ action_movemouse_out:
 	XUngrabPointer(kwm.dpy, CurrentTime);
 }
 
@@ -357,17 +357,13 @@ handle_buttonpress(XEvent *xe)
 		WARN("click on unhandled window");
 		return;
 	}
-
-	for (i = 0; i < LENGTH(buttons); i++) {
-		if (buttons[i].mod == e->state
-		&& buttons[i].button == e->button && buttons[i].func) {
-			buttons[i].func(&buttons[i].arg);
-		}
-	}
-
-	/* update focus */
 	seldt->selcli = c;
 	desktop_update_focus(seldt);
+	for (i = 0; i < LENGTH(buttons); ++i)
+		if (buttons[i].mod == e->state
+		&& buttons[i].button == e->button
+		&& buttons[i].func != NULL)
+			buttons[i].func(&buttons[i].arg);
 }
 
 /* X event handler for client messages.
@@ -752,6 +748,7 @@ setupsession(void)
 			desktop_attach_client(seldt, c);
 		}
 	}
+	desktop_update_focus(seldt);
 
 	/* setup monitors (TODO separate function) */
 	desktop_update_geometry(seldt, 0, 0,

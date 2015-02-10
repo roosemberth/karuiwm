@@ -106,19 +106,22 @@ void
 desktop_float_client(struct desktop *d, struct client *c, bool floating)
 {
 	int unsigned pos;
-
-	if (c->floating == floating)
-		return;
+	bool change = floating != c->floating;
 
 	if (!desktop_locate_client(d, c, &pos)) {
 		WARN("attempt to float unhandled window");
 		return;
 	}
 	client_set_floating(c, floating);
-	list_shift((void **) d->clients,
-	           floating ? 0 : (int unsigned) d->nc - 1, pos);
-	d->imaster = (int unsigned) ((int signed) d->imaster
-	                             + (floating ? 1 : -1));
+	if (floating) {
+		list_shift((void **) d->clients, 0, pos);
+		if (change)
+			++d->imaster;
+	} else {
+		list_shift((void **) d->clients, (int unsigned) d->nc - 1, pos);
+		if (change)
+			--d->imaster;
+	}
 	desktop_arrange(d);
 }
 
