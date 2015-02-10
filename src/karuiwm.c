@@ -32,16 +32,16 @@ enum { CurNormal, CurResize, CurMove, CurLAST };
 enum { Left, Right, Up, Down, NoDirection };
 
 /* functions */
-static void action_killclient(union argument const *arg);
-static void action_movemouse(union argument const *);
-static void action_quit(union argument const *arg);
-static void action_setmfact(union argument const *arg);
-static void action_setnmaster(union argument const *arg);
-static void action_shiftclient(union argument const *arg);
-static void action_spawn(union argument const *arg);
-static void action_stepfocus(union argument const *arg);
-static void action_togglefloat(union argument const *arg);
-static void action_zoom(union argument const *arg);
+static void action_killclient(union argument *arg);
+static void action_movemouse(union argument *);
+static void action_quit(union argument *arg);
+static void action_setmfact(union argument *arg);
+static void action_setnmaster(union argument *arg);
+static void action_shiftclient(union argument *arg);
+static void action_spawn(union argument *arg);
+static void action_stepfocus(union argument *arg);
+static void action_togglefloat(union argument *arg);
+static void action_zoom(union argument *arg);
 static void grabkeys(void);
 static void handle_buttonpress(XEvent *xe);
 static void handle_clientmessage(XEvent *xe);
@@ -71,9 +71,6 @@ static int screen;                            /* screen */
 static Cursor cursor[CurLAST];                /* cursors */
 static char const *termcmd[] = { "urxvt", NULL };
 static char const *scrotcmd[] = { "prtscr", NULL };
-static char const *volupcmd[] = { "amixer", "set", "Master", "2+", "unmute", NULL };
-static char const *voldowncmd[] = { "amixer", "set", "Master", "2-", "unmute", NULL };
-static char const *volmutecmd[] = { "amixer", "set", "Master", "toggle", NULL };
 
 /* event handlers, as array to allow O(1) access; codes in X.h */
 static void (*handle[LASTEvent])(XEvent *) = {
@@ -97,11 +94,6 @@ static struct key keys[] = {
 	/* applications */
 	{ MODKEY,           XK_n,       action_spawn,       { .v=termcmd } },
 	{ MODKEY,           XK_Print,   action_spawn,       { .v=scrotcmd } },
-
-	/* hardware */
-	{ 0,                0x1008FF11, action_spawn,       { .v=voldowncmd } },
-	{ 0,                0x1008FF12, action_spawn,       { .v=volmutecmd } },
-	{ 0,                0x1008FF13, action_spawn,       { .v=volupcmd } },
 
 	/* windows */
 	{ MODKEY,           XK_j,       action_stepfocus,   { .i=+1 } },
@@ -128,7 +120,7 @@ static struct button buttons[] = {
 /* Handler for killing a client.
  */
 static void
-action_killclient(union argument const *arg)
+action_killclient(union argument *arg)
 {
 	(void) arg;
 
@@ -140,7 +132,7 @@ action_killclient(union argument const *arg)
  */
 /* TODO split up */
 static void
-action_movemouse(union argument const *arg)
+action_movemouse(union argument *arg)
 {
 	XEvent ev;
 	Window w;
@@ -196,10 +188,10 @@ action_movemouse(union argument const *arg)
 	XUngrabPointer(kwm.dpy, CurrentTime);
 }
 
-/* Handler for quitting the WM.
+/* Handler for quitting karuiwm.
  */
 static void
-action_quit(union argument const *arg)
+action_quit(union argument *arg)
 {
 	(void) arg;
 
@@ -209,7 +201,7 @@ action_quit(union argument const *arg)
 /* Handler for changing the factor the master area takes in the layout.
  */
 static void
-action_setmfact(union argument const *arg)
+action_setmfact(union argument *arg)
 {
 	desktop_set_mfact(seldt, seldt->mfact + arg->f);
 	desktop_arrange(seldt);
@@ -218,7 +210,7 @@ action_setmfact(union argument const *arg)
 /* Handler for changing the number of clients in the master area.
  */
 static void
-action_setnmaster(union argument const *arg)
+action_setnmaster(union argument *arg)
 {
 	if (arg->i < 0 && (size_t) (-arg->i) > seldt->nmaster)
 		return;
@@ -231,7 +223,7 @@ action_setnmaster(union argument const *arg)
  */
 /* TODO move to desktop_swap_clients */
 static void
-action_shiftclient(union argument const *arg)
+action_shiftclient(union argument *arg)
 {
 	int unsigned pos, npos;
 
@@ -252,7 +244,7 @@ action_shiftclient(union argument const *arg)
 /* Handler for launching a command with the `exec' system call.
  */
 static void
-action_spawn(union argument const *arg)
+action_spawn(union argument *arg)
 {
 	char *const *cmd = (char *const *) arg->v;
 
@@ -268,7 +260,7 @@ action_spawn(union argument const *arg)
 /* Handler for changing the X input focus.
  */
 static void
-action_stepfocus(union argument const *arg)
+action_stepfocus(union argument *arg)
 {
 	int unsigned pos, npos;
 
@@ -287,7 +279,7 @@ action_stepfocus(union argument const *arg)
 /* Handler for toggling the selected client's floating mode.
  */
 static void
-action_togglefloat(union argument const *arg)
+action_togglefloat(union argument *arg)
 {
 	(void) arg;
 
@@ -299,7 +291,7 @@ action_togglefloat(union argument const *arg)
 /* Handler for `zooming' the selected client (moving it to the master area).
  */
 static void
-action_zoom(union argument const *arg)
+action_zoom(union argument *arg)
 {
 	int unsigned pos;
 	(void) arg;

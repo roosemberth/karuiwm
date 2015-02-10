@@ -33,15 +33,15 @@ union argument {
 struct button {
 	int unsigned mod;
 	int unsigned button;
-	void (*func)(union argument const *);
-	union argument const arg;
+	void (*func)(union argument *);
+	union argument arg;
 };
 
 struct key {
 	int unsigned mod;
 	KeySym key;
-	void (*func)(union argument const *);
-	union argument const arg;
+	void (*func)(union argument *);
+	union argument arg;
 };
 
 /* variables */
