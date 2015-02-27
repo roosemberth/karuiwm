@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 #define DEBUG(...)   print(stdout,LOG_DEBUG,  __FILE__,__LINE__,__VA_ARGS__)
 #define EVENT(...)   print(stderr,LOG_EVENT,  __FILE__,__LINE__,__VA_ARGS__)
@@ -22,12 +23,15 @@ enum log_level { LOG_FATAL, LOG_ERROR, LOG_WARN, LOG_NOTICE, LOG_NORMAL,
 /* list actions */
 void list_append(void ***l, size_t *lsize, void *e, char const *ctx);
 void list_prepend(void ***l, size_t *lsize, void *e, char const *ctx);
-signed list_remove(void ***l, size_t *lsize, void *e, char const *ctx);
-void list_shift(void **l, unsigned dst, unsigned src);
+int list_remove(void ***l, size_t *lsize, void *e, char const *ctx);
+int list_shift(void **l, size_t lsize, void *e, int dir);
+int list_index(void **l, size_t lsize, void *e);
+bool list_contains(void **l, size_t lsize, void *e);
 
 /* output */
-void print(FILE *f, enum log_level level, char const *filename, unsigned line,
-           char const *format, ...) __attribute__((format(printf,5,6)));
+void print(FILE *f, enum log_level level, char const *filename,
+           int unsigned line, char const *format, ...)
+           __attribute__((format(printf,5,6)));
 void set_log_level(enum log_level level);
 
 /* memory allocation */

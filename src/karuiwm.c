@@ -232,23 +232,12 @@ action_setnmaster(union argument *arg)
 
 /* Handler for moving around clients in the layout/client order/list.
  */
-/* TODO move to desktop_swap_clients */
 static void
 action_shiftclient(union argument *arg)
 {
-	int unsigned pos, npos;
-
 	if (seldt->selcli == NULL)
 		return;
-	if (!desktop_locate_client(seldt, seldt->selcli, &pos)) {
-		WARN("attempt to shift from unhandled client");
-		return;
-	}
-	if (!desktop_locate_neighbour(seldt, seldt->selcli, pos, arg->i,
-	                              NULL, &npos))
-		return;
-	seldt->clients[pos] = seldt->clients[npos];
-	seldt->clients[npos] = seldt->selcli;
+	(void) desktop_shift_client(seldt, seldt->selcli, arg->i);
 	desktop_arrange(seldt);
 }
 
@@ -273,18 +262,7 @@ action_spawn(union argument *arg)
 static void
 action_stepfocus(union argument *arg)
 {
-	int unsigned pos, npos;
-
-	if (seldt->selcli == NULL)
-		return;
-	if (!desktop_locate_client(seldt, seldt->selcli, &pos)) {
-		WARN("attempt to step from unfocused client");
-		return;
-	}
-	npos = (pos + (int unsigned) ((int signed) seldt->nc + arg->i))
-               % (int unsigned) seldt->nc;
-	seldt->selcli = seldt->clients[npos];
-	desktop_update_focus(seldt);
+	desktop_step_focus(seldt, arg->i);
 }
 
 /* Handler for toggling the selected client's floating mode.
@@ -304,30 +282,9 @@ action_togglefloat(union argument *arg)
 static void
 action_zoom(union argument *arg)
 {
-	int unsigned pos;
 	(void) arg;
 
-	if (seldt->nc < 2)
-		return;
-
-	if (!desktop_locate_client(seldt, seldt->selcli, &pos)) {
-		WARN("attempt to zoom unhandled client");
-		return;
-	}
-	if (seldt->selcli->floating)
-		return;
-	if (pos == seldt->imaster) {
-		/* window is at the top: swap with next below */
-		seldt->clients[seldt->imaster] = seldt->clients[seldt->imaster + 1];
-		seldt->clients[seldt->imaster + 1] = seldt->selcli;
-		seldt->selcli = seldt->clients[seldt->imaster];
-		desktop_update_focus(seldt);
-	} else {
-		/* window is somewhere else: swap with top */
-		seldt->clients[pos] = seldt->clients[seldt->imaster];
-		seldt->clients[seldt->imaster] = seldt->selcli;
-	}
-	desktop_arrange(seldt);
+	desktop_zoom(seldt);
 }
 
 /* Grab all key combinations as defined in the `keys' array to trigger a
@@ -356,7 +313,7 @@ handle_buttonpress(XEvent *xe)
 
 	//EVENT("buttonpress(%lu)", e->window);
 
-	if (!desktop_locate_window(seldt, e->window, &c, NULL)) {
+	if (!desktop_locate_window(seldt, e->window, &c)) {
 		WARN("click on unhandled window");
 		return;
 	}
@@ -380,7 +337,7 @@ handle_clientmessage(XEvent *xe)
 
 	//EVENT("clientmessage(%lu)", e->window);
 
-	if (!desktop_locate_window(seldt, e->window, &c, NULL))
+	if (!desktop_locate_window(seldt, e->window, &c))
 		return;
 	if (e->message_type != netatom[NetWMState]) {
 		WARN("received client message for other than WM state");
@@ -445,7 +402,7 @@ handle_enternotify(XEvent *xe)
 
 	//EVENT("enternotify(%lu)", e->window);
 
-	if (!desktop_locate_window(seldt, e->window, &c, NULL)) {
+	if (!desktop_locate_window(seldt, e->window, &c)) {
 		WARN("attempt to enter unhandled/invisible window %lu",
 		     e->window);
 		return;
@@ -480,9 +437,9 @@ handle_focusin(XEvent *xe)
 
 	if (e->window == kwm.root)
 		return;
-	if (seldt->nc == 0 || e->window != seldt->selcli->win) {
+	if (seldt->nt + seldt->nf == 0 || e->window != seldt->selcli->win) {
 		WARN("attempt to steal focus by window %lu (focus is on %lu)",
-		      e->window, seldt->nc > 0 ? seldt->selcli->win : 0);
+		      e->window, seldt->selcli == NULL ? 0 : seldt->selcli->win);
 		desktop_update_focus(seldt);
 	}
 }
@@ -546,7 +503,7 @@ handle_maprequest(XEvent *xe)
 	//EVENT("maprequest(%lu)", e->window);
 
 	/* window is remapped */
-	if (desktop_locate_window(seldt, e->window, &c, NULL)) {
+	if (desktop_locate_window(seldt, e->window, &c)) {
 		desktop_detach_client(seldt, c);
 		client_delete(c);
 	}
@@ -578,7 +535,7 @@ handle_propertynotify(XEvent *xe)
 
 	//EVENT("propertynotify(%lu)", e->window);
 
-	if (!desktop_locate_window(seldt, e->window, &c, NULL))
+	if (!desktop_locate_window(seldt, e->window, &c))
 		return;
 
 	if (e->state == PropertyDelete) {
@@ -591,7 +548,6 @@ handle_propertynotify(XEvent *xe)
 	case XA_WM_TRANSIENT_FOR:
 		DEBUG("transient property changed for window %lu", c->win);
 		client_query_transient(c);
-		desktop_restack(seldt);
 		desktop_arrange(seldt);
 		break;
 	case XA_WM_NORMAL_HINTS:
@@ -608,7 +564,6 @@ handle_propertynotify(XEvent *xe)
 	if (e->atom == netatom[NetWMWindowType]) {
 		client_query_fullscreen(c);
 		client_query_dialog(c);
-		desktop_restack(seldt);
 		desktop_arrange(seldt);
 	}
 }
@@ -623,7 +578,7 @@ handle_unmapnotify(XEvent *xe)
 
 	//EVENT("unmapnotify(%lu)", e->window);
 
-	if (!desktop_locate_window(seldt, e->window, &c, NULL))
+	if (!desktop_locate_window(seldt, e->window, &c))
 		return;
 
 	desktop_detach_client(seldt, c);

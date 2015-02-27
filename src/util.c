@@ -32,10 +32,10 @@ list_append(void ***l, size_t *lsize, void *e, char const *ctx)
 void
 list_prepend(void ***l, size_t *lsize, void *e, char const *ctx)
 {
-	unsigned i;
+	int unsigned i;
 
 	*l = srealloc(*l, ++(*lsize) * sizeof(void *), ctx);
-	for (i = (unsigned) *lsize - 1; i > 0; --i)
+	for (i = (int unsigned) *lsize - 1; i > 0; --i)
 		(*l)[i] = (*l)[i - 1];
 	(*l)[0] = e;
 }
@@ -43,7 +43,7 @@ list_prepend(void ***l, size_t *lsize, void *e, char const *ctx)
 signed
 list_remove(void ***l, size_t *lsize, void *e, char const *ctx)
 {
-	unsigned i, pos;
+	int unsigned i, pos;
 
 	for (pos = 0; pos < *lsize && *(*l + pos) != e; ++pos);
 	if (pos == *lsize)
@@ -51,26 +51,48 @@ list_remove(void ***l, size_t *lsize, void *e, char const *ctx)
 	for (i = pos; i < *lsize - 1; ++i)
 		(*l)[i] = (*l)[i + 1];
 	*l = srealloc(*l, --(*lsize) * sizeof(void *), ctx);
-	return (signed) pos;
+	return (int signed) pos;
 }
 
-void
-list_shift(void **l, unsigned dst, unsigned src)
+int
+list_shift(void **l, size_t lsize, void *e, int dir)
 {
-	unsigned i;
-	void *e = l[src];
+	int pos;
+	int unsigned oldpos, newpos;
 
-	if (src < dst)
-		for (i = src; i < dst; ++i)
-			l[i] = l[i + 1];
-	else
-		for (i = src; i > dst; --i)
-			l[i] = l[i - 1];
-	l[dst] = e;
+	pos = list_index(l, lsize, e);
+	if (pos < 0)
+		return -1;
+	oldpos = (int unsigned) pos;
+	newpos = (int unsigned) ((int signed) oldpos + dir + (int signed) lsize)
+	         % (int unsigned) lsize;
+	l[oldpos] = l[newpos];
+	l[newpos] = e;
+	return 0;
+}
+
+int
+list_index(void **l, size_t lsize, void *e)
+{
+	int unsigned i;
+
+	for (i = 0; i < lsize && l[i] != e; ++i);
+	return i == lsize ? -1 : (int signed) i;
+}
+
+bool
+list_contains(void **l, size_t lsize, void *e)
+{
+	int unsigned i;
+
+	for (i = 0; i < lsize; ++i)
+		if (l[i] ==  e)
+			return true;
+	return false;
 }
 
 void
-print(FILE *f, enum log_level level, char const *filename, unsigned line,
+print(FILE *f, enum log_level level, char const *filename, int unsigned line,
       char const *format, ...)
 {
 	va_list args;

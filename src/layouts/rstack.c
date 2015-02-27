@@ -6,6 +6,7 @@ rstack(struct client **clients, size_t nc, size_t nmaster, float mfact,
 {
 	int unsigned i = 0, w, h;
 	int x, y;
+	struct client *c;
 
 	/* draw master area */
 	if (nmaster > 0) {
@@ -14,8 +15,9 @@ rstack(struct client **clients, size_t nc, size_t nmaster, float mfact,
 		h = sh / (int unsigned) nmaster;
 		for (; i < nmaster; ++i) {
 			y = (int signed) (i*h);
-			client_moveresize(clients[i], sx + x, sy + y,
-			                  w - 2*BORDERWIDTH, h - 2*BORDERWIDTH);
+			c = clients[i];
+			client_moveresize(c, sx + x, sy + y,
+			                  w - 2*c->border, h - 2*c->border);
 		}
 	}
 
@@ -26,8 +28,9 @@ rstack(struct client **clients, size_t nc, size_t nmaster, float mfact,
 		h = sh / (int unsigned) (nc - nmaster);
 		for (; i < nc; ++i) {
 			y = (int signed) ((i - nmaster)*h);
-			client_moveresize(clients[i], sx + x, sy + y,
-			                  w - 2*BORDERWIDTH, h - 2*BORDERWIDTH);
+			c = clients[i];
+			client_moveresize(c, sx + x, sy + y,
+			                  w - 2*c->border, h - 2*c->border);
 		}
 	}
 }
