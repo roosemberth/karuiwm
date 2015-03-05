@@ -2,6 +2,7 @@
 #include "util.h"
 #include "client.h"
 #include "desktop.h"
+#include "workspace.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -66,7 +67,7 @@ static void sigchld(int);
 static void term(void);
 
 /* variables */
-static struct desktop *seldt;
+static struct workspace *selws;
 static bool running, restarting;              /* application state */
 static int screen;                            /* screen */
 static Cursor cursor[CurLAST];                /* cursors */
@@ -126,8 +127,8 @@ action_killclient(union argument *arg)
 {
 	(void) arg;
 
-	if (seldt->selcli != NULL)
-		client_kill(seldt->selcli);
+	if (selws->seldt->selcli != NULL)
+		client_kill(selws->seldt->selcli);
 }
 
 /* Handler for moving a client with the mouse.
@@ -138,7 +139,7 @@ action_movemouse(union argument *arg)
 {
 	XEvent ev;
 	Window w;
-	struct client *c = seldt->selcli;
+	struct client *c = selws->seldt->selcli;
 	int cx, cy, mx, my, i;
 	int unsigned ui;
 	long evmask = MOUSEMASK | ExposureMask | SubstructureRedirectMask;
@@ -172,8 +173,8 @@ action_movemouse(union argument *arg)
 		c->floaty = my - (int signed) c->floath + 1;
 	if (c->floaty > my)
 		c->floaty = my;
-	desktop_float_client(seldt, c, true);
-	desktop_arrange(seldt);
+	desktop_float_client(selws->seldt, c, true);
+	desktop_arrange(selws->seldt);
 	cx = c->floatx;
 	cy = c->floaty;
 
@@ -227,8 +228,8 @@ action_restart(union argument *arg)
 static void
 action_setmfact(union argument *arg)
 {
-	desktop_set_mfact(seldt, seldt->mfact + arg->f);
-	desktop_arrange(seldt);
+	desktop_set_mfact(selws->seldt, selws->seldt->mfact + arg->f);
+	desktop_arrange(selws->seldt);
 }
 
 /* Handler for changing the number of clients in the master area.
@@ -236,11 +237,11 @@ action_setmfact(union argument *arg)
 static void
 action_setnmaster(union argument *arg)
 {
-	if (arg->i < 0 && (size_t) (-arg->i) > seldt->nmaster)
+	if (arg->i < 0 && (size_t) (-arg->i) > selws->seldt->nmaster)
 		return;
-	desktop_set_nmaster(seldt,
-	                    (size_t) ((int signed) seldt->nmaster + arg->i));
-	desktop_arrange(seldt);
+	desktop_set_nmaster(selws->seldt, (size_t)
+	                    ((int signed) selws->seldt->nmaster + arg->i));
+	desktop_arrange(selws->seldt);
 }
 
 /* Handler for moving around clients in the layout/client order/list.
@@ -248,10 +249,10 @@ action_setnmaster(union argument *arg)
 static void
 action_shiftclient(union argument *arg)
 {
-	if (seldt->selcli == NULL)
+	if (selws->seldt->selcli == NULL)
 		return;
-	(void) desktop_shift_client(seldt, arg->i);
-	desktop_arrange(seldt);
+	(void) desktop_shift_client(selws->seldt, arg->i);
+	desktop_arrange(selws->seldt);
 }
 
 /* Handler for launching a command with the `exec' system call.
@@ -275,7 +276,7 @@ action_spawn(union argument *arg)
 static void
 action_stepfocus(union argument *arg)
 {
-	desktop_step_focus(seldt, arg->i);
+	desktop_step_focus(selws->seldt, arg->i);
 }
 
 /* Handler for toggling the selected client's floating mode.
@@ -285,10 +286,11 @@ action_togglefloat(union argument *arg)
 {
 	(void) arg;
 
-	if (seldt->selcli == NULL)
+	if (selws->seldt->selcli == NULL)
 		return;
-	desktop_float_client(seldt, seldt->selcli, !seldt->selcli->floating);
-	desktop_arrange(seldt);
+	desktop_float_client(selws->seldt, selws->seldt->selcli,
+	                     !selws->seldt->selcli->floating);
+	desktop_arrange(selws->seldt);
 }
 
 /* Handler for `zooming' the selected client (moving it to the master area).
@@ -298,7 +300,7 @@ action_zoom(union argument *arg)
 {
 	(void) arg;
 
-	desktop_zoom(seldt);
+	desktop_zoom(selws->seldt);
 }
 
 /* Grab all key combinations as defined in the `keys' array to trigger a
@@ -331,12 +333,12 @@ handle_buttonpress(XEvent *xe)
 	if (e->window == kwm.root)
 		return;
 
-	if (desktop_locate_window(seldt, e->window, &c) < 0) {
+	if (desktop_locate_window(selws->seldt, e->window, &c) < 0) {
 		WARN("click on unhandled window");
 		return;
 	}
-	seldt->selcli = c;
-	desktop_update_focus(seldt);
+	selws->seldt->selcli = c;
+	desktop_update_focus(selws->seldt);
 	for (i = 0; i < LENGTH(buttons); ++i)
 		if (buttons[i].mod == e->state
 		&& buttons[i].button == e->button
@@ -355,7 +357,7 @@ handle_clientmessage(XEvent *xe)
 
 	//EVENT("clientmessage(%lu)", e->window);
 
-	if (desktop_locate_window(seldt, e->window, &c) < 0)
+	if (desktop_locate_window(selws->seldt, e->window, &c) < 0)
 		return;
 	if (e->message_type != netatom[NetWMState]) {
 		WARN("received client message for other than WM state");
@@ -367,8 +369,8 @@ handle_clientmessage(XEvent *xe)
 		fullscreen = e->data.l[0] == 1 ||
 			    (e->data.l[0] == 2 &&
 			     c->state != STATE_FULLSCREEN);
-		desktop_fullscreen_client(seldt, c, fullscreen);
-		desktop_arrange(seldt);
+		desktop_fullscreen_client(selws->seldt, c, fullscreen);
+		desktop_arrange(selws->seldt);
 	}
 }
 
@@ -384,7 +386,7 @@ handle_configurenotify(XEvent *xe)
 
 	if (e->window == kwm.root)
 		/* TODO separate function */
-		desktop_update_geometry(seldt, 0, 0,
+		desktop_update_geometry(selws->seldt, 0, 0,
 		                 (int unsigned) DisplayWidth(kwm.dpy, screen),
 		                 (int unsigned) DisplayHeight(kwm.dpy, screen));
 }
@@ -423,13 +425,13 @@ handle_enternotify(XEvent *xe)
 
 	//EVENT("enternotify(%lu)", e->window);
 
-	if (desktop_locate_window(seldt, e->window, &c) < 0) {
+	if (desktop_locate_window(selws->seldt, e->window, &c) < 0) {
 		WARN("attempt to enter unhandled/invisible window %lu",
 		     e->window);
 		return;
 	}
-	seldt->selcli = c;
-	desktop_update_focus(seldt);
+	selws->seldt->selcli = c;
+	desktop_update_focus(selws->seldt);
 }
 
 /* X event handler for windows whose surfaces got exposed (= newly visible) and
@@ -458,11 +460,12 @@ handle_focusin(XEvent *xe)
 
 	if (e->window == kwm.root)
 		return;
-	if ((seldt->tiled == NULL && seldt->floating == NULL)
-	|| e->window != seldt->selcli->win) {
+	if ((selws->seldt->tiled == NULL && selws->seldt->floating == NULL)
+	|| e->window != selws->seldt->selcli->win) {
 		WARN("attempt to steal focus by window %lu (focus is on %lu)",
-		      e->window, seldt->selcli == NULL ? 0 : seldt->selcli->win);
-		desktop_update_focus(seldt);
+		     e->window, selws->seldt->selcli == NULL
+		                ? 0 : selws->seldt->selcli->win);
+		desktop_update_focus(selws->seldt);
 	}
 }
 
@@ -525,8 +528,8 @@ handle_maprequest(XEvent *xe)
 	//EVENT("maprequest(%lu)", e->window);
 
 	/* window is remapped */
-	if (desktop_locate_window(seldt, e->window, &c) == 0) {
-		desktop_detach_client(seldt, c);
+	if (desktop_locate_window(selws->seldt, e->window, &c) == 0) {
+		desktop_detach_client(selws->seldt, c);
 		client_delete(c);
 	}
 
@@ -538,13 +541,14 @@ handle_maprequest(XEvent *xe)
 	/* fix floating dimensions */
 	if (c->floating)
 		client_moveresize(c, MAX(c->x, 0), MAX(c->y, 0),
-		                     MIN(c->w, seldt->w), MIN(c->h, seldt->h));
+		                     MIN(c->w, selws->seldt->w),
+		                     MIN(c->h, selws->seldt->h));
 
 	XMapWindow(kwm.dpy, c->win);
 	client_grab_buttons(c, LENGTH(buttons), buttons);
-	desktop_attach_client(seldt, c);
-	desktop_arrange(seldt);
-	desktop_update_focus(seldt);
+	desktop_attach_client(selws->seldt, c);
+	desktop_arrange(selws->seldt);
+	desktop_update_focus(selws->seldt);
 }
 
 /* X event handler for client property changes.
@@ -557,7 +561,7 @@ handle_propertynotify(XEvent *xe)
 
 	//EVENT("propertynotify(%lu)", e->window);
 
-	if (desktop_locate_window(seldt, e->window, &c) < 0)
+	if (desktop_locate_window(selws->seldt, e->window, &c) < 0)
 		return;
 
 	if (e->state == PropertyDelete) {
@@ -570,7 +574,7 @@ handle_propertynotify(XEvent *xe)
 	case XA_WM_TRANSIENT_FOR:
 		DEBUG("transient property changed for window %lu", c->win);
 		client_query_transient(c);
-		desktop_arrange(seldt);
+		desktop_arrange(selws->seldt);
 		break;
 	case XA_WM_NORMAL_HINTS:
 		//DEBUG("size hints changed for window %lu", c->win);
@@ -586,7 +590,7 @@ handle_propertynotify(XEvent *xe)
 	if (e->atom == netatom[NetWMWindowType]) {
 		client_query_fullscreen(c);
 		client_query_dialog(c);
-		desktop_arrange(seldt);
+		desktop_arrange(selws->seldt);
 	}
 }
 
@@ -600,13 +604,13 @@ handle_unmapnotify(XEvent *xe)
 
 	//EVENT("unmapnotify(%lu)", e->window);
 
-	if (desktop_locate_window(seldt, e->window, &c) < 0)
+	if (desktop_locate_window(selws->seldt, e->window, &c) < 0)
 		return;
 
-	desktop_detach_client(seldt, c);
+	desktop_detach_client(selws->seldt, c);
 	client_delete(c);
-	desktop_arrange(seldt);
-	desktop_update_focus(seldt);
+	desktop_arrange(selws->seldt);
+	desktop_update_focus(selws->seldt);
 }
 
 /* X error handler. We catch BadWindow errors (as they are often caused by
@@ -711,9 +715,13 @@ setupsession(void)
 	int unsigned i, nwins;
 	Window p, r, *wins = NULL;
 	struct client *c;
+	struct desktop *dt;
 
 	/* TODO: move to workspace */
-	seldt = desktop_new();
+	dt = desktop_new();
+	selws = workspace_new("dada");
+	workspace_attach_desktop(selws, dt);
+	selws->seldt = dt;
 
 	/* scan existing windows */
 	if (!XQueryTree(kwm.dpy, kwm.root, &r, &p, &wins, &nwins)) {
@@ -726,13 +734,13 @@ setupsession(void)
 		c = client_new(wins[i]);
 		if (c != NULL) {
 			NOTICE("detected existing window %lu", c->win);
-			desktop_attach_client(seldt, c);
+			desktop_attach_client(selws->seldt, c);
 		}
 	}
-	desktop_update_focus(seldt);
+	desktop_update_focus(selws->seldt);
 
 	/* setup monitors (TODO separate function) */
-	desktop_update_geometry(seldt, 0, 0,
+	desktop_update_geometry(selws->seldt, 0, 0,
 	                        (int unsigned) DisplayWidth(kwm.dpy, screen),
 	                        (int unsigned) DisplayHeight(kwm.dpy, screen));
 }
@@ -757,7 +765,13 @@ sigchld(int s)
 static void
 term(void)
 {
-	desktop_delete(seldt);
+	struct desktop *dt;
+
+	dt = selws->seldt;
+	workspace_detach_desktop(selws, dt);
+	workspace_delete(selws);
+	desktop_delete(dt);
+
 	XUngrabKey(kwm.dpy, AnyKey, AnyModifier, kwm.root);
 	XFreeCursor(kwm.dpy, cursor[CurNormal]);
 	XFreeCursor(kwm.dpy, cursor[CurResize]);
