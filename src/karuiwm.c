@@ -139,7 +139,7 @@ action_movemouse(union argument *arg)
 	XEvent ev;
 	Window w;
 	struct client *c = seldt->selcli;
-	int cx = c->x, cy = c->y, x, y, i;
+	int cx, cy, mx, my, i;
 	int unsigned ui;
 	long evmask = MOUSEMASK | ExposureMask | SubstructureRedirectMask;
 	(void) arg;
@@ -148,7 +148,6 @@ action_movemouse(union argument *arg)
 
 	if (c->state == STATE_FULLSCREEN)
 		return;
-	desktop_float_client(seldt, c, true);
 
 	/* grab the pointer and change the cursor appearance */
 	i = XGrabPointer(kwm.dpy, kwm.root, true, MOUSEMASK, GrabModeAsync,
@@ -159,10 +158,24 @@ action_movemouse(union argument *arg)
 	}
 
 	/* get initial pointer position */
-	if (!XQueryPointer(kwm.dpy, kwm.root, &w, &w, &x, &y, &i, &i, &ui)) {
+	if (!XQueryPointer(kwm.dpy, kwm.root, &w, &w, &mx, &my, &i, &i, &ui)) {
 		WARN("XQueryPointer() failed");
 		goto action_movemouse_out;
 	}
+
+	/* fix intial client position */
+	if (c->floatx + (int signed) c->floatw < mx)
+		c->floatx = mx - (int signed) c->floatw + 1;
+	if (c->floatx > mx)
+		c->floatx = mx;
+	if (c->floaty + (int signed) c->floath < my)
+		c->floaty = my - (int signed) c->floath + 1;
+	if (c->floaty > my)
+		c->floaty = my;
+	desktop_float_client(seldt, c, true);
+	desktop_arrange(seldt);
+	cx = c->floatx;
+	cy = c->floaty;
 
 	/* handle motions */
 	do {
@@ -176,10 +189,10 @@ action_movemouse(union argument *arg)
 			handle[ev.type](&ev);
 			break;
 		case MotionNotify:
-			cx = cx + (ev.xmotion.x - x);
-			cy = cy + (ev.xmotion.y - y);
-			x = ev.xmotion.x;
-			y = ev.xmotion.y;
+			cx = cx + (ev.xmotion.x - mx);
+			cy = cy + (ev.xmotion.y - my);
+			mx = ev.xmotion.x;
+			my = ev.xmotion.y;
 			client_move(c, cx, cy);
 			break;
 		default:
@@ -237,7 +250,7 @@ action_shiftclient(union argument *arg)
 {
 	if (seldt->selcli == NULL)
 		return;
-	(void) desktop_shift_client(seldt, seldt->selcli, arg->i);
+	(void) desktop_shift_client(seldt, arg->i);
 	desktop_arrange(seldt);
 }
 
@@ -275,6 +288,7 @@ action_togglefloat(union argument *arg)
 	if (seldt->selcli == NULL)
 		return;
 	desktop_float_client(seldt, seldt->selcli, !seldt->selcli->floating);
+	desktop_arrange(seldt);
 }
 
 /* Handler for `zooming' the selected client (moving it to the master area).
@@ -313,7 +327,11 @@ handle_buttonpress(XEvent *xe)
 
 	//EVENT("buttonpress(%lu)", e->window);
 
-	if (!desktop_locate_window(seldt, e->window, &c)) {
+	/* TODO define actions for clicks on root window */
+	if (e->window == kwm.root)
+		return;
+
+	if (desktop_locate_window(seldt, e->window, &c) < 0) {
 		WARN("click on unhandled window");
 		return;
 	}
@@ -337,7 +355,7 @@ handle_clientmessage(XEvent *xe)
 
 	//EVENT("clientmessage(%lu)", e->window);
 
-	if (!desktop_locate_window(seldt, e->window, &c))
+	if (desktop_locate_window(seldt, e->window, &c) < 0)
 		return;
 	if (e->message_type != netatom[NetWMState]) {
 		WARN("received client message for other than WM state");
@@ -350,6 +368,7 @@ handle_clientmessage(XEvent *xe)
 			    (e->data.l[0] == 2 &&
 			     c->state != STATE_FULLSCREEN);
 		desktop_fullscreen_client(seldt, c, fullscreen);
+		desktop_arrange(seldt);
 	}
 }
 
@@ -381,6 +400,8 @@ handle_configurerequest(XEvent *xe)
 
 	//EVENT("configurerequest(%lu)", e->window);
 
+	/* TODO if dimensions match screen dimensions, set fullscreen */
+
 	wc.x = e->x;
 	wc.y = e->y;
 	wc.width = e->width;
@@ -402,7 +423,7 @@ handle_enternotify(XEvent *xe)
 
 	//EVENT("enternotify(%lu)", e->window);
 
-	if (!desktop_locate_window(seldt, e->window, &c)) {
+	if (desktop_locate_window(seldt, e->window, &c) < 0) {
 		WARN("attempt to enter unhandled/invisible window %lu",
 		     e->window);
 		return;
@@ -437,7 +458,8 @@ handle_focusin(XEvent *xe)
 
 	if (e->window == kwm.root)
 		return;
-	if (seldt->nt + seldt->nf == 0 || e->window != seldt->selcli->win) {
+	if ((seldt->tiled == NULL && seldt->floating == NULL)
+	|| e->window != seldt->selcli->win) {
 		WARN("attempt to steal focus by window %lu (focus is on %lu)",
 		      e->window, seldt->selcli == NULL ? 0 : seldt->selcli->win);
 		desktop_update_focus(seldt);
@@ -503,7 +525,7 @@ handle_maprequest(XEvent *xe)
 	//EVENT("maprequest(%lu)", e->window);
 
 	/* window is remapped */
-	if (desktop_locate_window(seldt, e->window, &c)) {
+	if (desktop_locate_window(seldt, e->window, &c) == 0) {
 		desktop_detach_client(seldt, c);
 		client_delete(c);
 	}
@@ -535,7 +557,7 @@ handle_propertynotify(XEvent *xe)
 
 	//EVENT("propertynotify(%lu)", e->window);
 
-	if (!desktop_locate_window(seldt, e->window, &c))
+	if (desktop_locate_window(seldt, e->window, &c) < 0)
 		return;
 
 	if (e->state == PropertyDelete) {
@@ -578,7 +600,7 @@ handle_unmapnotify(XEvent *xe)
 
 	//EVENT("unmapnotify(%lu)", e->window);
 
-	if (!desktop_locate_window(seldt, e->window, &c))
+	if (desktop_locate_window(seldt, e->window, &c) < 0)
 		return;
 
 	desktop_detach_client(seldt, c);

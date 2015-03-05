@@ -7,7 +7,7 @@
 
 #define BORDERWIDTH 1
 
-static bool check_sizehints(struct client *c, int unsigned *w, int unsigned *h);
+static int check_sizehints(struct client *c, int unsigned *w, int unsigned *h);
 static Atom get_atom(Window win, Atom property);
 static int get_name(char *buf, Window win);
 static int send_atom(Window win, Atom atom);
@@ -91,16 +91,17 @@ client_new(Window win)
 
 	/* initialise client with default values */
 	c = smalloc(sizeof(struct client), "client");
+	c->next = c->prev = NULL;
 	c->win = win;
 	c->floating = false;
 	c->dialog = false;
 	c->state = STATE_NORMAL;
-	c->w = c->h = c->floatw = c->floath = 1;
+	c->w = c->h = c->floatw = c->floath = 0;
 	c->x = c->y = c->floatx = c->floaty = 0;
 
 	/* query client properties */
-	client_query_dialog(c);
 	client_query_dimension(c);
+	client_query_dialog(c);
 	client_query_fullscreen(c);
 	client_query_name(c);
 	client_query_sizehints(c);
@@ -231,17 +232,16 @@ client_query_transient(struct client *c)
 void
 client_resize(struct client *c, int unsigned w, int unsigned h)
 {
-	bool change = check_sizehints(c, &w, &h);
+	if (check_sizehints(c, &w, &h) == 0)
+		return;
 
-	if (change) {
-		c->w = w;
-		c->h = h;
-		if (c->floating && c->state == STATE_NORMAL) {
-			c->floatw = w;
-			c->floath = h;
-		}
-		XResizeWindow(kwm.dpy, c->win, c->w, c->h);
+	c->w = w;
+	c->h = h;
+	if (c->floating && c->state == STATE_NORMAL) {
+		c->floatw = w;
+		c->floath = h;
 	}
+	XResizeWindow(kwm.dpy, c->win, c->w, c->h);
 }
 
 /* Set the thickness of a client's border.
@@ -268,8 +268,6 @@ void
 client_set_floating(struct client *c, bool floating)
 {
 	c->floating = floating;
-	if (c->floating)
-		client_moveresize(c, c->floatx, c->floaty, c->floatw,c->floath);
 }
 
 /* Set/unset the X input focus on a client.
@@ -295,7 +293,7 @@ client_set_fullscreen(struct client *c, bool fullscreen)
 /* Check and enforce client-requested size hints on a server-requested client
  * resize.
  */
-static bool
+static int
 check_sizehints(struct client *c, int unsigned *w, int unsigned *h)
 {
 	int unsigned u; /* unit size */
@@ -303,7 +301,7 @@ check_sizehints(struct client *c, int unsigned *w, int unsigned *h)
 
 	/* don't respect size hints for untiled or fullscreen windows */
 	if (!c->floating || c->state == STATE_FULLSCREEN)
-		return *w != c->w || *h != c->h;
+		return *w == c->w && *h == c->h ? 0 : -1;
 
 	if (*w != c->w) {
 		if (c->basew > 0 && c->incw > 0) {
@@ -327,7 +325,7 @@ check_sizehints(struct client *c, int unsigned *w, int unsigned *h)
 			*h = MIN(*h, c->maxh);
 		change |= *h != c->h;
 	}
-	return change;
+	return change ? -1 : 0;
 }
 
 /* Get an Atom from a client.

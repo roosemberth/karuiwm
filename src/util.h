@@ -20,14 +20,6 @@
 enum log_level { LOG_FATAL, LOG_ERROR, LOG_WARN, LOG_NOTICE, LOG_NORMAL,
                  LOG_VERBOSE, LOG_EVENT, LOG_DEBUG };
 
-/* list actions */
-void list_append(void ***l, size_t *lsize, void *e, char const *ctx);
-void list_prepend(void ***l, size_t *lsize, void *e, char const *ctx);
-int list_remove(void ***l, size_t *lsize, void *e, char const *ctx);
-int list_shift(void **l, size_t lsize, void *e, int dir);
-int list_index(void **l, size_t lsize, void *e);
-bool list_contains(void **l, size_t lsize, void *e);
-
 /* output */
 void print(FILE *f, enum log_level level, char const *filename,
            int unsigned line, char const *format, ...)

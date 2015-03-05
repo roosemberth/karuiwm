@@ -2,6 +2,11 @@
 #include "util.h"
 #include "layout.h"
 
+inline static struct client *get_head(struct desktop *d, struct client *c);
+inline static struct client *get_last(struct desktop *d, struct client *c);
+inline static struct client *get_neighbour(struct client *c, int dir);
+static void swap(struct client **list, struct client *c1, struct client *c2);
+
 /* Propagate the client arrangement to the X server by applying the selected
  * layout and enforcing the window stack.
  */
@@ -12,22 +17,22 @@ desktop_arrange(struct desktop *d)
 	struct client *c;
 	Window stack[d->nt + d->nf];
 
-	if (d->nt + d->nf == 0)
+	if (d->tiled == NULL && d->floating == NULL)
 		return;
 
 	desktop_set_clientmask(d, 0);
+
 	/* fullscreen windows on top */
-	for (i = 0; i < d->nf; ++i)
-		if (d->floating[i]->state == STATE_FULLSCREEN)
-			stack[is++] = d->floating[i]->win;
-	for (i = 0; i < d->nt; ++i)
-		if (d->tiled[i]->state == STATE_FULLSCREEN)
-			stack[is++] = d->tiled[i]->win;
+	for (i = 0, c = d->floating; i < d->nf; ++i, c = c->next)
+		if (c->state == STATE_FULLSCREEN)
+			stack[is++] = c->win;
+	for (i = 0, c = d->tiled; i < d->nt; ++i, c = c->next)
+		if (c->state == STATE_FULLSCREEN)
+			stack[is++] = c->win;
 
 	/* non-fullscreen windows below */
-	for (i = 0; i < d->nf; ++i) {
-		c = d->floating[i];
-		client_moveresize(c, c->x, c->y, c->w, c->h);
+	for (i = 0, c = d->floating; i < d->nf; ++i, c = c->next) {
+		client_moveresize(c, c->floatx, c->floaty, c->floatw, c->floath);
 		if (c->state != STATE_FULLSCREEN)
 			stack[is++] = c->win;
 	}
@@ -35,10 +40,10 @@ desktop_arrange(struct desktop *d)
 		/* TODO modular layout management */
 		rstack(d->tiled, d->nt, MIN(d->nmaster, d->nt), d->mfact,
 		       d->x, d->y, d->w, d->h);
-		for (i = 0; i < d->nt; ++i) {
-			if (d->tiled[i]->state != STATE_FULLSCREEN)
-				stack[is++] = d->tiled[i]->win;
-		}
+		/* TODO focused window on top */
+		for (i = 0, c = d->tiled; i < d->nt; ++i, c = c->next)
+			if (c->state != STATE_FULLSCREEN)
+				stack[is++] = c->win;
 	}
 	XRestackWindows(kwm.dpy, stack, (int signed) (d->nt + d->nf));
 	desktop_set_clientmask(d, CLIENTMASK);
@@ -49,12 +54,34 @@ desktop_arrange(struct desktop *d)
 void
 desktop_attach_client(struct desktop *d, struct client *c)
 {
-	if (c->floating)
-		list_prepend((void ***) &d->floating, &d->nf, c,
-		             "floating client list");
-	else
-		list_append((void ***) &d->tiled, &d->nt, c,
-		            "tiled client list");
+	struct client **head;
+	size_t *nc;
+
+	/* determine lists */
+	if (c->floating) {
+		nc = &d->nf;
+		head = &d->floating;
+	} else {
+		nc = &d->nt;
+		head = &d->tiled;
+	}
+
+	/* other elements? */
+	if (*nc == 0) {
+		c->next = c->prev = c;
+	} else {
+		c->next = (*head);
+		c->prev = (*head)->prev;
+		(*head)->prev->next = c;
+		(*head)->prev = c;
+	}
+
+	/* new head? */
+	if (*nc == 0 || c->floating)
+		*head = c;
+
+	/* update */
+	++(*nc);
 	d->selcli = c;
 }
 
@@ -64,13 +91,16 @@ desktop_attach_client(struct desktop *d, struct client *c)
 bool
 desktop_contains_client(struct desktop *d, struct client *c)
 {
+	struct client *it;
 	int unsigned i;
 
-	for (i = 0; i < d->nt; ++i)
-		if (d->tiled[i] == c)
+	if (c == NULL)
+		return false;
+	for (i = 0, it = d->tiled; i < d->nt; ++i, it = it->next)
+		if (it == c)
 			return true;
-	for (i = 0; i < d->nf; ++i)
-		if (d->floating[i] == c)
+	for (i = 0, it = d->floating; i < d->nf; ++i, it = it->next)
+		if (it == c)
 			return true;
 	return false;
 }
@@ -82,15 +112,15 @@ desktop_delete(struct desktop *d)
 {
 	struct client *c;
 
-	if (d->nf > 0 || d->nt > 0) {
+	if (d->tiled != NULL || d->floating != NULL) {
 		WARN("deleting desktop that still contains clients");
-		while (d->nt > 0) {
-			c = d->tiled[0];
+		while (d->tiled != NULL) {
+			c = d->tiled;
 			desktop_detach_client(d, c);
 			client_delete(c);
 		}
-		while (d->nf > 0) {
-			c = d->floating[0];
+		while (d->floating != NULL) {
+			c = d->floating;
 			desktop_detach_client(d, c);
 			client_delete(c);
 		}
@@ -100,39 +130,50 @@ desktop_delete(struct desktop *d)
 
 /* Detach a client from a desktop.
  */
-int
+void
 desktop_detach_client(struct desktop *d, struct client *c)
 {
-	int i;
-	int unsigned pos;
+	struct client **head, *other;
+	size_t *nc;
 
-	/* remove */
-	if (c->floating)
-		i = list_remove((void ***) &d->floating, &d->nf, c,
-		                "floating client list");
-	else
-		i = list_remove((void ***) &d->tiled, &d->nt, c,
-		                "tiled client list");
-	if (i < 0) {
-		WARN("client list inconsistency");
-		return -1;
+	/* determine lists */
+	if (c->floating) {
+		nc = &d->nf;
+		head = &d->floating;
+		other = d->tiled;
+	} else {
+		nc = &d->nt;
+		head = &d->tiled;
+		other = d->floating;
 	}
 
-	/* update selected client, if necessary */
-	pos = (int unsigned) i;
+	if (*nc == 0) {
+		WARN("attempt to remove client from empty desktop");
+		return;
+	}
+	if (c == NULL) {
+		WARN("attempt to remote NULL client from desktop");
+		return;
+	}
+
+	/* selected? */
 	if (c == d->selcli) {
-		if (c->floating) {
-			d->selcli = d->nf > 0
-			            ? d->floating[0]
-			            : d->nt > 0 ? d->tiled[0] : NULL;
-		} else {
-			d->selcli = d->nt > 0
-			            ? pos >= d->nt ? d->tiled[d->nt - 1]
-			                         : d->tiled[i]
-			            : d->nf > 0 ? d->floating[0] : NULL;
-		}
+		/* other elements? */
+		if (c->next != c)
+			d->selcli = c->next;
+		else
+			d->selcli = other;
 	}
-	return 0;
+
+	/* head? */
+	if (c == *head)
+		*head = c->next != c ? c->next : NULL;
+
+	/* update */
+	c->next->prev = c->prev;
+	c->prev->next = c->next;
+	c->prev = c->next = NULL;
+	--(*nc);
 }
 
 /* Set the floating mode of a client in the context of a desktop.
@@ -142,11 +183,9 @@ desktop_float_client(struct desktop *d, struct client *c, bool floating)
 {
 	if (c->state == STATE_FULLSCREEN)
 		return;
-	if (desktop_detach_client(d, c) < 0)
-		return;
+	desktop_detach_client(d, c);
 	client_set_floating(c, floating);
 	desktop_attach_client(d, c);
-	desktop_arrange(d);
 }
 
 /* Set the fullscreen mode of a client in the context of a desktop.
@@ -154,31 +193,33 @@ desktop_float_client(struct desktop *d, struct client *c, bool floating)
 void
 desktop_fullscreen_client(struct desktop *d, struct client *c, bool fullscreen)
 {
+	(void) d;
+
 	client_set_fullscreen(c, fullscreen);
-	desktop_arrange(d);
 }
 
 /* Determine if a window is contained in a given desktop, and locate both the
  * corresponding client and the client's position in the desktop's client list.
  */
-bool
+int
 desktop_locate_window(struct desktop *d, Window win, struct client **c)
 {
+	struct client *it;
 	int unsigned i;
 
-	for (i = 0; i < d->nt; ++i) {
-		if (d->tiled[i]->win == win) {
-			*c = d->tiled[i];
-			return true;
+	for (i = 0, it = d->tiled; i < d->nt; ++i, it = it->next) {
+		if (it->win == win) {
+			*c = it;
+			return 0;
 		}
 	}
-	for (i = 0; i < d->nf; ++i) {
-		if (d->floating[i]->win == win) {
-			*c = d->floating[i];
-			return true;
+	for (i = 0, it = d->floating; i < d->nf; ++i, it = it->next) {
+		if (it->win == win) {
+			*c = it;
+			return 0;
 		}
 	}
-	return false;
+	return -1;
 }
 
 /* Create and initialise a new desktop.
@@ -205,12 +246,13 @@ desktop_new(void)
 void
 desktop_set_clientmask(struct desktop *d, long mask)
 {
+	struct client *it;
 	int unsigned i;
 
-	for (i = 0; i < d->nt; ++i)
-		XSelectInput(kwm.dpy, d->tiled[i]->win, mask);
-	for (i = 0; i < d->nf; ++i)
-		XSelectInput(kwm.dpy, d->floating[i]->win, mask);
+	for (i = 0, it = d->tiled; i < d->nt; ++i, it = it->next)
+		XSelectInput(kwm.dpy, it->win, mask);
+	for (i = 0, it = d->floating; i < d->nf; ++i, it = it->next)
+		XSelectInput(kwm.dpy, it->win, mask);
 }
 
 /* Set the factor of space the master area takes on a desktop (between 0.0 and
@@ -232,26 +274,16 @@ desktop_set_nmaster(struct desktop *d, size_t nmaster)
 
 /* Move client up/down on the stack/in the layout.
  */
-int
-desktop_shift_client(struct desktop *d, struct client *c, int dir)
+void
+desktop_shift_client(struct desktop *d, int dir)
 {
-	size_t *nc;
-	struct client ***clients;
+	struct client *this, *other;
 
-	if (c->state == STATE_FULLSCREEN)
-		return -1;
-
-	/* list */
-	if (c->floating) {
-		clients = &d->floating;
-		nc = &d->nf;
-	} else {
-		clients = &d->tiled;
-		nc = &d->nt;
-	}
-
-	/* shift */
-	return list_shift((void **) *clients, *nc, c, dir);
+	this = d->selcli;
+	if (this == NULL)
+		return;
+	other = get_neighbour(this, dir);
+	swap(this->floating ? &d->floating : &d->tiled, this, other);
 }
 
 /* Move focus to next/previous client.
@@ -259,44 +291,10 @@ desktop_shift_client(struct desktop *d, struct client *c, int dir)
 void
 desktop_step_focus(struct desktop *d, int dir)
 {
-	int pos;
-	int unsigned oldpos, newpos, udir;
-	struct client **oldlist, **newlist;
-	size_t nc;
-
 	if (d->selcli == NULL || d->selcli->state == STATE_FULLSCREEN)
 		return;
 
-	/* old position */
-	if (d->selcli->floating) {
-		oldlist = d->floating;
-		nc = d->nf;
-	} else {
-		oldlist = d->tiled;
-		nc = d->nt;
-	}
-	pos = list_index((void **) oldlist, nc, d->selcli);
-	if (pos < 0)
-		DIE("desktop has got an invalid selected client");
-	oldpos = (int unsigned) pos;
-
-	/* new position */
-	while (dir < 0)
-		dir += (int signed) (d->nt + d->nf);
-	udir = (int unsigned) dir;
-	while (udir >= d->nt + d->nf)
-		udir -= (int unsigned) (d->nt + d->nf);
-	newpos = oldpos + udir;
-	if (newpos >= nc) {
-		newlist = (oldlist == d->tiled) ? d->floating : d->tiled;
-		if (newlist == NULL)
-			newlist = oldlist;
-		newpos -= (int unsigned) nc;
-	} else {
-		newlist = oldlist;
-	}
-	d->selcli = newlist[newpos];
-
+	d->selcli = get_neighbour(d->selcli, dir);
 	desktop_update_focus(d);
 }
 
@@ -306,17 +304,18 @@ desktop_step_focus(struct desktop *d, int dir)
 void
 desktop_update_focus(struct desktop *d)
 {
+	struct client *c;
 	int unsigned i;
 
-	if (d->nt + d->nf == 0) {
+	if (d->tiled == NULL && d->floating == NULL) {
 		XSetInputFocus(kwm.dpy, kwm.root, RevertToPointerRoot,
 		               CurrentTime);
 		return;
 	}
-	for (i = 0; i < d->nt; ++i)
-		client_set_focus(d->tiled[i], d->tiled[i] == d->selcli);
-	for (i = 0; i < d->nf; ++i)
-		client_set_focus(d->floating[i], d->floating[i] == d->selcli);
+	for (i = 0, c = d->tiled; i < d->nt; ++i, c = c->next)
+		client_set_focus(c, c == d->selcli);
+	for (i = 0, c = d->floating; i < d->nf; ++i, c = c->next)
+		client_set_focus(c, c == d->selcli);
 }
 
 /* Update the dimension at which the desktop is to be displayed.
@@ -337,23 +336,90 @@ desktop_update_geometry(struct desktop *d,
 void
 desktop_zoom(struct desktop *d)
 {
-	int pos;
-
-	if (d->nt < 2 || d->selcli->floating
-	|| d->selcli->state == STATE_FULLSCREEN)
+	if (d->tiled == NULL || d->tiled->next == NULL)
+		return;
+	if (d->selcli->floating || d->selcli->state != STATE_NORMAL)
 		return;
 
-	pos = list_index((void **) d->tiled, d->nt, d->selcli);
-	if (pos == 0) {
+	if (d->selcli == d->tiled) {
 		/* window is at the top: swap with next below */
-		d->tiled[0] = d->tiled[1];
-		d->tiled[1] = d->selcli;
-		d->selcli = d->tiled[0];
+		swap(&d->tiled, d->tiled, d->tiled->next);
+		d->selcli = d->tiled;
 		desktop_update_focus(d);
 	} else {
-		/* window is is somewhere else: swap with top */
-		d->tiled[pos] = d->tiled[0];
-		d->tiled[0] = d->selcli;
+		/* window is somewhere else: swap with top */
+		swap(&d->tiled, d->selcli, d->tiled);
 	}
-	desktop_arrange(d);
+}
+
+inline static struct client *
+get_head(struct desktop *d, struct client *c)
+{
+	if (c == NULL)
+		return NULL;
+	return c->floating ? d->floating : d->tiled;
+}
+
+inline static struct client *
+get_last(struct desktop *d, struct client *c)
+{
+	struct client *head;
+
+	head = get_head(d, c);
+	if (head == NULL)
+		return NULL;
+	return head->prev;
+}
+
+inline static struct client *
+get_neighbour(struct client *c, int dir)
+{
+	return c == NULL ? NULL : dir < 0 ? c->prev : c->next;
+}
+
+static void
+swap(struct client **head, struct client *c1, struct client *c2)
+{
+	struct client *prev1, *next1, *prev2, *next2;
+
+	if (c1 == NULL || c2 == NULL)
+		return;
+
+	prev1 = c1->prev;
+	next1 = c1->next;
+	prev2 = c2->prev;
+	next2 = c2->next;
+
+	if (c1 == c2) {
+		/* same node */
+	} else if (c1->next == c2 && c2->next == c1) {
+		/* only two nodes in list */
+	} else if (c1->next == c2) {
+		/* next to each other */
+		prev1->next = c2;
+		c2->next = c1;
+		c1->next = next2;
+		next2->prev = c1;
+		c1->prev = c2;
+		c2->prev = prev1;
+	} else if (c2->next == c1) {
+		/* next to each other (alt.) */
+		swap(head, c2, c1);
+	} else {
+		/* general case */
+		prev1->next = c2;
+		c2->next = next1;
+		next1->prev = c2;
+		c2->prev = prev1;
+		prev2->next = c1;
+		c1->next = next2;
+		next2->prev = c1;
+		c1->prev = prev2;
+	}
+
+	/* fix list head */
+	if (*head == c1)
+		*head = c2;
+	else if (*head == c2)
+		*head = c1;
 }
