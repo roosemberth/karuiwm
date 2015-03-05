@@ -34,7 +34,10 @@ enum { Left, Right, Up, Down, NoDirection };
 
 /* functions */
 static void action_killclient(union argument *arg);
-static void action_movemouse(union argument *);
+static void action_mouse(struct client *c, void (*mh)(struct client *, int, int,
+                         int, int, int unsigned, int unsigned));
+static void action_mousemove(union argument *);
+static void action_mouseresize(union argument *arg);
 static void action_quit(union argument *arg);
 static void action_restart(union argument *arg);
 static void action_setmfact(union argument *arg);
@@ -61,6 +64,10 @@ static void handle_unmapnotify(XEvent *xe);
 static int handle_xerror(Display *dpy, XErrorEvent *xe);
 static void init(void);
 static void init_atoms(void);
+static void mousemove(struct client *c, int mx, int my,
+                      int cx, int cy, int unsigned cw, int unsigned ch);
+static void mouseresize(struct client *c, int mx, int my,
+                        int cx, int cy, int unsigned cw, int unsigned ch);
 static void run(void);
 static void setupsession(void);
 static void sigchld(int);
@@ -117,11 +124,11 @@ static struct key keys[] = {
 	{ MODKEY|ShiftMask, XK_q,       action_quit,        { 0 } },
 };
 static struct button buttons[] = {
-	{ MODKEY,           Button1,    action_movemouse,   { 0 } },
+	{ MODKEY,           Button1,    action_mousemove,   { 0 } },
+	{ MODKEY,           Button3,    action_mouseresize, { 0 } },
 };
 
-/* Handler for killing a client.
- */
+/* implementation */
 static void
 action_killclient(union argument *arg)
 {
@@ -131,24 +138,13 @@ action_killclient(union argument *arg)
 		client_kill(selws->seldt->selcli);
 }
 
-/* Handler for moving a client with the mouse.
- */
-/* TODO split up */
 static void
-action_movemouse(union argument *arg)
+action_mouse(struct client *c, void (*mh)(struct client *, int, int, int, int,
+                                          int unsigned, int unsigned))
 {
-	XEvent ev;
+	int mx, my, cx, cy, i;
+	int unsigned cw, ch, ui;
 	Window w;
-	struct client *c = selws->seldt->selcli;
-	int cx, cy, mx, my, i;
-	int unsigned ui;
-	long evmask = MOUSEMASK | ExposureMask | SubstructureRedirectMask;
-	(void) arg;
-
-	//EVENT("movemouse(%lu)", c->win);
-
-	if (c->state == STATE_FULLSCREEN)
-		return;
 
 	/* grab the pointer and change the cursor appearance */
 	i = XGrabPointer(kwm.dpy, kwm.root, true, MOUSEMASK, GrabModeAsync,
@@ -158,13 +154,13 @@ action_movemouse(union argument *arg)
 		return;
 	}
 
-	/* get initial pointer position */
+	/* get pointer position */
 	if (!XQueryPointer(kwm.dpy, kwm.root, &w, &w, &mx, &my, &i, &i, &ui)) {
 		WARN("XQueryPointer() failed");
-		goto action_movemouse_out;
+		return;
 	}
 
-	/* fix intial client position */
+	/* fix client position */
 	if (c->floatx + (int signed) c->floatw < mx)
 		c->floatx = mx - (int signed) c->floatw + 1;
 	if (c->floatx > mx)
@@ -177,35 +173,42 @@ action_movemouse(union argument *arg)
 	desktop_arrange(selws->seldt);
 	cx = c->floatx;
 	cy = c->floaty;
+	cw = c->floatw;
+	ch = c->floath;
 
-	/* handle motions */
-	do {
-		XMaskEvent(kwm.dpy, evmask, &ev);
-		switch (ev.type) {
-		case ButtonRelease:
-			break;
-		case ConfigureRequest:
-		case Expose:
-		case MapRequest:
-			handle[ev.type](&ev);
-			break;
-		case MotionNotify:
-			cx = cx + (ev.xmotion.x - mx);
-			cy = cy + (ev.xmotion.y - my);
-			mx = ev.xmotion.x;
-			my = ev.xmotion.y;
-			client_move(c, cx, cy);
-			break;
-		default:
-			WARN("unhandled event %d", ev.type);
-		}
-	} while (ev.type != ButtonRelease);
- action_movemouse_out:
+	/* handle events */
+	mh(c, mx, my, cx, cy, cw, ch);
+
+	/* ungrab the pointer */
 	XUngrabPointer(kwm.dpy, CurrentTime);
 }
 
-/* Handler for quitting karuiwm.
- */
+static void
+action_mousemove(union argument *arg)
+{
+	struct client *c = selws->seldt->selcli;
+	(void) arg;
+
+	//EVENT("movemouse(%lu)", c->win);
+
+	if (c->state != STATE_NORMAL)
+		return;
+	action_mouse(c, mousemove);
+}
+
+static void
+action_mouseresize(union argument *arg)
+{
+	struct client *c = selws->seldt->selcli;
+	(void) arg;
+
+	//EVENT("resizemouse(%lu)", c->win);
+
+	if (c->state != STATE_NORMAL)
+		return;
+	action_mouse(c, mouseresize);
+}
+
 static void
 action_quit(union argument *arg)
 {
@@ -214,8 +217,6 @@ action_quit(union argument *arg)
 	running = false;
 }
 
-/* Handler for restarting karuiwm.
- */
 static void
 action_restart(union argument *arg)
 {
@@ -223,8 +224,6 @@ action_restart(union argument *arg)
 	action_quit(arg);
 }
 
-/* Handler for changing the factor the master area takes in the layout.
- */
 static void
 action_setmfact(union argument *arg)
 {
@@ -232,8 +231,6 @@ action_setmfact(union argument *arg)
 	desktop_arrange(selws->seldt);
 }
 
-/* Handler for changing the number of clients in the master area.
- */
 static void
 action_setnmaster(union argument *arg)
 {
@@ -244,8 +241,6 @@ action_setnmaster(union argument *arg)
 	desktop_arrange(selws->seldt);
 }
 
-/* Handler for moving around clients in the layout/client order/list.
- */
 static void
 action_shiftclient(union argument *arg)
 {
@@ -255,8 +250,6 @@ action_shiftclient(union argument *arg)
 	desktop_arrange(selws->seldt);
 }
 
-/* Handler for launching a command with the `exec' system call.
- */
 static void
 action_spawn(union argument *arg)
 {
@@ -271,16 +264,12 @@ action_spawn(union argument *arg)
 		WARN("fork() failed with code %d", pid);
 }
 
-/* Handler for changing the X input focus.
- */
 static void
 action_stepfocus(union argument *arg)
 {
 	desktop_step_focus(selws->seldt, arg->i);
 }
 
-/* Handler for toggling the selected client's floating mode.
- */
 static void
 action_togglefloat(union argument *arg)
 {
@@ -293,8 +282,6 @@ action_togglefloat(union argument *arg)
 	desktop_arrange(selws->seldt);
 }
 
-/* Handler for `zooming' the selected client (moving it to the master area).
- */
 static void
 action_zoom(union argument *arg)
 {
@@ -303,9 +290,6 @@ action_zoom(union argument *arg)
 	desktop_zoom(selws->seldt);
 }
 
-/* Grab all key combinations as defined in the `keys' array to trigger a
- * keypress event.
- */
 static void
 grabkeys(void)
 {
@@ -318,8 +302,6 @@ grabkeys(void)
 		         GrabModeAsync);
 }
 
-/* X event handler for special mouse button presses.
- */
 static void
 handle_buttonpress(XEvent *xe)
 {
@@ -346,8 +328,6 @@ handle_buttonpress(XEvent *xe)
 			buttons[i].func(&buttons[i].arg);
 }
 
-/* X event handler for client messages.
- */
 static void
 handle_clientmessage(XEvent *xe)
 {
@@ -374,9 +354,6 @@ handle_clientmessage(XEvent *xe)
 	}
 }
 
-/* X event handler for client configuration changes. We only react on root
- * window changes.
- */
 static void
 handle_configurenotify(XEvent *xe)
 {
@@ -385,15 +362,12 @@ handle_configurenotify(XEvent *xe)
 	//EVENT("configurenotify(%lu)", e->window);
 
 	if (e->window == kwm.root)
-		/* TODO separate function */
+		/* update monitors (TODO separate function) */
 		desktop_update_geometry(selws->seldt, 0, 0,
 		                 (int unsigned) DisplayWidth(kwm.dpy, screen),
 		                 (int unsigned) DisplayHeight(kwm.dpy, screen));
 }
 
-/* X event handler for client configuartion change requests. We simply adapt the
- * client size and forward the otherwise unmodified request to the X server.
- */
 static void
 handle_configurerequest(XEvent *xe)
 {
@@ -402,7 +376,7 @@ handle_configurerequest(XEvent *xe)
 
 	//EVENT("configurerequest(%lu)", e->window);
 
-	/* TODO if dimensions match screen dimensions, set fullscreen */
+	/* TODO if dimensions match screen dimensions, fullscreen (mplayer) */
 
 	wc.x = e->x;
 	wc.y = e->y;
@@ -411,12 +385,9 @@ handle_configurerequest(XEvent *xe)
 	wc.border_width = e->border_width;
 	wc.sibling = e->above;
 	wc.stack_mode = e->detail;
-	XConfigureWindow(kwm.dpy, e->window,
-			 (int unsigned) e->value_mask, &wc);
+	XConfigureWindow(kwm.dpy, e->window, (int unsigned) e->value_mask, &wc);
 }
 
-/* X event handler for the mouse entering a client's area.
- */
 static void
 handle_enternotify(XEvent *xe)
 {
@@ -434,9 +405,6 @@ handle_enternotify(XEvent *xe)
 	desktop_update_focus(selws->seldt);
 }
 
-/* X event handler for windows whose surfaces got exposed (= newly visible) and
- * need a redraw.
- */
 static void
 handle_expose(XEvent *xe)
 {
@@ -445,12 +413,9 @@ handle_expose(XEvent *xe)
 	//EVENT("expose(%lu)", e->window);
 	(void) e;
 
-	/* TODO */
+	/* TODO handle expose events */
 }
 
-/* X event handler for windows that gain the focus without any prior action
- * (this is a fix for VTE terminals that tend to steal the focus).
- */
 static void
 handle_focusin(XEvent *xe)
 {
@@ -469,9 +434,6 @@ handle_focusin(XEvent *xe)
 	}
 }
 
-/* X event handler for special keys (keys defined in the `keys' array) that have
- * been pressed.
- */
 static void
 handle_keypress(XEvent *xe)
 {
@@ -491,8 +453,6 @@ handle_keypress(XEvent *xe)
 	}
 }
 
-/* X event handler for special keys that have been released.
- */
 static void
 handle_keyrelease(XEvent *xe)
 {
@@ -501,11 +461,9 @@ handle_keyrelease(XEvent *xe)
 
 	//EVENT("keyrelease()");
 
-	/* TODO keyrelease might not be needed, remove handler? */
+	/* TODO keyrelease might not be needed, remove this handler? */
 }
 
-/* X event handler for reacting on keyboard mapping changes on a window.
- */
 static void
 handle_mappingnotify(XEvent *xe)
 {
@@ -517,8 +475,6 @@ handle_mappingnotify(XEvent *xe)
 	/* TODO handle keyboard mapping changes */
 }
 
-/* X event handler for windows that wish to be mapped.
- */
 static void
 handle_maprequest(XEvent *xe)
 {
@@ -551,8 +507,6 @@ handle_maprequest(XEvent *xe)
 	desktop_update_focus(selws->seldt);
 }
 
-/* X event handler for client property changes.
- */
 static void
 handle_propertynotify(XEvent *xe)
 {
@@ -594,8 +548,6 @@ handle_propertynotify(XEvent *xe)
 	}
 }
 
-/* X event handler for windows that wish to be unmapped.
- */
 static void
 handle_unmapnotify(XEvent *xe)
 {
@@ -613,9 +565,6 @@ handle_unmapnotify(XEvent *xe)
 	desktop_update_focus(selws->seldt);
 }
 
-/* X error handler. We catch BadWindow errors (as they are often caused by
- * clients) and pass the others to the default X error handler.
- */
 static int
 handle_xerror(Display *dpy, XErrorEvent *ee)
 {
@@ -630,8 +579,6 @@ handle_xerror(Display *dpy, XErrorEvent *ee)
 	return ignore ? 0 : xerrorxlib(dpy, ee);
 }
 
-/* Initialise karuiwm.
- */
 static void
 init(void)
 {
@@ -673,8 +620,6 @@ init(void)
 	setupsession();
 }
 
-/* Initialise the Atoms list.
- */
 static void
 init_atoms(void)
 {
@@ -691,8 +636,90 @@ init_atoms(void)
 	netatom[NetWMWindowTypeDialog] = XInternAtom(kwm.dpy, "_NET_WM_WINDOW_TYPE_DIALOG", false);
 }
 
-/* Event loop.
- */
+static void
+mousemove(struct client *c, int mx, int my,
+          int cx, int cy, int unsigned cw, int unsigned ch)
+{
+	XEvent ev;
+	long evmask = MOUSEMASK | ExposureMask | SubstructureRedirectMask;
+	int dx, dy;
+	(void) cw;
+	(void) ch;
+
+	do {
+		XMaskEvent(kwm.dpy, evmask, &ev);
+		switch (ev.type) {
+		case ButtonRelease:
+			break;
+		case ConfigureRequest:
+		case Expose:
+		case MapRequest:
+			handle[ev.type](&ev);
+			break;
+		case MotionNotify:
+			dx = ev.xmotion.x - mx;
+			dy = ev.xmotion.y - my;
+			cx = cx + dx;
+			cy = cy + dy;
+			mx = ev.xmotion.x;
+			my = ev.xmotion.y;
+			client_move(c, cx, cy);
+			break;
+		default:
+			WARN("unhandled event %d", ev.type);
+		}
+	} while (ev.type != ButtonRelease);
+}
+
+static void
+mouseresize(struct client *c, int mx, int my,
+            int cx, int cy, int unsigned cw, int unsigned ch)
+{
+	XEvent ev;
+	long evmask = MOUSEMASK | ExposureMask | SubstructureRedirectMask;
+	int dx, dy;
+	bool left, right, top, bottom;
+
+	left = mx - cx < (int signed) cw / 3;
+	right = mx - cx > 2 * (int signed) cw / 3;
+	top = my - cy < (int signed) ch / 3;
+	bottom = my - cy > 2 * (int signed) ch / 3;
+
+	do {
+		XMaskEvent(kwm.dpy, evmask, &ev);
+		switch (ev.type) {
+		case ButtonRelease:
+			break;
+		case ConfigureRequest:
+		case Expose:
+		case MapRequest:
+			handle[ev.type](&ev);
+			break;
+		case MotionNotify:
+			dx = ev.xmotion.x - mx;
+			dy = ev.xmotion.y - my;
+			if (left) {
+				cx += dx;
+				cw = (int unsigned) ((int signed) cw - dx);
+			} else if (right) {
+				cw = (int unsigned) ((int signed) cw + dx);
+			}
+			if (top) {
+				cy += dy;
+				ch = (int unsigned) ((int signed) ch - dy);
+			} else if (bottom) {
+				ch = (int unsigned) ((int signed) ch + dy);
+			}
+			mx = ev.xmotion.x;
+			my = ev.xmotion.y;
+			client_moveresize(c, cx, cy, cw, ch);
+			break;
+		default:
+			WARN("unhandled event %d", ev.type);
+		}
+	} while (ev.type != ButtonRelease);
+}
+
 static void
 run(void)
 {
@@ -707,8 +734,6 @@ run(void)
 	}
 }
 
-/* Initialise the WM session (scan for pre-existing windows on the X server).
- */
 static void
 setupsession(void)
 {
@@ -717,7 +742,7 @@ setupsession(void)
 	struct client *c;
 	struct desktop *dt;
 
-	/* TODO: move to workspace */
+	/* TODO move to workspace */
 	dt = desktop_new();
 	selws = workspace_new("dada");
 	workspace_attach_desktop(selws, dt);
@@ -745,9 +770,6 @@ setupsession(void)
 	                        (int unsigned) DisplayHeight(kwm.dpy, screen));
 }
 
-/* Signal handler. Handle children processes that have exited in order to avoid
- * zombie processes.
- */
 static void
 sigchld(int s)
 {
@@ -760,8 +782,6 @@ sigchld(int s)
 	while (0 < waitpid(-1, NULL, WNOHANG));
 }
 
-/* Properly delete karuiwm and its elements.
- */
 static void
 term(void)
 {
