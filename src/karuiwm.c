@@ -697,7 +697,9 @@ mouseresize(struct client *c, int mx, int my,
 			break;
 		case MotionNotify:
 			dx = ev.xmotion.x - mx;
+			dx = dx / (int signed) c->incw * (int signed) c->incw;
 			dy = ev.xmotion.y - my;
+			dy = dy / (int signed) c->inch * (int signed) c->inch;
 			if (left) {
 				cx += dx;
 				cw = (int unsigned) ((int signed) cw - dx);
@@ -710,8 +712,8 @@ mouseresize(struct client *c, int mx, int my,
 			} else if (bottom) {
 				ch = (int unsigned) ((int signed) ch + dy);
 			}
-			mx = ev.xmotion.x;
-			my = ev.xmotion.y;
+			mx += dx;
+			my += dy;
 			client_moveresize(c, cx, cy, cw, ch);
 			break;
 		default:
