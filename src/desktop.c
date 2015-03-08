@@ -198,6 +198,20 @@ desktop_fullscreen_client(struct desktop *d, struct client *c, bool fullscreen)
 	client_set_fullscreen(c, fullscreen);
 }
 
+void
+desktop_hide(struct desktop *d)
+{
+	int unsigned i;
+	struct client *c;
+
+	desktop_set_clientmask(d, 0);
+	for (i = 0, c = d->floating; i < d->nf; ++i, c = c->next)
+		client_hide(c);
+	for (i = 0, c = d->tiled; i < d->nt; ++i, c = c->next)
+		client_hide(c);
+	desktop_set_clientmask(d, CLIENTMASK);
+}
+
 /* Determine if a window is contained in a given desktop, and locate both the
  * corresponding client and the client's position in the desktop's client list.
  */
@@ -225,7 +239,7 @@ desktop_locate_window(struct desktop *d, Window win, struct client **c)
 /* Create and initialise a new desktop.
  */
 struct desktop *
-desktop_new(void)
+desktop_new(int posx, int posy)
 {
 	struct desktop *d = NULL;
 
@@ -236,7 +250,8 @@ desktop_new(void)
 	d->nt = d->nf = 0;
 	d->tiled = d->floating = NULL;
 	d->selcli = NULL;
-
+	d->posx = posx;
+	d->posy = posy;
 	return d;
 }
 
@@ -253,6 +268,7 @@ desktop_set_clientmask(struct desktop *d, long mask)
 		XSelectInput(kwm.dpy, it->win, mask);
 	for (i = 0, it = d->floating; i < d->nf; ++i, it = it->next)
 		XSelectInput(kwm.dpy, it->win, mask);
+	XSync(kwm.dpy, screen);
 }
 
 /* Set the factor of space the master area takes on a desktop (between 0.0 and
@@ -284,6 +300,22 @@ desktop_shift_client(struct desktop *d, int dir)
 		return;
 	other = get_neighbour(this, dir);
 	swap(this->floating ? &d->floating : &d->tiled, this, other);
+}
+
+void
+desktop_show(struct desktop *d)
+{
+	int unsigned i;
+	struct client *c;
+
+	desktop_set_clientmask(d, 0);
+	for (i = 0, c = d->floating; i < d->nf; ++i, c = c->next)
+		client_show(c);
+	for (i = 0, c = d->tiled; i < d->nt; ++i, c = c->next)
+		client_show(c);
+	desktop_arrange(d);
+	desktop_update_focus(d);
+	desktop_set_clientmask(d, CLIENTMASK);
 }
 
 /* Move focus to next/previous client.

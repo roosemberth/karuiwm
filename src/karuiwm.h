@@ -17,11 +17,33 @@
 #define LENGTH(ARR) (sizeof(ARR)/sizeof(ARR[0]))
 #define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
+#define INIT_ATOM(D, L, A) L[A] = XInternAtom(D, #A, false)
+
+/* atoms */
+#define _NET_WM_STATE_REMOVE 0
+#define _NET_WM_STATE_ADD 1
+#define _NET_WM_STATE_TOGGLE 2
+enum atom_type {
+	WM_PROTOCOLS,
+	WM_DELETE_WINDOW,
+	WM_STATE,
+	WM_TAKE_FOCUS,
+	ATOM_LAST
+};
+enum netatom_type {
+	_NET_ACTIVE_WINDOW,
+	_NET_SUPPORTED,
+	_NET_WM_NAME,
+	_NET_WM_STATE,
+	_NET_WM_STATE_FULLSCREEN,
+	_NET_WM_STATE_HIDDEN,
+	_NET_WM_WINDOW_TYPE,
+	_NET_WM_WINDOW_TYPE_DIALOG,
+	NETATOM_LAST
+};
 
 /* enumerations */
-enum { WMProtocols, WMDeleteWindow, WMState, WMTakeFocus, WMLAST };
-enum { NetActiveWindow, NetSupported, NetWMName, NetWMState,
-       NetWMStateFullscreen, NetWMWindowType, NetWMWindowTypeDialog, NetLAST };
+enum direction { LEFT, RIGHT, UP, DOWN, NO_DIRECTION };
 
 /* unions, structures */
 union argument {
@@ -45,10 +67,11 @@ struct key {
 };
 
 /* variables */
-Atom wmatom[WMLAST], netatom[NetLAST];
+Atom atoms[ATOM_LAST], netatoms[NETATOM_LAST];
 struct {
 	Display *dpy;
 	Window root;
 } kwm;
+int screen;
 
 #endif /* _KARUIWM_H */

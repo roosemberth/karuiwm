@@ -30,7 +30,6 @@
 
 /* enums */
 enum { CurNormal, CurResize, CurMove, CurLAST };
-enum { Left, Right, Up, Down, NoDirection };
 
 /* functions */
 static void action_killclient(union argument *arg);
@@ -44,7 +43,8 @@ static void action_setmfact(union argument *arg);
 static void action_setnmaster(union argument *arg);
 static void action_shiftclient(union argument *arg);
 static void action_spawn(union argument *arg);
-static void action_stepfocus(union argument *arg);
+static void action_stepclient(union argument *arg);
+static void action_stepdesktop(union argument *arg);
 static void action_togglefloat(union argument *arg);
 static void action_zoom(union argument *arg);
 static void grabkeys(void);
@@ -52,6 +52,7 @@ static void handle_buttonpress(XEvent *xe);
 static void handle_clientmessage(XEvent *xe);
 static void handle_configurerequest(XEvent *xe);
 static void handle_configurenotify(XEvent *xe);
+static void handle_destroynotify(XEvent *xe);
 static void handle_enternotify(XEvent *xe);
 static void handle_expose(XEvent *xe);
 static void handle_focusin(XEvent *xe);
@@ -76,7 +77,6 @@ static void term(void);
 /* variables */
 static struct workspace *selws;
 static bool running, restarting;              /* application state */
-static int screen;                            /* screen */
 static Cursor cursor[CurLAST];                /* cursors */
 static char const *termcmd[] = { "urxvt", NULL };
 static char const *scrotcmd[] = { "prtscr", NULL };
@@ -87,6 +87,7 @@ static void (*handle[LASTEvent])(XEvent *) = {
 	[ClientMessage]    = handle_clientmessage,    /*33*/
 	[ConfigureNotify]  = handle_configurenotify,  /*22*/
 	[ConfigureRequest] = handle_configurerequest, /*23*/
+	[DestroyNotify]    = handle_destroynotify,    /*17*/
 	[EnterNotify]      = handle_enternotify,      /* 7*/
 	[Expose]           = handle_expose,           /*12*/
 	[FocusIn]          = handle_focusin,          /* 9*/
@@ -101,31 +102,37 @@ static int (*xerrorxlib)(Display *dpy, XErrorEvent *xe);
 
 static struct key keys[] = {
 	/* applications */
-	{ MODKEY,           XK_n,       action_spawn,       { .v=termcmd } },
-	{ MODKEY,           XK_Print,   action_spawn,       { .v=scrotcmd } },
+	{ MODKEY,             XK_n,       action_spawn,       { .v=termcmd } },
+	{ MODKEY,             XK_Print,   action_spawn,       { .v=scrotcmd } },
 
 	/* windows */
-	{ MODKEY,           XK_j,       action_stepfocus,   { .i=+1 } },
-	{ MODKEY,           XK_k,       action_stepfocus,   { .i=-1 } },
-	{ MODKEY,           XK_l,       action_setmfact,    { .f=+0.02f } },
-	{ MODKEY,           XK_h,       action_setmfact,    { .f=-0.02f } },
-	{ MODKEY,           XK_t,       action_togglefloat, { 0 } },
-	{ MODKEY|ShiftMask, XK_c,       action_killclient,  { 0 } },
+	{ MODKEY,             XK_j,       action_stepclient,   { .i=+1 } },
+	{ MODKEY,             XK_k,       action_stepclient,   { .i=-1 } },
+	{ MODKEY,             XK_l,       action_setmfact,    { .f=+0.02f } },
+	{ MODKEY,             XK_h,       action_setmfact,    { .f=-0.02f } },
+	{ MODKEY,             XK_t,       action_togglefloat, { 0 } },
+	{ MODKEY|ShiftMask,   XK_c,       action_killclient,  { 0 } },
 
 	/* layout */
-	{ MODKEY|ShiftMask, XK_j,       action_shiftclient, { .i=+1 } },
-	{ MODKEY|ShiftMask, XK_k,       action_shiftclient, { .i=-1 } },
-	{ MODKEY,           XK_comma,   action_setnmaster,  { .i=+1 } },
-	{ MODKEY,           XK_period,  action_setnmaster,  { .i=-1 } },
-	{ MODKEY,           XK_Return,  action_zoom,        { 0 } },
+	{ MODKEY|ShiftMask,   XK_j,       action_shiftclient, { .i=+1 } },
+	{ MODKEY|ShiftMask,   XK_k,       action_shiftclient, { .i=-1 } },
+	{ MODKEY,             XK_comma,   action_setnmaster,  { .i=+1 } },
+	{ MODKEY,             XK_period,  action_setnmaster,  { .i=-1 } },
+	{ MODKEY,             XK_Return,  action_zoom,        { 0 } },
+
+	/* desktop */
+	{ MODKEY|ControlMask, XK_h,       action_stepdesktop, { .i=LEFT } },
+	{ MODKEY|ControlMask, XK_l,       action_stepdesktop, { .i=RIGHT } },
+	{ MODKEY|ControlMask, XK_k,       action_stepdesktop, { .i=UP } },
+	{ MODKEY|ControlMask, XK_j,       action_stepdesktop, { .i=DOWN } },
 
 	/* session */
-	{ MODKEY,           XK_q,       action_restart,     { 0 } },
-	{ MODKEY|ShiftMask, XK_q,       action_quit,        { 0 } },
+	{ MODKEY,             XK_q,       action_restart,     { 0 } },
+	{ MODKEY|ShiftMask,   XK_q,       action_quit,        { 0 } },
 };
 static struct button buttons[] = {
-	{ MODKEY,           Button1,    action_mousemove,   { 0 } },
-	{ MODKEY,           Button3,    action_mouseresize, { 0 } },
+	{ MODKEY,             Button1,    action_mousemove,   { 0 } },
+	{ MODKEY,             Button3,    action_mouseresize, { 0 } },
 };
 
 /* implementation */
@@ -265,9 +272,15 @@ action_spawn(union argument *arg)
 }
 
 static void
-action_stepfocus(union argument *arg)
+action_stepclient(union argument *arg)
 {
 	desktop_step_focus(selws->seldt, arg->i);
+}
+
+static void
+action_stepdesktop(union argument *arg)
+{
+	workspace_step_desktop(selws, arg->i);
 }
 
 static void
@@ -339,15 +352,15 @@ handle_clientmessage(XEvent *xe)
 
 	if (desktop_locate_window(selws->seldt, e->window, &c) < 0)
 		return;
-	if (e->message_type != netatom[NetWMState]) {
+	if (e->message_type != netatoms[_NET_WM_STATE]) {
 		WARN("received client message for other than WM state");
 		return;
 	}
-	if ((Atom) e->data.l[1] == netatom[NetWMStateFullscreen]
-	|| (Atom) e->data.l[2] == netatom[NetWMStateFullscreen]) {
+	if ((Atom) e->data.l[1] == netatoms[_NET_WM_STATE_FULLSCREEN]
+	|| (Atom) e->data.l[2] == netatoms[_NET_WM_STATE_FULLSCREEN]) {
 		/* _NET_WM_STATE_ADD || _NET_WM_STATE_TOGGLE */
-		fullscreen = e->data.l[0] == 1 ||
-			    (e->data.l[0] == 2 &&
+		fullscreen = (Atom) e->data.l[0] == netatoms[_NET_WM_STATE_ADD] ||
+			    ((Atom) e->data.l[0] == netatoms[_NET_WM_STATE_TOGGLE] &&
 			     c->state != STATE_FULLSCREEN);
 		desktop_fullscreen_client(selws->seldt, c, fullscreen);
 		desktop_arrange(selws->seldt);
@@ -389,6 +402,22 @@ handle_configurerequest(XEvent *xe)
 }
 
 static void
+handle_destroynotify(XEvent *xe)
+{
+	struct client *c;
+	XDestroyWindowEvent *e = &xe->xdestroywindow;
+
+	//EVENT("destroynotify(%lu)", e->window);
+
+	if (desktop_locate_window(selws->seldt, e->window, &c) < 0)
+		return;
+	desktop_detach_client(selws->seldt, c);
+	client_delete(c);
+	desktop_arrange(selws->seldt);
+	desktop_update_focus(selws->seldt);
+}
+
+static void
 handle_enternotify(XEvent *xe)
 {
 	struct client *c;
@@ -411,9 +440,9 @@ handle_expose(XEvent *xe)
 	XExposeEvent *e = &xe->xexpose;
 
 	//EVENT("expose(%lu)", e->window);
-	(void) e;
 
 	/* TODO handle expose events */
+	(void) e;
 }
 
 static void
@@ -457,11 +486,11 @@ static void
 handle_keyrelease(XEvent *xe)
 {
 	XKeyReleasedEvent *e = &xe->xkey;
-	(void) e;
 
 	//EVENT("keyrelease()");
 
 	/* TODO keyrelease might not be needed, remove this handler? */
+	(void) e;
 }
 
 static void
@@ -470,9 +499,9 @@ handle_mappingnotify(XEvent *xe)
 	XMappingEvent *e = &xe->xmapping;
 
 	//EVENT("mappingnotify(%lu)", e->window);
-	(void) e;
 
 	/* TODO handle keyboard mapping changes */
+	(void) e;
 }
 
 static void
@@ -485,25 +514,25 @@ handle_maprequest(XEvent *xe)
 
 	/* window is remapped */
 	if (desktop_locate_window(selws->seldt, e->window, &c) == 0) {
-		desktop_detach_client(selws->seldt, c);
-		client_delete(c);
+		XMapWindow(kwm.dpy, c->win);
+		return;
 	}
 
-	/* initialise */
 	c = client_new(e->window);
 	if (c == NULL)
 		return;
 
 	/* fix floating dimensions */
 	if (c->floating)
-		client_moveresize(c, MAX(c->x, 0), MAX(c->y, 0),
-		                     MIN(c->w, selws->seldt->w),
-		                     MIN(c->h, selws->seldt->h));
+		client_moveresize(c, MAX(c->floatx, 0),
+				     MAX(c->floaty, 0),
+				     MIN(c->floatw, selws->seldt->w),
+				     MIN(c->floath, selws->seldt->h));
 
-	XMapWindow(kwm.dpy, c->win);
-	client_grab_buttons(c, LENGTH(buttons), buttons);
 	desktop_attach_client(selws->seldt, c);
 	desktop_arrange(selws->seldt);
+	XMapWindow(kwm.dpy, c->win);
+	client_grab_buttons(c, LENGTH(buttons), buttons);
 	desktop_update_focus(selws->seldt);
 }
 
@@ -539,9 +568,9 @@ handle_propertynotify(XEvent *xe)
 		/* TODO implement urgent hint handling */
 		break;
 	}
-	if (e->atom == XA_WM_NAME || e->atom == netatom[NetWMName])
+	if (e->atom == XA_WM_NAME || e->atom == netatoms[_NET_WM_NAME])
 		client_query_name(c);
-	if (e->atom == netatom[NetWMWindowType]) {
+	if (e->atom == netatoms[_NET_WM_WINDOW_TYPE]) {
 		client_query_fullscreen(c);
 		client_query_dialog(c);
 		desktop_arrange(selws->seldt);
@@ -551,18 +580,12 @@ handle_propertynotify(XEvent *xe)
 static void
 handle_unmapnotify(XEvent *xe)
 {
-	struct client *c;
 	XUnmapEvent *e = &xe->xunmap;
 
 	//EVENT("unmapnotify(%lu)", e->window);
 
-	if (desktop_locate_window(selws->seldt, e->window, &c) < 0)
-		return;
-
-	desktop_detach_client(selws->seldt, c);
-	client_delete(c);
-	desktop_arrange(selws->seldt);
-	desktop_update_focus(selws->seldt);
+	/* TODO necessary to handle unmap events? */
+	(void) e;
 }
 
 static int
@@ -623,17 +646,18 @@ init(void)
 static void
 init_atoms(void)
 {
-	wmatom[WMProtocols] = XInternAtom(kwm.dpy, "WM_PROTOCOLS", false);
-	wmatom[WMDeleteWindow] = XInternAtom(kwm.dpy, "WM_DELETE_WINDOW", false);
-	wmatom[WMState] = XInternAtom(kwm.dpy, "WM_STATE", false);
-	wmatom[WMTakeFocus] = XInternAtom(kwm.dpy, "WM_TAKE_FOCUS", false);
-	netatom[NetActiveWindow] = XInternAtom(kwm.dpy, "_NET_ACTIVE_WINDOW", false);
-	netatom[NetSupported] = XInternAtom(kwm.dpy, "_NET_SUPPORTED", false);
-	netatom[NetWMName] = XInternAtom(kwm.dpy, "_NET_WM_NAME", false);
-	netatom[NetWMState] = XInternAtom(kwm.dpy, "_NET_WM_STATE", false);
-	netatom[NetWMStateFullscreen] = XInternAtom(kwm.dpy, "_NET_WM_STATE_FULLSCREEN", false);
-	netatom[NetWMWindowType] = XInternAtom(kwm.dpy, "_NET_WM_WINDOW_TYPE", false);
-	netatom[NetWMWindowTypeDialog] = XInternAtom(kwm.dpy, "_NET_WM_WINDOW_TYPE_DIALOG", false);
+	INIT_ATOM(kwm.dpy, atoms,    WM_PROTOCOLS);
+	INIT_ATOM(kwm.dpy, atoms,    WM_DELETE_WINDOW);
+	INIT_ATOM(kwm.dpy, atoms,    WM_STATE);
+	INIT_ATOM(kwm.dpy, atoms,    WM_TAKE_FOCUS);
+	INIT_ATOM(kwm.dpy, netatoms, _NET_ACTIVE_WINDOW);
+	INIT_ATOM(kwm.dpy, netatoms, _NET_SUPPORTED);
+	INIT_ATOM(kwm.dpy, netatoms, _NET_WM_NAME);
+	INIT_ATOM(kwm.dpy, netatoms, _NET_WM_STATE);
+	INIT_ATOM(kwm.dpy, netatoms, _NET_WM_STATE_FULLSCREEN);
+	INIT_ATOM(kwm.dpy, netatoms, _NET_WM_STATE_HIDDEN);
+	INIT_ATOM(kwm.dpy, netatoms, _NET_WM_WINDOW_TYPE);
+	INIT_ATOM(kwm.dpy, netatoms, _NET_WM_WINDOW_TYPE_DIALOG);
 }
 
 static void
@@ -680,6 +704,7 @@ mouseresize(struct client *c, int mx, int my,
 	int dx, dy;
 	bool left, right, top, bottom;
 
+	/* determine area */
 	left = mx - cx < (int signed) cw / 3;
 	right = mx - cx > 2 * (int signed) cw / 3;
 	top = my - cy < (int signed) ch / 3;
@@ -742,13 +767,9 @@ setupsession(void)
 	int unsigned i, nwins;
 	Window p, r, *wins = NULL;
 	struct client *c;
-	struct desktop *dt;
 
-	/* TODO move to workspace */
-	dt = desktop_new();
+	/* TODO define policy for new monitors/workspaces/desktops */
 	selws = workspace_new("dada");
-	workspace_attach_desktop(selws, dt);
-	selws->seldt = dt;
 
 	/* scan existing windows */
 	if (!XQueryTree(kwm.dpy, kwm.root, &r, &p, &wins, &nwins)) {
@@ -764,7 +785,7 @@ setupsession(void)
 			desktop_attach_client(selws->seldt, c);
 		}
 	}
-	desktop_update_focus(selws->seldt);
+	workspace_update_focus(selws);
 
 	/* setup monitors (TODO separate function) */
 	desktop_update_geometry(selws->seldt, 0, 0,

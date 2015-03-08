@@ -4,13 +4,13 @@
 #include <string.h>
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
+#include <stdarg.h>
 
 #define BORDERWIDTH 1
 
 static int check_sizehints(struct client *c, int unsigned *w, int unsigned *h);
-static Atom get_atom(Window win, Atom property);
 static int get_name(char *buf, Window win);
-static int send_atom(Window win, Atom atom);
+static void set_visibility(struct client *c, bool visible);
 
 /* Properly delete a client all its contained elements.
  */
@@ -34,13 +34,25 @@ client_grab_buttons(struct client *c, size_t nb, struct button *buttons)
 		            GrabModeAsync, None, None);
 }
 
+/* Hide a client.
+ */
+void
+client_hide(struct client *c)
+{
+	XUnmapWindow(kwm.dpy, c->win);
+	set_visibility(c, false);
+}
+
 /* Close a client's window.
  */
 void
 client_kill(struct client *c)
 {
-	if (send_atom(c->win, wmatom[WMDeleteWindow]) < 0) {
-		/* massacre! */
+	int i;
+
+	i = client_send_atom(c, 2, atoms[WM_PROTOCOLS],atoms[WM_DELETE_WINDOW]);
+	if (i < 0) {
+		WARN("WM_DELETE_WINDOW not supported, massacring client");
 		XGrabServer(kwm.dpy);
 		XSetCloseDownMode(kwm.dpy, DestroyAll);
 		XKillClient(kwm.dpy, c->win);
@@ -100,14 +112,33 @@ client_new(Window win)
 	c->x = c->y = c->floatx = c->floaty = 0;
 
 	/* query client properties */
-	client_query_dimension(c);
 	client_query_dialog(c);
+	client_query_sizehints(c);
+	client_query_dimension(c);
 	client_query_fullscreen(c);
 	client_query_name(c);
-	client_query_sizehints(c);
 	client_query_transient(c);
 
 	return c;
+}
+
+Atom
+client_query_atom(struct client *c, Atom property)
+{
+	int ret, i;
+	int long unsigned lu;
+	char unsigned *atomp = NULL;
+	Atom a, atom = None;
+
+	ret = XGetWindowProperty(kwm.dpy, c->win, property, 0L, sizeof(Atom),
+	                         False, XA_ATOM, &a, &i, &lu, &lu, &atomp);
+	if (ret != Success) {
+		WARN("%lu: could not get property", c->win);
+	} else if (atomp != NULL) {
+		atom = *(Atom *) atomp;
+		XFree(atomp);
+	}
+	return atom;
 }
 
 /* Check and update if a client is a dialog box.
@@ -117,8 +148,8 @@ client_query_dialog(struct client *c)
 {
 	Atom type;
 
-	type = get_atom(c->win, netatom[NetWMWindowType]);
-	client_set_dialog(c, type == netatom[NetWMWindowTypeDialog]);
+	type = client_query_atom(c, netatoms[_NET_WM_WINDOW_TYPE]);
+	client_set_dialog(c, type == netatoms[_NET_WM_WINDOW_TYPE_DIALOG]);
 }
 
 /* Check and update client-requested dimension information.
@@ -149,8 +180,8 @@ client_query_fullscreen(struct client *c)
 {
 	Atom state;
 
-	state = get_atom(c->win, netatom[NetWMState]);
-	client_set_fullscreen(c, state == netatom[NetWMStateFullscreen]);
+	state = client_query_atom(c, netatoms[_NET_WM_STATE]);
+	client_set_fullscreen(c, state == netatoms[_NET_WM_STATE_FULLSCREEN]);
 }
 
 /* Update a client's name.
@@ -244,6 +275,46 @@ client_resize(struct client *c, int unsigned w, int unsigned h)
 	XResizeWindow(kwm.dpy, c->win, c->w, c->h);
 }
 
+/* Send an Atom to the client.
+ */
+int
+client_send_atom(struct client *c, size_t natoms, ...)
+{
+	int retval = 0;
+	int unsigned i, nsup;
+	va_list args;
+	XEvent ev;
+	Atom *sup;
+
+	if (natoms == 0 || natoms > 4)
+		return -1;
+	va_start(args, natoms);
+
+	ev.type = ClientMessage;
+	ev.xclient.window = c->win;
+	ev.xclient.format = 32;
+	ev.xclient.message_type = va_arg(args, Atom);
+	if (!XGetWMProtocols(kwm.dpy, c->win, &sup, (int signed *) &nsup)) {
+		retval = -1;
+		goto client_send_atom_out;
+	} else {
+		for (i = 0; i < nsup && sup[i] != ev.xclient.message_type; ++i);
+		XFree(sup);
+		if (i == nsup) {
+			retval = -1;
+			goto client_send_atom_out;
+		}
+	}
+	for (i = 0; i < natoms - 1; ++i)
+		ev.xclient.data.l[i] = (int long) va_arg(args, Atom);
+	ev.xclient.data.l[i] = CurrentTime;
+
+	XSendEvent(kwm.dpy, c->win, false, NoEventMask, &ev);
+ client_send_atom_out:
+	va_end(args);
+	return retval;
+}
+
 /* Set the thickness of a client's border.
  */
 void
@@ -259,7 +330,8 @@ void
 client_set_dialog(struct client *c, bool dialog)
 {
 	c->dialog = dialog;
-	client_set_floating(c, c->dialog || c->floating);
+	if (dialog)
+		client_set_floating(c, dialog);
 }
 
 /* Set the floating mode of a client.
@@ -288,6 +360,15 @@ client_set_fullscreen(struct client *c, bool fullscreen)
 {
 	c->state = fullscreen ? STATE_FULLSCREEN : STATE_NORMAL;
 	client_set_border(c, fullscreen ? 0 : BORDERWIDTH);
+}
+
+/* Show a client.
+ */
+void
+client_show(struct client *c)
+{
+	XMapWindow(kwm.dpy, c->win);
+	set_visibility(c, true);
 }
 
 /* Check and enforce client-requested size hints on a server-requested client
@@ -328,27 +409,6 @@ check_sizehints(struct client *c, int unsigned *w, int unsigned *h)
 	return change ? -1 : 0;
 }
 
-/* Get an Atom from a client.
- */
-static Atom
-get_atom(Window win, Atom property)
-{
-	int ret, i;
-	int long unsigned lu;
-	char unsigned *atomp = NULL;
-	Atom a, atom = None;
-
-	ret = XGetWindowProperty(kwm.dpy, win, property, 0L, sizeof(Atom),
-	                         False, XA_ATOM, &a, &i, &lu, &lu, &atomp);
-	if (ret != Success) {
-		WARN("%lu: could not get property", win);
-	} else if (atomp != NULL) {
-		atom = *(Atom *) atomp;
-		XFree(atomp);
-	}
-	return atom;
-}
-
 /* Get a client's window's name.
  */
 static int
@@ -358,7 +418,7 @@ get_name(char *buf, Window win)
 	int n, ret, fret = 0;
 	char **list;
 
-	XGetTextProperty(kwm.dpy, win, &xtp, netatom[NetWMName]);
+	XGetTextProperty(kwm.dpy, win, &xtp, netatoms[_NET_WM_NAME]);
 	if (!xtp.nitems)
 		return -1;
 	if (xtp.encoding == XA_STRING) {
@@ -377,28 +437,14 @@ get_name(char *buf, Window win)
 	return fret;
 }
 
-static int
-send_atom(Window win, Atom atom)
+/* Set client visibility.
+ */
+static void
+set_visibility(struct client *c, bool visible)
 {
-	int n;
-	Atom *supported;
-	bool exists = false;
-	XEvent ev;
+	Atom action;
 
-	if (XGetWMProtocols(kwm.dpy, win, &supported, &n)) {
-		while (!exists && n-- > 0)
-			exists = supported[n] == atom;
-		XFree(supported);
-	}
-	if (!exists)
-		return -1;
-
-	ev.type = ClientMessage;
-	ev.xclient.window = win;
-	ev.xclient.message_type = wmatom[WMProtocols];
-	ev.xclient.format = 32;
-	ev.xclient.data.l[0] = (long) atom;
-	ev.xclient.data.l[1] = CurrentTime;
-	XSendEvent(kwm.dpy, win, false, NoEventMask, &ev);
-	return 0;
+	action = visible ? _NET_WM_STATE_ADD : _NET_WM_STATE_REMOVE;
+	client_send_atom(c, 3, netatoms[_NET_WM_STATE], action,
+	                 netatoms[_NET_WM_STATE_HIDDEN]);
 }
