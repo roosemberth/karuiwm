@@ -2,12 +2,12 @@
 CC ?= gcc
 
 # Installation prefix:
-PREFIX = /usr/local
+PREFIX ?= /usr/local
 
 # Application name:
 APPNAME = karuiwm
 
-# Flags:
+# Compilation flags:
 KWM_CFLAGS  = -W -Wall -Wextra -pedantic -g
 KWM_CFLAGS += -Wcast-align -Wcast-qual -Wconversion -Wwrite-strings -Wfloat-equal
 KWM_CFLAGS += -Wlogical-op -Wpointer-arith -Wformat=2
@@ -15,8 +15,14 @@ KWM_CFLAGS += -Winit-self -Wuninitialized -Wmaybe-uninitialized
 KWM_CFLAGS += -Wstrict-prototypes -Wmissing-declarations -Wmissing-prototypes
 KWM_CFLAGS += -Wshadow -Werror #-Wpadded
 KWM_CFLAGS += -std=c99 -O2
-KWM_CFLAGS += $(shell pkg-config --cflags xinerama x11)
-KWM_LIBS  = $(shell pkg-config --libs xinerama x11)
+KWM_CFLAGS += $(shell pkg-config --cflags x11)
+KWM_CFLAGS_XINERAMA = $(shell pkg-config --cflags xinerama)
+
+# Libraries:
+KWM_LIBS  = $(shell pkg-config --libs x11)
+KWM_LIBS_XINERAMA = $(shell pkg-config --libs xinerama)
+
+# Linker flags:
 KWM_LDFLAGS =
 
 # File names:
@@ -29,15 +35,21 @@ XINITRC = xinitrc
 
 -include config.mk
 
-# Default: Build application
-all: $(APPNAME)
+# Default: Build application:
+all: KWM_CFLAGS += ${KWM_CFLAGS_XINERAMA} -DXINERAMA
+all: KWM_LIBS += ${KWM_LIBS_XINERAMA}
+all: build
 
-# Alternative build targets:
+# Alternative: with Address Sanitizer:
 asan: KWM_CFLAGS += -fsanitize=address -fno-omit-frame-pointer
 asan: KWM_LDFLAGS += -fsanitize=address
 asan: all
 
-# Handy actions:
+# Alternative: without Xinerama:
+noxinerama: build
+
+# Basic actions:
+build: $(APPNAME)
 clean:
 	rm -rf ${BUILDDIR}
 mrproper: clean
@@ -65,6 +77,8 @@ $(APPNAME): $(OBJECTS)
 	@printf "linking \033[1m%s\033[0m ...\n" $@
 	$(CC) ${KWM_LDFLAGS} ${OBJECTS} ${KWM_LIBS} -o $@
 
+run:
+	startx ${XINITRC} -- :1
 xephyr:
 	xinit ${XINITRC} -- $(shell which Xephyr) :1
 valphyr:

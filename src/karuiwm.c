@@ -3,7 +3,10 @@
 #include "client.h"
 #include "desktop.h"
 #include "workspace.h"
-
+#include "session.h"
+#include "monitor.h"
+#include "focus.h"
+#include "cursor.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -20,23 +23,14 @@
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
 #include <X11/Xproto.h>
-#include <X11/cursorfont.h>
 
 /* macros */
-#define INTERSECT(MON, X, Y, W, H) \
-        ((MAX(0, MIN((X) + (W), (MON)->x + (MON)->w) - MAX((MON)->x, X))) * \
-         (MAX(0, MIN((Y) + (H), (MON)->y + (MON)->h) - MAX((MON)->y, Y))))
-#define MOUSEMASK (BUTTONMASK|PointerMotionMask)
-
-/* enums */
-enum { CurNormal, CurResize, CurMove, CurLAST };
+#define INIT_ATOM(D, L, A) L[A] = XInternAtom(D, #A, false)
 
 /* functions */
 static void action_killclient(union argument *arg);
-static void action_mouse(struct client *c, void (*mh)(struct client *, int, int,
-                         int, int, int unsigned, int unsigned));
-static void action_mousemove(union argument *);
-static void action_mouseresize(union argument *arg);
+static void action_mousemove(union argument *arg, Window win);
+static void action_mouseresize(union argument *arg, Window win);
 static void action_quit(union argument *arg);
 static void action_restart(union argument *arg);
 static void action_setmfact(union argument *arg);
@@ -65,19 +59,21 @@ static void handle_unmapnotify(XEvent *xe);
 static int handle_xerror(Display *dpy, XErrorEvent *xe);
 static void init(void);
 static void init_atoms(void);
-static void mousemove(struct client *c, int mx, int my,
-                      int cx, int cy, int unsigned cw, int unsigned ch);
-static void mouseresize(struct client *c, int mx, int my,
-                        int cx, int cy, int unsigned cw, int unsigned ch);
+static void mouse_move(struct client *c, int mx, int my,
+                       int cx, int cy, int unsigned cw, int unsigned ch);
+static void mouse_moveresize(struct client *c, void (*mh)(struct client *,
+                             int, int, int, int, int unsigned, int unsigned));
+static void mouse_resize(struct client *c, int mx, int my,
+                         int cx, int cy, int unsigned cw, int unsigned ch);
 static void run(void);
-static void setupsession(void);
 static void sigchld(int);
 static void term(void);
 
 /* variables */
-static struct workspace *selws;
-static bool running, restarting;              /* application state */
-static Cursor cursor[CurLAST];                /* cursors */
+static struct session *session;
+static struct focus *focus;
+static struct cursor *cursor;
+static bool running, restarting;    /* application state */
 static char const *termcmd[] = { "urxvt", NULL };
 static char const *scrotcmd[] = { "prtscr", NULL };
 
@@ -141,79 +137,37 @@ action_killclient(union argument *arg)
 {
 	(void) arg;
 
-	if (selws->seldt->selcli != NULL)
-		client_kill(selws->seldt->selcli);
+	desktop_kill_client(focus->selmon->seldt);
 }
 
 static void
-action_mouse(struct client *c, void (*mh)(struct client *, int, int, int, int,
-                                          int unsigned, int unsigned))
+action_mousemove(union argument *arg, Window win)
 {
-	int mx, my, cx, cy, i;
-	int unsigned cw, ch, ui;
-	Window w;
-
-	/* grab the pointer and change the cursor appearance */
-	i = XGrabPointer(kwm.dpy, kwm.root, true, MOUSEMASK, GrabModeAsync,
-		         GrabModeAsync, None, cursor[CurMove], CurrentTime);
-	if (i != GrabSuccess) {
-		WARN("XGrabPointer() failed");
-		return;
-	}
-
-	/* get pointer position */
-	if (!XQueryPointer(kwm.dpy, kwm.root, &w, &w, &mx, &my, &i, &i, &ui)) {
-		WARN("XQueryPointer() failed");
-		return;
-	}
-
-	/* fix client position */
-	if (c->floatx + (int signed) c->floatw < mx)
-		c->floatx = mx - (int signed) c->floatw + 1;
-	if (c->floatx > mx)
-		c->floatx = mx;
-	if (c->floaty + (int signed) c->floath < my)
-		c->floaty = my - (int signed) c->floath + 1;
-	if (c->floaty > my)
-		c->floaty = my;
-	desktop_float_client(selws->seldt, c, true);
-	desktop_arrange(selws->seldt);
-	cx = c->floatx;
-	cy = c->floaty;
-	cw = c->floatw;
-	ch = c->floath;
-
-	/* handle events */
-	mh(c, mx, my, cx, cy, cw, ch);
-
-	/* ungrab the pointer */
-	XUngrabPointer(kwm.dpy, CurrentTime);
-}
-
-static void
-action_mousemove(union argument *arg)
-{
-	struct client *c = selws->seldt->selcli;
+	struct client *c;
 	(void) arg;
 
 	//EVENT("movemouse(%lu)", c->win);
 
-	if (c->state != STATE_NORMAL)
+	if (session_locate_window(session, &c, win) < 0) {
+		WARN("attempt to mouse-move unhandled window %lu", win);
 		return;
-	action_mouse(c, mousemove);
+	}
+	mouse_moveresize(focus->selmon->seldt->selcli, mouse_move);
 }
 
 static void
-action_mouseresize(union argument *arg)
+action_mouseresize(union argument *arg, Window win)
 {
-	struct client *c = selws->seldt->selcli;
+	struct client *c;
 	(void) arg;
 
 	//EVENT("resizemouse(%lu)", c->win);
 
-	if (c->state != STATE_NORMAL)
+	if (session_locate_window(session, &c, win) < 0) {
+		WARN("attempt to mouse-resize unhandled window %lu", win);
 		return;
-	action_mouse(c, mouseresize);
+	}
+	mouse_moveresize(c, mouse_resize);
 }
 
 static void
@@ -234,27 +188,32 @@ action_restart(union argument *arg)
 static void
 action_setmfact(union argument *arg)
 {
-	desktop_set_mfact(selws->seldt, selws->seldt->mfact + arg->f);
-	desktop_arrange(selws->seldt);
+	struct desktop *d = focus->selmon->seldt;
+
+	desktop_set_mfact(d, d->mfact + arg->f);
+	desktop_arrange(d);
 }
 
 static void
 action_setnmaster(union argument *arg)
 {
-	if (arg->i < 0 && (size_t) (-arg->i) > selws->seldt->nmaster)
+	struct desktop *d = focus->selmon->seldt;
+
+	if (arg->i < 0 && (size_t) (-arg->i) > d->nmaster)
 		return;
-	desktop_set_nmaster(selws->seldt, (size_t)
-	                    ((int signed) selws->seldt->nmaster + arg->i));
-	desktop_arrange(selws->seldt);
+	desktop_set_nmaster(d, (size_t) ((int signed) d->nmaster + arg->i));
+	desktop_arrange(d);
 }
 
 static void
 action_shiftclient(union argument *arg)
 {
-	if (selws->seldt->selcli == NULL)
+	struct desktop *d = focus->selmon->seldt;
+
+	if (d->selcli == NULL)
 		return;
-	(void) desktop_shift_client(selws->seldt, arg->i);
-	desktop_arrange(selws->seldt);
+	(void) desktop_shift_client(d, arg->i);
+	desktop_arrange(d);
 }
 
 static void
@@ -265,7 +224,7 @@ action_spawn(union argument *arg)
 	pid_t pid = fork();
 	if (pid == 0) {
 		execvp(cmd[0], cmd);
-		DIE("execvp(%s) failed: %s", cmd[0], strerror(errno));
+		FATAL("execvp(%s) failed: %s", cmd[0], strerror(errno));
 	}
 	if (pid < 0)
 		WARN("fork() failed with code %d", pid);
@@ -274,33 +233,33 @@ action_spawn(union argument *arg)
 static void
 action_stepclient(union argument *arg)
 {
-	desktop_step_focus(selws->seldt, arg->i);
+	desktop_step_client(focus->selmon->seldt, arg->i);
 }
 
 static void
 action_stepdesktop(union argument *arg)
 {
-	workspace_step_desktop(selws, arg->i);
+	monitor_step_desktop(focus->selmon, arg->i);
 }
 
 static void
 action_togglefloat(union argument *arg)
 {
+	struct desktop *d = focus->selmon->seldt;
 	(void) arg;
 
-	if (selws->seldt->selcli == NULL)
-		return;
-	desktop_float_client(selws->seldt, selws->seldt->selcli,
-	                     !selws->seldt->selcli->floating);
-	desktop_arrange(selws->seldt);
+	desktop_float_client(d, d->selcli, !d->selcli->floating);
+	desktop_arrange(d);
 }
 
 static void
 action_zoom(union argument *arg)
 {
+	struct desktop *d = focus->selmon->seldt;
 	(void) arg;
 
-	desktop_zoom(selws->seldt);
+	desktop_zoom(d);
+	desktop_arrange(d);
 }
 
 static void
@@ -319,7 +278,6 @@ static void
 handle_buttonpress(XEvent *xe)
 {
 	int unsigned i;
-	struct client *c;
 	XButtonEvent *e = &xe->xbutton;
 
 	//EVENT("buttonpress(%lu)", e->window);
@@ -328,17 +286,14 @@ handle_buttonpress(XEvent *xe)
 	if (e->window == kwm.root)
 		return;
 
-	if (desktop_locate_window(selws->seldt, e->window, &c) < 0) {
-		WARN("click on unhandled window");
-		return;
-	}
-	selws->seldt->selcli = c;
-	desktop_update_focus(selws->seldt);
-	for (i = 0; i < LENGTH(buttons); ++i)
+	for (i = 0; i < LENGTH(buttons); ++i) {
 		if (buttons[i].mod == e->state
 		&& buttons[i].button == e->button
-		&& buttons[i].func != NULL)
-			buttons[i].func(&buttons[i].arg);
+		&& buttons[i].func != NULL) {
+			buttons[i].func(&buttons[i].arg, e->window);
+			break;
+		}
+	}
 }
 
 static void
@@ -350,7 +305,7 @@ handle_clientmessage(XEvent *xe)
 
 	//EVENT("clientmessage(%lu)", e->window);
 
-	if (desktop_locate_window(selws->seldt, e->window, &c) < 0)
+	if (session_locate_window(session, &c, e->window) < 0)
 		return;
 	if (e->message_type != netatoms[_NET_WM_STATE]) {
 		WARN("received client message for other than WM state");
@@ -362,8 +317,8 @@ handle_clientmessage(XEvent *xe)
 		fullscreen = (Atom) e->data.l[0] == netatoms[_NET_WM_STATE_ADD] ||
 			    ((Atom) e->data.l[0] == netatoms[_NET_WM_STATE_TOGGLE] &&
 			     c->state != STATE_FULLSCREEN);
-		desktop_fullscreen_client(selws->seldt, c, fullscreen);
-		desktop_arrange(selws->seldt);
+		desktop_fullscreen_client(c->desktop, c, fullscreen);
+		desktop_arrange(c->desktop);
 	}
 }
 
@@ -375,10 +330,7 @@ handle_configurenotify(XEvent *xe)
 	//EVENT("configurenotify(%lu)", e->window);
 
 	if (e->window == kwm.root)
-		/* update monitors (TODO separate function) */
-		desktop_update_geometry(selws->seldt, 0, 0,
-		                 (int unsigned) DisplayWidth(kwm.dpy, screen),
-		                 (int unsigned) DisplayHeight(kwm.dpy, screen));
+		focus_scan_monitors(focus);
 }
 
 static void
@@ -405,16 +357,19 @@ static void
 handle_destroynotify(XEvent *xe)
 {
 	struct client *c;
+	struct desktop *d;
 	XDestroyWindowEvent *e = &xe->xdestroywindow;
 
 	//EVENT("destroynotify(%lu)", e->window);
 
-	if (desktop_locate_window(selws->seldt, e->window, &c) < 0)
+	if (session_locate_window(session, &c, e->window) < 0)
 		return;
-	desktop_detach_client(selws->seldt, c);
+	d = c->desktop;
+	desktop_detach_client(d, c);
 	client_delete(c);
-	desktop_arrange(selws->seldt);
-	desktop_update_focus(selws->seldt);
+	desktop_arrange(d);
+	if (d->monitor != NULL)
+		desktop_update_focus(d);
 }
 
 static void
@@ -425,13 +380,11 @@ handle_enternotify(XEvent *xe)
 
 	//EVENT("enternotify(%lu)", e->window);
 
-	if (desktop_locate_window(selws->seldt, e->window, &c) < 0) {
-		WARN("attempt to enter unhandled/invisible window %lu",
-		     e->window);
+	if (session_locate_window(session, &c, e->window) < 0) {
+		WARN("entering unhandled window %lu", e->window);
 		return;
 	}
-	selws->seldt->selcli = c;
-	desktop_update_focus(selws->seldt);
+	desktop_focus_client(c->desktop, c);
 }
 
 static void
@@ -449,17 +402,16 @@ static void
 handle_focusin(XEvent *xe)
 {
 	XFocusInEvent *e = &xe->xfocus;
+	struct client *selcli = focus->selmon->seldt->selcli;
 
 	//EVENT("focusin(%lu)", e->window);
 
 	if (e->window == kwm.root)
 		return;
-	if ((selws->seldt->tiled == NULL && selws->seldt->floating == NULL)
-	|| e->window != selws->seldt->selcli->win) {
+	if (selcli == NULL || e->window != selcli->win) {
 		WARN("attempt to steal focus by window %lu (focus is on %lu)",
-		     e->window, selws->seldt->selcli == NULL
-		                ? 0 : selws->seldt->selcli->win);
-		desktop_update_focus(selws->seldt);
+		     e->window, selcli == NULL ? 0 : selcli->win);
+		desktop_focus_client(selcli->desktop, selcli);
 	}
 }
 
@@ -507,13 +459,14 @@ handle_mappingnotify(XEvent *xe)
 static void
 handle_maprequest(XEvent *xe)
 {
-	struct client *c = NULL;
+	struct client *c;
+	struct desktop *d;
 	XMapRequestEvent *e = &xe->xmaprequest;
 
 	//EVENT("maprequest(%lu)", e->window);
 
-	/* window is remapped */
-	if (desktop_locate_window(selws->seldt, e->window, &c) == 0) {
+	/* window is being remapped */
+	if (session_locate_window(session, &c, e->window) == 0) {
 		XMapWindow(kwm.dpy, c->win);
 		return;
 	}
@@ -523,17 +476,17 @@ handle_maprequest(XEvent *xe)
 		return;
 
 	/* fix floating dimensions */
+	d = focus->selmon->seldt;
+	desktop_attach_client(d, c);
 	if (c->floating)
 		client_moveresize(c, MAX(c->floatx, 0),
-				     MAX(c->floaty, 0),
-				     MIN(c->floatw, selws->seldt->w),
-				     MIN(c->floath, selws->seldt->h));
-
-	desktop_attach_client(selws->seldt, c);
-	desktop_arrange(selws->seldt);
+		                     MAX(c->floaty, 0),
+		                     MIN(c->floatw, d->monitor->w),
+		                     MIN(c->floath, d->monitor->h));
+	desktop_arrange(d);
 	XMapWindow(kwm.dpy, c->win);
 	client_grab_buttons(c, LENGTH(buttons), buttons);
-	desktop_update_focus(selws->seldt);
+	desktop_focus_client(d, c);
 }
 
 static void
@@ -544,11 +497,11 @@ handle_propertynotify(XEvent *xe)
 
 	//EVENT("propertynotify(%lu)", e->window);
 
-	if (desktop_locate_window(selws->seldt, e->window, &c) < 0)
+	if (session_locate_window(session, &c, e->window) < 0)
 		return;
 
 	if (e->state == PropertyDelete) {
-		/* dwm ignores this */
+		/* FIXME dwm ignores this */
 		NOTICE("property_delete");
 		return;
 	}
@@ -557,14 +510,14 @@ handle_propertynotify(XEvent *xe)
 	case XA_WM_TRANSIENT_FOR:
 		DEBUG("transient property changed for window %lu", c->win);
 		client_query_transient(c);
-		desktop_arrange(selws->seldt);
+		desktop_arrange(c->desktop);
 		break;
 	case XA_WM_NORMAL_HINTS:
 		//DEBUG("size hints changed for window %lu", c->win);
 		client_query_sizehints(c);
 		break;
 	case XA_WM_HINTS:
-		WARN("urgent hint changed for window %lu", c->win);
+		WARN("urgent hint not implemented (window %lu)", c->win);
 		/* TODO implement urgent hint handling */
 		break;
 	}
@@ -573,7 +526,7 @@ handle_propertynotify(XEvent *xe)
 	if (e->atom == netatoms[_NET_WM_WINDOW_TYPE]) {
 		client_query_fullscreen(c);
 		client_query_dialog(c);
-		desktop_arrange(selws->seldt);
+		desktop_arrange(c->desktop);
 	}
 }
 
@@ -610,19 +563,19 @@ init(void)
 	/* connect to X */
 	kwm.dpy = XOpenDisplay(NULL);
 	if (kwm.dpy == NULL)
-		DIE("could not open X");
+		FATAL("could not open X");
 
 	/* errors, zombies, locale */
 	xerrorxlib = XSetErrorHandler(handle_xerror);
 	sigchld(0);
 	if (setlocale(LC_ALL, "") == NULL)
-		DIE("could not set locale");
+		FATAL("could not set locale");
 	if (!XSupportsLocale())
-		DIE("X does not support locale");
+		FATAL("X does not support locale");
 
-	/* kwm.root window, graphic context, atoms */
-	screen = DefaultScreen(kwm.dpy);
-	kwm.root = RootWindow(kwm.dpy, screen);
+	/* X screen, root window, atoms */
+	kwm.screen = DefaultScreen(kwm.dpy);
+	kwm.root = RootWindow(kwm.dpy, kwm.screen);
 	init_atoms();
 
 	/* events */
@@ -632,15 +585,12 @@ init(void)
 	XChangeWindowAttributes(kwm.dpy, kwm.root, CWEventMask, &wa);
 
 	/* input (mouse, keyboard) */
-	cursor[CurNormal] = XCreateFontCursor(kwm.dpy, XC_left_ptr);
-	cursor[CurResize] = XCreateFontCursor(kwm.dpy, XC_sizing);
-	cursor[CurMove] = XCreateFontCursor(kwm.dpy, XC_fleur);
-	wa.cursor = cursor[CurNormal];
-	XChangeWindowAttributes(kwm.dpy, kwm.root, CWCursor, &wa);
+	cursor = cursor_new();
 	grabkeys();
 
-	/* session */
-	setupsession();
+	/* session, focus */
+	session = session_new();
+	focus = focus_new(session);
 }
 
 static void
@@ -661,7 +611,7 @@ init_atoms(void)
 }
 
 static void
-mousemove(struct client *c, int mx, int my,
+mouse_move(struct client *c, int mx, int my,
           int cx, int cy, int unsigned cw, int unsigned ch)
 {
 	XEvent ev;
@@ -670,6 +620,8 @@ mousemove(struct client *c, int mx, int my,
 	(void) cw;
 	(void) ch;
 
+	if (cursor_set_type(cursor, CURSOR_MOVE) < 0)
+		WARN("could not change cursor appearance");
 	do {
 		XMaskEvent(kwm.dpy, evmask, &ev);
 		switch (ev.type) {
@@ -693,10 +645,44 @@ mousemove(struct client *c, int mx, int my,
 			WARN("unhandled event %d", ev.type);
 		}
 	} while (ev.type != ButtonRelease);
+	if (cursor_set_type(cursor, CURSOR_NORMAL) < 0)
+		WARN("could not reset cursor appearance");
+	focus_associate_client(focus, c);
 }
 
 static void
-mouseresize(struct client *c, int mx, int my,
+mouse_moveresize(struct client *c, void (*mh)(struct client *c, int, int,
+                 int, int, int unsigned, int unsigned))
+{
+	int mx, my;
+
+	if (c == NULL || c->state != STATE_NORMAL)
+		return;
+
+	if (cursor_get_pos(cursor, &mx, &my) < 0) {
+		WARN("could not get cursor position");
+		return;
+	}
+	focus_monitor_by_mouse(focus, mx, my);
+
+	/* fix client position */
+	if (c->floatx + (int signed) c->floatw < mx)
+		c->floatx = mx - (int signed) c->floatw + 1;
+	if (c->floatx > mx)
+		c->floatx = mx;
+	if (c->floaty + (int signed) c->floath < my)
+		c->floaty = my - (int signed) c->floath + 1;
+	if (c->floaty > my)
+		c->floaty = my;
+	desktop_float_client(focus->selmon->seldt, c, true);
+	desktop_arrange(focus->selmon->seldt);
+
+	/* handle events */
+	mh(c, mx, my, c->floatx, c->floaty, c->floatw, c->floath);
+}
+
+static void
+mouse_resize(struct client *c, int mx, int my,
             int cx, int cy, int unsigned cw, int unsigned ch)
 {
 	XEvent ev;
@@ -704,12 +690,22 @@ mouseresize(struct client *c, int mx, int my,
 	int dx, dy;
 	bool left, right, top, bottom;
 
-	/* determine area */
-	left = mx - cx < (int signed) cw / 3;
-	right = mx - cx > 2 * (int signed) cw / 3;
+	/* determine area, set cursor appearance */
 	top = my - cy < (int signed) ch / 3;
 	bottom = my - cy > 2 * (int signed) ch / 3;
-
+	left = mx - cx < (int signed) cw / 3;
+	right = mx - cx > 2 * (int signed) cw / 3;
+	if (!top && !bottom && !left && !right)
+		return;
+	cursor_set_type(cursor, top && left     ? CURSOR_RESIZE_TOP_LEFT     :
+	                        top && right    ? CURSOR_RESIZE_TOP_RIGHT    :
+	                        bottom && left  ? CURSOR_RESIZE_BOTTOM_LEFT  :
+	                        bottom && right ? CURSOR_RESIZE_BOTTOM_RIGHT :
+	                        left            ? CURSOR_RESIZE_LEFT         :
+	                        right           ? CURSOR_RESIZE_RIGHT        :
+	                        top             ? CURSOR_RESIZE_TOP          :
+	                        bottom          ? CURSOR_RESIZE_BOTTOM       :
+	                        /* ignore */      CURSOR_NORMAL);
 	do {
 		XMaskEvent(kwm.dpy, evmask, &ev);
 		switch (ev.type) {
@@ -721,10 +717,15 @@ mouseresize(struct client *c, int mx, int my,
 			handle[ev.type](&ev);
 			break;
 		case MotionNotify:
+			/* FIXME prevent resizing to negative dimensions */
 			dx = ev.xmotion.x - mx;
-			dx = dx / (int signed) c->incw * (int signed) c->incw;
+			if (c->incw > 0)
+				dx = dx / (int signed) c->incw
+				        * (int signed) c->incw;
 			dy = ev.xmotion.y - my;
-			dy = dy / (int signed) c->inch * (int signed) c->inch;
+			if (c->inch > 0)
+				dy = dy / (int signed) c->inch
+				        * (int signed) c->inch;
 			if (left) {
 				cx += dx;
 				cw = (int unsigned) ((int signed) cw - dx);
@@ -745,6 +746,9 @@ mouseresize(struct client *c, int mx, int my,
 			WARN("unhandled event %d", ev.type);
 		}
 	} while (ev.type != ButtonRelease);
+	if (cursor_set_type(cursor, CURSOR_NORMAL) < 0)
+		WARN("could not reset cursor appearance");
+	focus_associate_client(focus, c);
 }
 
 static void
@@ -762,44 +766,12 @@ run(void)
 }
 
 static void
-setupsession(void)
-{
-	int unsigned i, nwins;
-	Window p, r, *wins = NULL;
-	struct client *c;
-
-	/* TODO define policy for new monitors/workspaces/desktops */
-	selws = workspace_new("dada");
-
-	/* scan existing windows */
-	if (!XQueryTree(kwm.dpy, kwm.root, &r, &p, &wins, &nwins)) {
-		WARN("XQueryTree() failed");
-		return;
-	}
-
-	/* create clients if they do not already exist */
-	for (i = 0; i < nwins; i++) {
-		c = client_new(wins[i]);
-		if (c != NULL) {
-			NOTICE("detected existing window %lu", c->win);
-			desktop_attach_client(selws->seldt, c);
-		}
-	}
-	workspace_update_focus(selws);
-
-	/* setup monitors (TODO separate function) */
-	desktop_update_geometry(selws->seldt, 0, 0,
-	                        (int unsigned) DisplayWidth(kwm.dpy, screen),
-	                        (int unsigned) DisplayHeight(kwm.dpy, screen));
-}
-
-static void
 sigchld(int s)
 {
 	(void) s;
 
 	if (signal(SIGCHLD, sigchld) == SIG_ERR)
-		DIE("could not install SIGCHLD handler");
+		FATAL("could not install SIGCHLD handler");
 	/* pid -1 makes it equivalent to wait() (wait for all children);
 	 * here we just add WNOHANG */
 	while (0 < waitpid(-1, NULL, WNOHANG));
@@ -808,17 +780,15 @@ sigchld(int s)
 static void
 term(void)
 {
-	struct desktop *dt;
+	char sid[BUFSIZ];
 
-	dt = selws->seldt;
-	workspace_detach_desktop(selws, dt);
-	workspace_delete(selws);
-	desktop_delete(dt);
+	focus_delete(focus);
+	if (restarting)
+		session_save(session, sid, sizeof(sid));
+	session_delete(session);
+	cursor_delete(cursor);
 
 	XUngrabKey(kwm.dpy, AnyKey, AnyModifier, kwm.root);
-	XFreeCursor(kwm.dpy, cursor[CurNormal]);
-	XFreeCursor(kwm.dpy, cursor[CurResize]);
-	XFreeCursor(kwm.dpy, cursor[CurMove]);
 	XSetInputFocus(kwm.dpy, PointerRoot, RevertToPointerRoot, CurrentTime);
 	XCloseDisplay(kwm.dpy);
 }

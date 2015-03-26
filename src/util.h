@@ -1,10 +1,8 @@
 #ifndef _UTIL_H
 #define _UTIL_H
 
-#include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <stdbool.h>
 
 #define DEBUG(...)   print(stdout,LOG_DEBUG,  __FILE__,__LINE__,__VA_ARGS__)
 #define EVENT(...)   print(stderr,LOG_EVENT,  __FILE__,__LINE__,__VA_ARGS__)
@@ -13,8 +11,8 @@
 #define NOTICE(...)  print(stdout,LOG_NOTICE, __FILE__,__LINE__,__VA_ARGS__)
 #define WARN(...)    print(stderr,LOG_WARN,   __FILE__,__LINE__,__VA_ARGS__)
 #define ERROR(...)   print(stderr,LOG_ERROR,  __FILE__,__LINE__,__VA_ARGS__)
-#define DIE(...)    {print(stderr,LOG_FATAL,  __FILE__,__LINE__,__VA_ARGS__); \
-                     exit(EXIT_FAILURE);}
+#define FATAL(...) { print(stderr,LOG_FATAL,  __FILE__,__LINE__,__VA_ARGS__); \
+                     exit(EXIT_FAILURE); }
 
 /* enumerations */
 enum log_level { LOG_FATAL, LOG_ERROR, LOG_WARN, LOG_NOTICE, LOG_NORMAL,

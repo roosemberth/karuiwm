@@ -9,19 +9,19 @@
 enum client_state { STATE_NORMAL, STATE_FULLSCREEN, STATE_SCRATCHPAD };
 
 struct client {
-	struct client *next, *prev;
+	struct client *prev, *next;
+	struct desktop *desktop;
 	int x, y, floatx, floaty;
 	int unsigned w, h, floatw, floath, border;
 	char name[BUFSIZ];
 	Window win;
-	bool floating, dialog;
+	bool floating, dialog, visible;
 	enum client_state state;
 	int unsigned basew, baseh, incw, inch, maxw, maxh, minw, minh;
 };
 
 void client_delete(struct client *);
 void client_grab_buttons(struct client *c, size_t nb, struct button *buttons);
-void client_hide(struct client *c);
 void client_kill(struct client *c);
 void client_move(struct client *c, int x, int y);
 void client_moveresize(struct client *c, int x, int y,
@@ -41,6 +41,6 @@ void client_set_dialog(struct client *c, bool dialog);
 void client_set_floating(struct client *c, bool floating);
 void client_set_focus(struct client *c, bool focus);
 void client_set_fullscreen(struct client *c, bool fullscreen);
-void client_show(struct client *c);
+void client_set_visibility(struct client *c, bool visible);
 
 #endif /* _CLIENT_H */

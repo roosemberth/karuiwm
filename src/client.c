@@ -10,18 +10,46 @@
 
 static int check_sizehints(struct client *c, int unsigned *w, int unsigned *h);
 static int get_name(char *buf, Window win);
-static void set_visibility(struct client *c, bool visible);
 
-/* Properly delete a client all its contained elements.
- */
+static int
+check_sizehints(struct client *c, int unsigned *w, int unsigned *h)
+{
+	int unsigned u; /* unit size */
+	bool change = false;
+
+	/* don't respect size hints for untiled or fullscreen windows */
+	if (!c->floating || c->state == STATE_FULLSCREEN)
+		return *w == c->w && *h == c->h ? 0 : -1;
+
+	if (*w != c->w) {
+		if (c->basew > 0 && c->incw > 0) {
+			u = (*w - c->basew)/c->incw;
+			*w = c->basew + u*c->incw;
+		}
+		*w = MAX(*w, MAX(c->minw, 1));
+		if (c->maxw > 0)
+			*w = MIN(*w, c->maxw);
+		change |= *w != c->w;
+	}
+	if (*h != c->h) {
+		if (c->baseh > 0 && c->inch > 0) {
+			u = (*h - c->baseh)/c->inch;
+			*h = c->baseh + u*c->inch;
+		}
+		*h = MAX(*h, MAX(c->minh, 1));
+		if (c->maxh > 0)
+			*h = MIN(*h, c->maxh);
+		change |= *h != c->h;
+	}
+	return change ? -1 : 0;
+}
+
 void
 client_delete(struct client *c)
 {
 	sfree(c);
 }
 
-/* Make the client trigger button-click events for given buttons.
- */
 void
 client_grab_buttons(struct client *c, size_t nb, struct button *buttons)
 {
@@ -34,17 +62,6 @@ client_grab_buttons(struct client *c, size_t nb, struct button *buttons)
 		            GrabModeAsync, None, None);
 }
 
-/* Hide a client.
- */
-void
-client_hide(struct client *c)
-{
-	XUnmapWindow(kwm.dpy, c->win);
-	set_visibility(c, false);
-}
-
-/* Close a client's window.
- */
 void
 client_kill(struct client *c)
 {
@@ -61,8 +78,6 @@ client_kill(struct client *c)
 	}
 }
 
-/* Move a client to a given position.
- */
 void
 client_move(struct client *c, int x, int y)
 {
@@ -85,8 +100,6 @@ client_moveresize(struct client *c, int x, int y,
 	client_resize(c, w, h);
 }
 
-/* Create and initialise a new client.
- */
 struct client *
 client_new(Window win)
 {
@@ -141,8 +154,6 @@ client_query_atom(struct client *c, Atom property)
 	return atom;
 }
 
-/* Check and update if a client is a dialog box.
- */
 void
 client_query_dialog(struct client *c)
 {
@@ -152,8 +163,6 @@ client_query_dialog(struct client *c)
 	client_set_dialog(c, type == netatoms[_NET_WM_WINDOW_TYPE_DIALOG]);
 }
 
-/* Check and update client-requested dimension information.
- */
 void
 client_query_dimension(struct client *c)
 {
@@ -173,8 +182,6 @@ client_query_dimension(struct client *c)
 	}
 }
 
-/* Check and update if a client is fullscreen.
- */
 void
 client_query_fullscreen(struct client *c)
 {
@@ -184,8 +191,6 @@ client_query_fullscreen(struct client *c)
 	client_set_fullscreen(c, state == netatoms[_NET_WM_STATE_FULLSCREEN]);
 }
 
-/* Update a client's name.
- */
 void
 client_query_name(struct client *c)
 {
@@ -194,8 +199,6 @@ client_query_name(struct client *c)
 	c->name[BUFSIZ-1] = '\0';
 }
 
-/* Check and update client-requested size hints.
- */
 void
 client_query_sizehints(struct client *c)
 {
@@ -246,8 +249,6 @@ client_query_sizehints(struct client *c)
 	}
 }
 
-/* Check and update if the client is a transient for another client.
- */
 void
 client_query_transient(struct client *c)
 {
@@ -258,14 +259,11 @@ client_query_transient(struct client *c)
 	DEBUG("window %lu is transient", c->win);
 }
 
-/* Change the size of a client.
- */
 void
 client_resize(struct client *c, int unsigned w, int unsigned h)
 {
 	if (check_sizehints(c, &w, &h) == 0)
 		return;
-
 	c->w = w;
 	c->h = h;
 	if (c->floating && c->state == STATE_NORMAL) {
@@ -275,8 +273,6 @@ client_resize(struct client *c, int unsigned w, int unsigned h)
 	XResizeWindow(kwm.dpy, c->win, c->w, c->h);
 }
 
-/* Send an Atom to the client.
- */
 int
 client_send_atom(struct client *c, size_t natoms, ...)
 {
@@ -315,8 +311,6 @@ client_send_atom(struct client *c, size_t natoms, ...)
 	return retval;
 }
 
-/* Set the thickness of a client's border.
- */
 void
 client_set_border(struct client *c, int unsigned border)
 {
@@ -324,8 +318,6 @@ client_set_border(struct client *c, int unsigned border)
 	XSetWindowBorderWidth(kwm.dpy, c->win, border);
 }
 
-/* Set the dialog mode of a client.
- */
 void
 client_set_dialog(struct client *c, bool dialog)
 {
@@ -334,16 +326,12 @@ client_set_dialog(struct client *c, bool dialog)
 		client_set_floating(c, dialog);
 }
 
-/* Set the floating mode of a client.
- */
 void
 client_set_floating(struct client *c, bool floating)
 {
 	c->floating = floating;
 }
 
-/* Set/unset the X input focus on a client.
- */
 void
 client_set_focus(struct client *c, bool focus)
 {
@@ -353,8 +341,6 @@ client_set_focus(struct client *c, bool focus)
 		               CurrentTime);
 }
 
-/* Set the fullscreen mode of a client.
- */
 void
 client_set_fullscreen(struct client *c, bool fullscreen)
 {
@@ -362,55 +348,22 @@ client_set_fullscreen(struct client *c, bool fullscreen)
 	client_set_border(c, fullscreen ? 0 : BORDERWIDTH);
 }
 
-/* Show a client.
- */
 void
-client_show(struct client *c)
+client_set_visibility(struct client *c, bool visible)
 {
-	XMapWindow(kwm.dpy, c->win);
-	set_visibility(c, true);
+	Atom action;
+
+	c->visible = visible;
+	if (c->visible)
+		XMapWindow(kwm.dpy, c->win);
+	else
+		XUnmapWindow(kwm.dpy, c->win);
+
+	action = visible ? _NET_WM_STATE_ADD : _NET_WM_STATE_REMOVE;
+	client_send_atom(c, 3, netatoms[_NET_WM_STATE], action,
+	                 netatoms[_NET_WM_STATE_HIDDEN]);
 }
 
-/* Check and enforce client-requested size hints on a server-requested client
- * resize.
- */
-static int
-check_sizehints(struct client *c, int unsigned *w, int unsigned *h)
-{
-	int unsigned u; /* unit size */
-	bool change = false;
-
-	/* don't respect size hints for untiled or fullscreen windows */
-	if (!c->floating || c->state == STATE_FULLSCREEN)
-		return *w == c->w && *h == c->h ? 0 : -1;
-
-	if (*w != c->w) {
-		if (c->basew > 0 && c->incw > 0) {
-			u = (*w - c->basew)/c->incw;
-			*w = c->basew + u*c->incw;
-		}
-		if (c->minw > 0)
-			*w = MAX(*w, c->minw);
-		if (c->maxw > 0)
-			*w = MIN(*w, c->maxw);
-		change |= *w != c->w;
-	}
-	if (*h != c->h) {
-		if (c->baseh > 0 && c->inch > 0) {
-			u = (*h - c->baseh)/c->inch;
-			*h = c->baseh + u*c->inch;
-		}
-		if (c->minh > 0)
-			*h = MAX(*h, c->minh);
-		if (c->maxh > 0)
-			*h = MIN(*h, c->maxh);
-		change |= *h != c->h;
-	}
-	return change ? -1 : 0;
-}
-
-/* Get a client's window's name.
- */
 static int
 get_name(char *buf, Window win)
 {
@@ -435,16 +388,4 @@ get_name(char *buf, Window win)
  get_name_out:
 	XFree(xtp.value);
 	return fret;
-}
-
-/* Set client visibility.
- */
-static void
-set_visibility(struct client *c, bool visible)
-{
-	Atom action;
-
-	action = visible ? _NET_WM_STATE_ADD : _NET_WM_STATE_REMOVE;
-	client_send_atom(c, 3, netatoms[_NET_WM_STATE], action,
-	                 netatoms[_NET_WM_STATE_HIDDEN]);
 }

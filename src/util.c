@@ -42,8 +42,8 @@ print(FILE *f, enum log_level level, char const *filename, int unsigned line,
 	/* log level */
 	switch (level) {
 	case LOG_FATAL : col = ESC_BOLD ESC_RED    "FATAL" ESC_RESET " "; break;
-	case LOG_ERROR : col = ESC_BOLD ESC_RED    "ERROR" ESC_RESET " "; break;
-	case LOG_WARN  : col = ESC_BOLD ESC_YELLOW "WARN"  ESC_RESET " "; break;
+	case LOG_ERROR : col =          ESC_RED    "ERROR" ESC_RESET " "; break;
+	case LOG_WARN  : col =          ESC_YELLOW "WARN"  ESC_RESET " "; break;
 	case LOG_NOTICE: col =          ESC_CYAN   "NOTICE"ESC_RESET " "; break;
 	case LOG_EVENT : col =          ESC_MAGENTA"EVENT" ESC_RESET " "; break;
 	case LOG_DEBUG : col =          ESC_BLUE   "DEBUG" ESC_RESET " "; break;
@@ -75,8 +75,8 @@ scalloc(size_t nmemb, size_t size, char const *context)
 {
 	void *ptr = calloc(nmemb, size);
 	if (ptr == NULL && nmemb > 0)
-		DIE("could not allocate %zu bytes for %s", nmemb * size,
-		    context);
+		FATAL("could not allocate %zu bytes for %s", nmemb * size,
+		      context);
 	return ptr;
 }
 
@@ -85,7 +85,7 @@ smalloc(size_t size, char const *context)
 {
 	void *ptr = malloc(size);
 	if (ptr == NULL)
-		DIE("could not allocate %zu bytes for %s", size, context);
+		FATAL("could not allocate %zu bytes for %s", size, context);
 	return ptr;
 }
 
@@ -98,7 +98,7 @@ srealloc(void *ptr, size_t size, char const *context)
 	}
 	ptr = realloc(ptr, size);
 	if (ptr == NULL)
-		DIE("could not allocate %zu bytes for %s", size, context);
+		FATAL("could not allocate %zu bytes for %s", size, context);
 	return ptr;
 }
 

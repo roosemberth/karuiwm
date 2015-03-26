@@ -7,17 +7,17 @@
 /* macros */
 #define BORDERWIDTH 1          /* window border width */
 #define CBORDERNORM 0x222222   /* normal windows */
-#define CBORDERSEL  0xAFD700   /* selected windows */
+#define CBORDERSEL  0x00FF00   /* selected windows */
 
 #define CLIENTMASK (EnterWindowMask | PropertyChangeMask | StructureNotifyMask)
 #define BUTTONMASK (ButtonPressMask | ButtonReleaseMask)
+#define MOUSEMASK (BUTTONMASK | PointerMotionMask)
 #define MODKEY Mod1Mask
 
 #define APPNAME "karuiwm"
 #define LENGTH(ARR) (sizeof(ARR)/sizeof(ARR[0]))
 #define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
-#define INIT_ATOM(D, L, A) L[A] = XInternAtom(D, #A, false)
 
 /* atoms */
 #define _NET_WM_STATE_REMOVE 0
@@ -55,7 +55,7 @@ union argument {
 struct button {
 	int unsigned mod;
 	int unsigned button;
-	void (*func)(union argument *);
+	void (*func)(union argument *, Window win);
 	union argument arg;
 };
 
@@ -71,7 +71,7 @@ Atom atoms[ATOM_LAST], netatoms[NETATOM_LAST];
 struct {
 	Display *dpy;
 	Window root;
+	int screen;
 } kwm;
-int screen;
 
 #endif /* _KARUIWM_H */

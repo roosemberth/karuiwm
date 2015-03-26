@@ -1,15 +1,13 @@
 #include "desktop.h"
 #include "util.h"
+#include "list.h"
 #include "layout.h"
 
-inline static struct client *get_head(struct desktop *d, struct client *c);
-inline static struct client *get_last(struct desktop *d, struct client *c);
-inline static struct client *get_neighbour(struct client *c, int dir);
+static struct client *get_head(struct desktop *d, struct client *c);
+static struct client *get_last(struct desktop *d, struct client *c);
+static struct client *get_neighbour(struct client *c, int dir);
 static void swap(struct client **list, struct client *c1, struct client *c2);
 
-/* Propagate the client arrangement to the X server by applying the selected
- * layout and enforcing the window stack.
- */
 void
 desktop_arrange(struct desktop *d)
 {
@@ -38,9 +36,10 @@ desktop_arrange(struct desktop *d)
 	}
 	if (d->nt > 0) {
 		/* TODO modular layout management */
+		/* FIXME strut (left, right, bottom, top) != 0 break this */
 		rstack(d->tiled, d->nt, MIN(d->nmaster, d->nt), d->mfact,
-		       d->x, d->y, d->w, d->h);
-		/* TODO focused window on top */
+		       d->monitor->x, d->monitor->y, d->monitor->w, d->monitor->h);
+		/* TODO focused window on top (for monocle/tabbed) */
 		for (i = 0, c = d->tiled; i < d->nt; ++i, c = c->next)
 			if (c->state != STATE_FULLSCREEN)
 				stack[is++] = c->win;
@@ -49,77 +48,33 @@ desktop_arrange(struct desktop *d)
 	desktop_set_clientmask(d, CLIENTMASK);
 }
 
-/* Attach a client to a desktop.
- */
 void
 desktop_attach_client(struct desktop *d, struct client *c)
 {
-	struct client **head;
-	size_t *nc;
-
-	/* determine lists */
 	if (c->floating) {
-		nc = &d->nf;
-		head = &d->floating;
+		LIST_PREPEND(&d->floating, c);
+		++d->nf;
 	} else {
-		nc = &d->nt;
-		head = &d->tiled;
+		LIST_APPEND(&d->tiled, c);
+		++d->nt;
 	}
-
-	/* other elements? */
-	if (*nc == 0) {
-		c->next = c->prev = c;
-	} else {
-		c->next = (*head);
-		c->prev = (*head)->prev;
-		(*head)->prev->next = c;
-		(*head)->prev = c;
-	}
-
-	/* new head? */
-	if (*nc == 0 || c->floating)
-		*head = c;
-
-	/* update */
-	++(*nc);
 	d->selcli = c;
+	c->desktop = d;
 }
 
-/* Determine if a client is on a given desktop, and locate the client's position
- * in the desktop's client list.
- */
-bool
-desktop_contains_client(struct desktop *d, struct client *c)
-{
-	struct client *it;
-	int unsigned i;
-
-	if (c == NULL)
-		return false;
-	for (i = 0, it = d->tiled; i < d->nt; ++i, it = it->next)
-		if (it == c)
-			return true;
-	for (i = 0, it = d->floating; i < d->nf; ++i, it = it->next)
-		if (it == c)
-			return true;
-	return false;
-}
-
-/* Properly delete a desktop and all its contained elements.
- */
 void
 desktop_delete(struct desktop *d)
 {
 	struct client *c;
 
-	if (d->tiled != NULL || d->floating != NULL) {
+	if (d->nt + d->nf > 0) {
 		WARN("deleting desktop that still contains clients");
-		while (d->tiled != NULL) {
+		while (d->nt > 0) {
 			c = d->tiled;
 			desktop_detach_client(d, c);
 			client_delete(c);
 		}
-		while (d->floating != NULL) {
+		while (d->nf > 0) {
 			c = d->floating;
 			desktop_detach_client(d, c);
 			client_delete(c);
@@ -128,68 +83,45 @@ desktop_delete(struct desktop *d)
 	free(d);
 }
 
-/* Detach a client from a desktop.
- */
 void
 desktop_detach_client(struct desktop *d, struct client *c)
 {
-	struct client **head, *other;
-	size_t *nc;
+	struct client *next = d->selcli;
 
-	/* determine lists */
+	if (next == c) {
+		if (next->next != c) {
+			next = c->next;
+		} else {
+			next = c->floating ? d->tiled : d->floating;
+		}
+	}
 	if (c->floating) {
-		nc = &d->nf;
-		head = &d->floating;
-		other = d->tiled;
+		LIST_REMOVE(&d->floating, c);
+		--d->nf;
 	} else {
-		nc = &d->nt;
-		head = &d->tiled;
-		other = d->floating;
+		LIST_REMOVE(&d->tiled, c);
+		--d->nt;
 	}
-
-	if (*nc == 0) {
-		WARN("attempt to remove client from empty desktop");
-		return;
-	}
-	if (c == NULL) {
-		WARN("attempt to remote NULL client from desktop");
-		return;
-	}
-
-	/* selected? */
-	if (c == d->selcli) {
-		/* other elements? */
-		if (c->next != c)
-			d->selcli = c->next;
-		else
-			d->selcli = other;
-	}
-
-	/* head? */
-	if (c == *head)
-		*head = c->next != c ? c->next : NULL;
-
-	/* update */
-	c->next->prev = c->prev;
-	c->prev->next = c->next;
-	c->prev = c->next = NULL;
-	--(*nc);
+	d->selcli = next;
 }
 
-/* Set the floating mode of a client in the context of a desktop.
- */
 void
 desktop_float_client(struct desktop *d, struct client *c, bool floating)
 {
-	if (c->state == STATE_FULLSCREEN)
+	if (c == NULL || c->state != STATE_NORMAL)
 		return;
 	desktop_detach_client(d, c);
 	client_set_floating(c, floating);
 	desktop_attach_client(d, c);
 }
 
-/* Set the fullscreen mode of a client in the context of a desktop.
- */
+void
+desktop_focus_client(struct desktop *d, struct client *c)
+{
+	d->selcli = c;
+	desktop_update_focus(d);
+}
+
 void
 desktop_fullscreen_client(struct desktop *d, struct client *c, bool fullscreen)
 {
@@ -199,28 +131,21 @@ desktop_fullscreen_client(struct desktop *d, struct client *c, bool fullscreen)
 }
 
 void
-desktop_hide(struct desktop *d)
+desktop_kill_client(struct desktop *d)
 {
-	int unsigned i;
-	struct client *c;
-
-	desktop_set_clientmask(d, 0);
-	for (i = 0, c = d->floating; i < d->nf; ++i, c = c->next)
-		client_hide(c);
-	for (i = 0, c = d->tiled; i < d->nt; ++i, c = c->next)
-		client_hide(c);
-	desktop_set_clientmask(d, CLIENTMASK);
+	if (d->selcli == NULL)
+		return;
+	client_kill(d->selcli);
 }
 
-/* Determine if a window is contained in a given desktop, and locate both the
- * corresponding client and the client's position in the desktop's client list.
- */
 int
-desktop_locate_window(struct desktop *d, Window win, struct client **c)
+desktop_locate_window(struct desktop *d, struct client **c, Window win)
 {
 	struct client *it;
 	int unsigned i;
 
+	if (d == NULL)
+		return -1;
 	for (i = 0, it = d->tiled; i < d->nt; ++i, it = it->next) {
 		if (it->win == win) {
 			*c = it;
@@ -236,10 +161,8 @@ desktop_locate_window(struct desktop *d, Window win, struct client **c)
 	return -1;
 }
 
-/* Create and initialise a new desktop.
- */
 struct desktop *
-desktop_new(int posx, int posy)
+desktop_new(void)
 {
 	struct desktop *d = NULL;
 
@@ -250,46 +173,45 @@ desktop_new(int posx, int posy)
 	d->nt = d->nf = 0;
 	d->tiled = d->floating = NULL;
 	d->selcli = NULL;
-	d->posx = posx;
-	d->posy = posy;
+	d->focus = false;
+	d->workspace = NULL;
+	d->monitor = NULL;
 	return d;
 }
 
-/* Apply an event mask on all clients on a desktop.
- * TODO move XSelectInput to client
- */
 void
 desktop_set_clientmask(struct desktop *d, long mask)
 {
 	struct client *it;
 	int unsigned i;
 
+	/* TODO move XSelectInput to client */
 	for (i = 0, it = d->tiled; i < d->nt; ++i, it = it->next)
 		XSelectInput(kwm.dpy, it->win, mask);
 	for (i = 0, it = d->floating; i < d->nf; ++i, it = it->next)
 		XSelectInput(kwm.dpy, it->win, mask);
-	XSync(kwm.dpy, screen);
+	XSync(kwm.dpy, kwm.screen);
 }
 
-/* Set the factor of space the master area takes on a desktop (between 0.0 and
- * 1.0).
- */
+void
+desktop_set_focus(struct desktop *d, bool focus)
+{
+	d->focus = focus;
+	desktop_update_focus(d);
+}
+
 void
 desktop_set_mfact(struct desktop *d, float mfact)
 {
 	d->mfact = MAX(0.1f, MIN(0.9f, mfact));
 }
 
-/* Set the number of clients in the master area of the desktop.
- */
 void
 desktop_set_nmaster(struct desktop *d, size_t nmaster)
 {
 	d->nmaster = nmaster;
 }
 
-/* Move client up/down on the stack/in the layout.
- */
 void
 desktop_shift_client(struct desktop *d, int dir)
 {
@@ -303,68 +225,49 @@ desktop_shift_client(struct desktop *d, int dir)
 }
 
 void
-desktop_show(struct desktop *d)
+desktop_show(struct desktop *d, struct monitor *m)
 {
 	int unsigned i;
 	struct client *c;
+	bool visible = m != NULL;
+	d->monitor = m;
 
 	desktop_set_clientmask(d, 0);
-	for (i = 0, c = d->floating; i < d->nf; ++i, c = c->next)
-		client_show(c);
 	for (i = 0, c = d->tiled; i < d->nt; ++i, c = c->next)
-		client_show(c);
-	desktop_arrange(d);
-	desktop_update_focus(d);
+		client_set_visibility(c, visible);
+	for (i = 0, c = d->floating; i < d->nf; ++i, c = c->next)
+		client_set_visibility(c, visible);
 	desktop_set_clientmask(d, CLIENTMASK);
+	if (visible)
+		desktop_arrange(d);
 }
 
-/* Move focus to next/previous client.
- */
 void
-desktop_step_focus(struct desktop *d, int dir)
+desktop_step_client(struct desktop *d, int dir)
 {
 	if (d->selcli == NULL || d->selcli->state == STATE_FULLSCREEN)
 		return;
 
-	d->selcli = get_neighbour(d->selcli, dir);
-	desktop_update_focus(d);
+	desktop_focus_client(d, get_neighbour(d->selcli, dir));
 }
 
-/* Set the X input focus to the currently selected client on a desktop.
- * TODO abstract root window as a client
- */
 void
 desktop_update_focus(struct desktop *d)
 {
-	struct client *c;
 	int unsigned i;
+	struct client *c;
 
-	if (d->tiled == NULL && d->floating == NULL) {
+	if (d->nt + d->nf == 0) {
 		XSetInputFocus(kwm.dpy, kwm.root, RevertToPointerRoot,
 		               CurrentTime);
 		return;
 	}
 	for (i = 0, c = d->tiled; i < d->nt; ++i, c = c->next)
-		client_set_focus(c, c == d->selcli);
+		client_set_focus(c, d->focus && c == d->selcli);
 	for (i = 0, c = d->floating; i < d->nf; ++i, c = c->next)
-		client_set_focus(c, c == d->selcli);
+		client_set_focus(c, d->focus && c == d->selcli);
 }
 
-/* Update the dimension at which the desktop is to be displayed.
- */
-void
-desktop_update_geometry(struct desktop *d,
-                        int x, int y, int unsigned w, int unsigned h)
-{
-	d->x = x;
-	d->y = y;
-	d->w = w;
-	d->h = h;
-}
-
-/* "Zoom" selected client: if it is not master, swap it with master, otherwise
- * make and focus next below client.
- */
 void
 desktop_zoom(struct desktop *d)
 {
@@ -424,6 +327,7 @@ swap(struct client **head, struct client *c1, struct client *c2)
 
 	if (c1 == c2) {
 		/* same node */
+		goto swap_out;
 	} else if (c1->next == c2 && c2->next == c1) {
 		/* only two nodes in list */
 	} else if (c1->next == c2) {
@@ -437,6 +341,7 @@ swap(struct client **head, struct client *c1, struct client *c2)
 	} else if (c2->next == c1) {
 		/* next to each other (alt.) */
 		swap(head, c2, c1);
+		goto swap_out;
 	} else {
 		/* general case */
 		prev1->next = c2;
@@ -454,4 +359,6 @@ swap(struct client **head, struct client *c1, struct client *c2)
 		*head = c2;
 	else if (*head == c2)
 		*head = c1;
+ swap_out:
+	return;
 }
