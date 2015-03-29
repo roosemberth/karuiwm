@@ -5,8 +5,10 @@
 # include <X11/extensions/Xinerama.h>
 #endif
 
-static struct desktop *get_free_desktop(struct focus *f);
+#ifdef XINERAMA
+static struct desktop *get_free_desktop(struct focus *f); /* FIXME currently only used for Xinerama */
 static void scan_xinerama(struct focus *f);
+#endif
 
 void
 focus_associate_client(struct focus *f, struct client *c)
@@ -122,6 +124,7 @@ focus_step_monitor(struct focus *f, enum direction dir)
 	monitor_focus(f->selmon, true);
 }
 
+#ifdef XINERAMA
 static struct desktop *
 get_free_desktop(struct focus *f)
 {
@@ -149,6 +152,7 @@ get_free_desktop(struct focus *f)
 	}
 	return d;
 }
+#endif
 
 #ifdef XINERAMA
 static void

@@ -8,22 +8,33 @@ PREFIX ?= /usr/local
 APPNAME = karuiwm
 
 # Compilation flags:
-KWM_CFLAGS  = -W -Wall -Wextra -pedantic -g
+KWM_CFLAGS = -std=c99
+KWM_CFLAGS += -W -Wall -Wextra -pedantic
 KWM_CFLAGS += -Wcast-align -Wcast-qual -Wconversion -Wwrite-strings -Wfloat-equal
 KWM_CFLAGS += -Wlogical-op -Wpointer-arith -Wformat=2
 KWM_CFLAGS += -Winit-self -Wuninitialized -Wmaybe-uninitialized
 KWM_CFLAGS += -Wstrict-prototypes -Wmissing-declarations -Wmissing-prototypes
-KWM_CFLAGS += -Wshadow -Werror #-Wpadded
-KWM_CFLAGS += -std=c99 -O2
+KWM_CFLAGS += -Wshadow #-Wpadded
 KWM_CFLAGS += $(shell pkg-config --cflags x11)
-KWM_CFLAGS_XINERAMA = $(shell pkg-config --cflags xinerama)
+
+KWM_CFLAGS_ASAN = -fsanitize=address -fno-omit-frame-pointer
+KWM_CFLAGS_DEBUG = -Werror -g -O1
+KWM_CFLAGS_RELEASE = -O2
+KWM_CFLAGS_XINERAMA = $(shell pkg-config --cflags xinerama) -DXINERAMA
 
 # Libraries:
-KWM_LIBS  = $(shell pkg-config --libs x11)
+KWM_LIBS = $(shell pkg-config --libs x11)
+KWM_LIBS_ASAN =
+KWM_LIBS_DEBUG =
+KWM_LIBS_RELEASE =
 KWM_LIBS_XINERAMA = $(shell pkg-config --libs xinerama)
 
 # Linker flags:
 KWM_LDFLAGS =
+KWM_LDFLAGS_ASAN = -fsanitize=address
+KWM_LDFLAGS_DEBUG =
+KWM_LDFLAGS_RELEASE =
+KWM_LDFLAGS_XINERAMA =
 
 # File names:
 SRCDIR = src
@@ -35,18 +46,44 @@ XINITRC = xinitrc
 
 -include config.mk
 
-# Default: Build application:
-all: KWM_CFLAGS += ${KWM_CFLAGS_XINERAMA} -DXINERAMA
-all: KWM_LIBS += ${KWM_LIBS_XINERAMA}
-all: build
+# Default: Release + Xinerama
+all: release_xinerama
 
-# Alternative: with Address Sanitizer:
-asan: KWM_CFLAGS += -fsanitize=address -fno-omit-frame-pointer
-asan: KWM_LDFLAGS += -fsanitize=address
-asan: all
+# Release:
+release: KWM_CFLAGS += ${KWM_CFLAGS_RELEASE}
+release: KWM_LIBS += ${KWM_LIBS_RELEASE}
+release: KWM_LDFLAGS += ${KWM_LDFLAGS_RELEASE}
+release: build
 
-# Alternative: without Xinerama:
-noxinerama: build
+# Release + Xinerama:
+release_xinerama: KWM_CFLAGS += ${KWM_CFLAGS_XINERAMA}
+release_xinerama: KWM_LIBS += ${KWM_LIBS_XINERAMA}
+release_xinerama: KWM_LDFLAGS += ${KWM_LDFLAGS_XINERAMA}
+release_xinerama: release
+
+# Debug:
+debug: KWM_CFLAGS += ${KWM_CFLAGS_DEBUG}
+debug: KWM_LIBS += ${KWM_LIBS_DEBUG}
+debug: KWM_LDFLAGS += ${KWM_LDFLAGS_DEBUG}
+debug: build
+
+# Debug + Xinerama:
+debug_xinerama: KWM_CFLAGS += ${KWM_CFLAGS_XINERAMA}
+debug_xinerama: KWM_LIBS += ${KWM_LIBS_XINERAMA}
+debug_xinerama: KWM_LDFLAGS += ${KWM_LDFLAGS_XINERAMA}
+debug_xinerama: debug
+
+# Address Sanitizer:
+asan: KWM_CFLAGS += ${KWM_CFLAGS_ASAN}
+asan: KWM_LIBS += ${KWM_LIBS_ASAN}
+asan: KWM_LDFLAGS += ${KWM_LDFLAGS_ASAN}
+asan: debug
+
+# Address Sanitizer + Xinerama:
+asan_xinerama: KWM_CFLAGS += ${KWM_CFLAGS_XINERAMA}
+asan_xinerama: KWM_LIBS += ${KWM_LIBS_XINERAMA}
+asan_xinerama: KWM_LDFLAGS += ${KWM_LDFLAGS_XINERAMA}
+asan_xinerama: asan
 
 # Basic actions:
 build: $(APPNAME)
@@ -77,6 +114,7 @@ $(APPNAME): $(OBJECTS)
 	@printf "linking \033[1m%s\033[0m ...\n" $@
 	$(CC) ${KWM_LDFLAGS} ${OBJECTS} ${KWM_LIBS} -o $@
 
+# karuiwm-specific actions:
 run:
 	startx ${XINITRC} -- :1
 xephyr:
@@ -86,9 +124,6 @@ valphyr:
 
 # Phony targets:
 .PHONY: all
-.PHONY: asan
-.PHONY: clean
-.PHONY: mrproper
-.PHONY: install
-.PHONY: uninstall
-.PHONY: xephyr
+.PHONY: release release_xinerama debug debug_xinerama asan asan_xinerama
+.PHONY: build clean mrproper install uninstall
+.PHONY: run xephyr valphyr
