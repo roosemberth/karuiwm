@@ -93,7 +93,7 @@ monitor_step_desktop(struct monitor *m, enum direction dir)
 	if (dst == NULL) {
 		dst = desktop_new();
 		workspace_attach_desktop(ws, dst);
-		/* FIXME hack */
+		/* TODO desktop position hack */
 		dst->posx = posx;
 		dst->posy = posy;
 	}

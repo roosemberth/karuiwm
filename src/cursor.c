@@ -52,13 +52,10 @@ cursor_get_pos(struct cursor *cur, int *x, int *y)
 int
 cursor_set_type(struct cursor *cur, enum cursor_type type)
 {
-	int ret;
-
 	if (type == CURSOR_NORMAL)
-		ret = XUngrabPointer(kwm.dpy, CurrentTime);
-	else
-		ret = XGrabPointer(kwm.dpy, kwm.root, true, MOUSEMASK,
-		                   GrabModeAsync, GrabModeAsync, None,
-		                   cur->fonts[type], CurrentTime);
-	return ret == GrabSuccess ? 0 : -1;
+		return XUngrabPointer(kwm.dpy, CurrentTime);
+
+	return GrabSuccess == XGrabPointer(kwm.dpy, kwm.root, true, MOUSEMASK,
+	                                   GrabModeAsync, GrabModeAsync, None,
+	                                   cur->fonts[type], CurrentTime);
 }

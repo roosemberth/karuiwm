@@ -18,6 +18,8 @@ struct client {
 	bool floating, dialog, visible;
 	enum client_state state;
 	int unsigned basew, baseh, incw, inch, maxw, maxh, minw, minh;
+	size_t nsup;
+	Atom *supported;
 };
 
 void client_delete(struct client *);
@@ -33,6 +35,7 @@ void client_query_dimension(struct client *c);
 void client_query_fullscreen(struct client *);
 void client_query_name(struct client *c);
 void client_query_sizehints(struct client *c);
+void client_query_supported_atoms(struct client *c);
 void client_query_transient(struct client *c);
 void client_resize(struct client *c, int unsigned w, int unsigned h);
 int client_send_atom(struct client *c, size_t natoms, ...);
@@ -42,5 +45,6 @@ void client_set_floating(struct client *c, bool floating);
 void client_set_focus(struct client *c, bool focus);
 void client_set_fullscreen(struct client *c, bool fullscreen);
 void client_set_visibility(struct client *c, bool visible);
+bool client_supports_atom(struct client *c, Atom atom);
 
 #endif /* _CLIENT_H */

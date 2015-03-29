@@ -10,6 +10,7 @@
 
 static int check_sizehints(struct client *c, int unsigned *w, int unsigned *h);
 static int get_name(char *buf, Window win);
+static void massacre(struct client *c);
 
 static int
 check_sizehints(struct client *c, int unsigned *w, int unsigned *h)
@@ -47,6 +48,8 @@ check_sizehints(struct client *c, int unsigned *w, int unsigned *h)
 void
 client_delete(struct client *c)
 {
+	if (c->supported != NULL)
+		sfree(c->supported);
 	sfree(c);
 }
 
@@ -67,14 +70,16 @@ client_kill(struct client *c)
 {
 	int i;
 
-	i = client_send_atom(c, 2, atoms[WM_PROTOCOLS],atoms[WM_DELETE_WINDOW]);
+	if (!client_supports_atom(c, atoms[WM_DELETE_WINDOW])) {
+		WARN("WM_DELETE_WINDOW not supported by %lu", c->win);
+		massacre(c);
+		return;
+	}
+	i = client_send_atom(c, 2, atoms[WM_PROTOCOLS],
+	                           atoms[WM_DELETE_WINDOW]);
 	if (i < 0) {
-		WARN("WM_DELETE_WINDOW not supported, massacring client");
-		XGrabServer(kwm.dpy);
-		XSetCloseDownMode(kwm.dpy, DestroyAll);
-		XKillClient(kwm.dpy, c->win);
-		XSync(kwm.dpy, false);
-		XUngrabServer(kwm.dpy);
+		WARN("could not send WM_DELETE_WINDOW to %lu", c->win);
+		massacre(c);
 	}
 }
 
@@ -123,6 +128,8 @@ client_new(Window win)
 	c->state = STATE_NORMAL;
 	c->w = c->h = c->floatw = c->floath = 0;
 	c->x = c->y = c->floatx = c->floaty = 0;
+	c->nsup = 0;
+	c->supported = NULL;
 
 	/* query client properties */
 	client_query_dialog(c);
@@ -130,6 +137,7 @@ client_new(Window win)
 	client_query_dimension(c);
 	client_query_fullscreen(c);
 	client_query_name(c);
+	client_query_supported_atoms(c);
 	client_query_transient(c);
 
 	return c;
@@ -250,6 +258,27 @@ client_query_sizehints(struct client *c)
 }
 
 void
+client_query_supported_atoms(struct client *c)
+{
+	int unsigned i, nsup;
+	Atom *sup;
+
+	if (c->supported != NULL) {
+		free(c->supported);
+		nsup = 0;
+	}
+	if (!XGetWMProtocols(kwm.dpy, c->win, &sup, (int signed *) &nsup)) {
+		WARN("XGetWMProtocols() failed on %lu", c->win);
+		return;
+	}
+	c->nsup = (size_t) nsup;
+	c->supported = scalloc(nsup, sizeof(Atom), "supported atoms list");
+	for (i = 0; i < nsup; ++i)
+		c->supported[i] = sup[i];
+	XFree(sup);
+}
+
+void
 client_query_transient(struct client *c)
 {
 	Window trans = 0;
@@ -277,36 +306,27 @@ int
 client_send_atom(struct client *c, size_t natoms, ...)
 {
 	int retval = 0;
-	int unsigned i, nsup;
+	int unsigned i;
 	va_list args;
 	XEvent ev;
-	Atom *sup;
 
-	if (natoms == 0 || natoms > 4)
+	if (natoms == 0 || natoms > 4) {
+		WARN("attempt to send %zu atoms", natoms);
 		return -1;
+	}
 	va_start(args, natoms);
 
 	ev.type = ClientMessage;
 	ev.xclient.window = c->win;
 	ev.xclient.format = 32;
 	ev.xclient.message_type = va_arg(args, Atom);
-	if (!XGetWMProtocols(kwm.dpy, c->win, &sup, (int signed *) &nsup)) {
-		retval = -1;
-		goto client_send_atom_out;
-	} else {
-		for (i = 0; i < nsup && sup[i] != ev.xclient.message_type; ++i);
-		XFree(sup);
-		if (i == nsup) {
-			retval = -1;
-			goto client_send_atom_out;
-		}
-	}
 	for (i = 0; i < natoms - 1; ++i)
 		ev.xclient.data.l[i] = (int long) va_arg(args, Atom);
 	ev.xclient.data.l[i] = CurrentTime;
 
-	XSendEvent(kwm.dpy, c->win, false, NoEventMask, &ev);
- client_send_atom_out:
+	if (!XSendEvent(kwm.dpy, c->win, false, NoEventMask, &ev))
+		WARN("could not send event to %lu", c->win);
+
 	va_end(args);
 	return retval;
 }
@@ -364,6 +384,17 @@ client_set_visibility(struct client *c, bool visible)
 	                 netatoms[_NET_WM_STATE_HIDDEN]);
 }
 
+bool
+client_supports_atom(struct client *c, Atom atom)
+{
+	int unsigned i;
+
+	for (i = 0; i < c->nsup; ++i)
+		if (c->supported[i] == atom)
+			return true;
+	return false;
+}
+
 static int
 get_name(char *buf, Window win)
 {
@@ -388,4 +419,14 @@ get_name(char *buf, Window win)
  get_name_out:
 	XFree(xtp.value);
 	return fret;
+}
+
+static void
+massacre(struct client *c)
+{
+	XGrabServer(kwm.dpy);
+	XSetCloseDownMode(kwm.dpy, DestroyAll);
+	XKillClient(kwm.dpy, c->win);
+	XSync(kwm.dpy, false);
+	XUngrabServer(kwm.dpy);
 }

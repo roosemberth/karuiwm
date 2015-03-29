@@ -501,7 +501,7 @@ handle_propertynotify(XEvent *xe)
 		return;
 
 	if (e->state == PropertyDelete) {
-		/* FIXME dwm ignores this */
+		/* TODO handle property deletion */
 		NOTICE("property_delete");
 		return;
 	}
@@ -621,7 +621,7 @@ mouse_move(struct client *c, int mx, int my,
 	(void) ch;
 
 	if (cursor_set_type(cursor, CURSOR_MOVE) < 0)
-		WARN("could not change cursor appearance");
+		WARN("could not change cursor appearance to moving");
 	do {
 		XMaskEvent(kwm.dpy, evmask, &ev);
 		switch (ev.type) {
@@ -697,15 +697,17 @@ mouse_resize(struct client *c, int mx, int my,
 	right = mx - cx > 2 * (int signed) cw / 3;
 	if (!top && !bottom && !left && !right)
 		return;
-	cursor_set_type(cursor, top && left     ? CURSOR_RESIZE_TOP_LEFT     :
-	                        top && right    ? CURSOR_RESIZE_TOP_RIGHT    :
-	                        bottom && left  ? CURSOR_RESIZE_BOTTOM_LEFT  :
-	                        bottom && right ? CURSOR_RESIZE_BOTTOM_RIGHT :
-	                        left            ? CURSOR_RESIZE_LEFT         :
-	                        right           ? CURSOR_RESIZE_RIGHT        :
-	                        top             ? CURSOR_RESIZE_TOP          :
-	                        bottom          ? CURSOR_RESIZE_BOTTOM       :
-	                        /* ignore */      CURSOR_NORMAL);
+	if (cursor_set_type(cursor,
+	                    top && left     ? CURSOR_RESIZE_TOP_LEFT     :
+	                    top && right    ? CURSOR_RESIZE_TOP_RIGHT    :
+	                    bottom && left  ? CURSOR_RESIZE_BOTTOM_LEFT  :
+	                    bottom && right ? CURSOR_RESIZE_BOTTOM_RIGHT :
+	                    left            ? CURSOR_RESIZE_LEFT         :
+	                    right           ? CURSOR_RESIZE_RIGHT        :
+	                    top             ? CURSOR_RESIZE_TOP          :
+	                    bottom          ? CURSOR_RESIZE_BOTTOM       :
+	                    /* ignore */      CURSOR_NORMAL) < 0)
+	        WARN("could not change cursor appearance to resizing");
 	do {
 		XMaskEvent(kwm.dpy, evmask, &ev);
 		switch (ev.type) {
@@ -719,10 +721,10 @@ mouse_resize(struct client *c, int mx, int my,
 		case MotionNotify:
 			/* FIXME prevent resizing to negative dimensions */
 			dx = ev.xmotion.x - mx;
+			dy = ev.xmotion.y - my;
 			if (c->incw > 0)
 				dx = dx / (int signed) c->incw
 				        * (int signed) c->incw;
-			dy = ev.xmotion.y - my;
 			if (c->inch > 0)
 				dy = dy / (int signed) c->inch
 				        * (int signed) c->inch;
