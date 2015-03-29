@@ -30,8 +30,7 @@ focus_associate_client(struct focus *f, struct client *c)
 void
 focus_attach_monitor(struct focus *f, struct monitor *m)
 {
-	list_append((struct list_element **) &f->monitors,
-	            (struct list_element *) m);
+	LIST_APPEND(&f->monitors, m);
 	++f->nmon;
 	if (f->selmon == NULL)
 		f->selmon = m;
@@ -46,8 +45,7 @@ focus_delete(struct focus *f)
 void
 focus_detach_monitor(struct focus *f, struct monitor *m)
 {
-	list_remove((struct list_element **) &f->monitors,
-	            (struct list_element *) m);
+	LIST_REMOVE(&f->monitors, m);
 	if (f->selmon == m)
 		f->selmon = f->nmon > 0 ? f->monitors : NULL;
 }
@@ -131,21 +129,10 @@ get_free_desktop(struct focus *f)
 	int unsigned i, j;
 	struct workspace *ws = f->session->workspaces;
 	struct desktop *d;
-	struct monitor *m;
-	bool occupied;
 
-	for (i = 0, d = ws->desktops; i < ws->nd; ++i, d = d->next) {
-		occupied = false;
-		for (j = 0, m = f->monitors; j < f->nmon; ++j, m = m->next) {
-			if (m->seldt == d) {
-				occupied = true;
-				break;
-			}
-		}
-		if (occupied)
-			continue;
-		break;
-	}
+	for (i = 0, d = ws->desktops; i < ws->nd; ++i, d = d->next)
+		if (d->monitor == NULL)
+			break;
 	if (i == ws->nd) {
 		d = desktop_new();
 		workspace_attach_desktop(ws, d);
