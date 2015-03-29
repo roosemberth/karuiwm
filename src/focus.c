@@ -126,7 +126,7 @@ focus_step_monitor(struct focus *f, enum direction dir)
 static struct desktop *
 get_free_desktop(struct focus *f)
 {
-	int unsigned i, j;
+	int unsigned i;
 	struct workspace *ws = f->session->workspaces;
 	struct desktop *d;
 

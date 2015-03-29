@@ -11,8 +11,9 @@ struct desktop {
 	struct workspace *workspace;
 	struct monitor *monitor;
 	size_t nt, nf, nmaster;
-	struct client *tiled, *floating, *selcli;
+	struct client *tiled, *floating, *selcli, *seltiled;
 	struct workspace *ws;
+	struct layout *sellayout;
 	float mfact;
 	int posx, posy;
 	bool focus;
@@ -36,6 +37,7 @@ void desktop_set_nmaster(struct desktop *d, size_t nmaster);
 void desktop_shift_client(struct desktop *d, int dir);
 void desktop_show(struct desktop *d, struct monitor *m);
 void desktop_step_client(struct desktop *d, int dir);
+void desktop_step_layout(struct desktop *d, int dir);
 void desktop_update_focus(struct desktop *d);
 void desktop_zoom(struct desktop *d);
 

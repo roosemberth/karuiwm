@@ -35,13 +35,13 @@ desktop_arrange(struct desktop *d)
 			stack[is++] = c->win;
 	}
 	if (d->nt > 0) {
-		/* TODO modular layout management */
 		/* FIXME strut (left, right, bottom, top) != 0 break this */
-		rstack(d->tiled, d->nt, MIN(d->nmaster, d->nt), d->mfact,
-		       d->monitor->x, d->monitor->y, d->monitor->w, d->monitor->h);
-		/* TODO focused window on top (for monocle/tabbed) */
+		d->sellayout->apply(d->tiled, d->nt, MIN(d->nmaster, d->nt),
+		                    d->mfact, d->monitor->x, d->monitor->y,
+		                    d->monitor->w, d->monitor->h);
+		stack[is++] = d->seltiled->win;
 		for (i = 0, c = d->tiled; i < d->nt; ++i, c = c->next)
-			if (c->state != STATE_FULLSCREEN)
+			if (c->state != STATE_FULLSCREEN && c != d->seltiled)
 				stack[is++] = c->win;
 	}
 	XRestackWindows(kwm.dpy, stack, (int signed) (d->nt + d->nf));
@@ -57,6 +57,7 @@ desktop_attach_client(struct desktop *d, struct client *c)
 	} else {
 		LIST_APPEND(&d->tiled, c);
 		++d->nt;
+		d->seltiled = c;
 	}
 	d->selcli = c;
 	c->desktop = d;
@@ -103,6 +104,8 @@ desktop_detach_client(struct desktop *d, struct client *c)
 		--d->nt;
 	}
 	d->selcli = next;
+	if (!c->floating)
+		d->seltiled = d->selcli;
 }
 
 void
@@ -119,6 +122,8 @@ void
 desktop_focus_client(struct desktop *d, struct client *c)
 {
 	d->selcli = c;
+	if (!c->floating)
+		d->seltiled = c;
 	desktop_update_focus(d);
 }
 
@@ -172,7 +177,8 @@ desktop_new(void)
 	d->nmaster = 1;
 	d->nt = d->nf = 0;
 	d->tiled = d->floating = NULL;
-	d->selcli = NULL;
+	d->selcli = d->seltiled = NULL;
+	d->sellayout = layouts;
 	d->focus = false;
 	d->workspace = NULL;
 	d->monitor = NULL;
@@ -252,6 +258,12 @@ desktop_step_client(struct desktop *d, int dir)
 }
 
 void
+desktop_step_layout(struct desktop *d, int dir)
+{
+	d->sellayout = dir < 0 ? d->sellayout->prev : d->sellayout->next;
+}
+
+void
 desktop_update_focus(struct desktop *d)
 {
 	int unsigned i;
@@ -279,7 +291,7 @@ desktop_zoom(struct desktop *d)
 	if (d->selcli == d->tiled) {
 		/* window is at the top: swap with next below */
 		swap(&d->tiled, d->tiled, d->tiled->next);
-		d->selcli = d->tiled;
+		d->selcli = d->seltiled = d->tiled;
 		desktop_update_focus(d);
 	} else {
 		/* window is somewhere else: swap with top */

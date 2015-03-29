@@ -7,6 +7,7 @@
 #include "monitor.h"
 #include "focus.h"
 #include "cursor.h"
+#include "layout.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -39,6 +40,7 @@ static void action_shiftclient(union argument *arg);
 static void action_spawn(union argument *arg);
 static void action_stepclient(union argument *arg);
 static void action_stepdesktop(union argument *arg);
+static void action_steplayout(union argument *arg);
 static void action_togglefloat(union argument *arg);
 static void action_zoom(union argument *arg);
 static void grabkeys(void);
@@ -115,6 +117,8 @@ static struct key keys[] = {
 	{ MODKEY,             XK_comma,   action_setnmaster,  { .i=+1 } },
 	{ MODKEY,             XK_period,  action_setnmaster,  { .i=-1 } },
 	{ MODKEY,             XK_Return,  action_zoom,        { 0 } },
+	{ MODKEY,             XK_space,   action_steplayout,  { .i=+1 } },
+	{ MODKEY|ShiftMask,   XK_space,   action_steplayout,  { .i=-1 } },
 
 	/* desktop */
 	{ MODKEY|ControlMask, XK_h,       action_stepdesktop, { .i=LEFT } },
@@ -233,13 +237,25 @@ action_spawn(union argument *arg)
 static void
 action_stepclient(union argument *arg)
 {
-	desktop_step_client(focus->selmon->seldt, arg->i);
+	struct desktop *d = focus->selmon->seldt;
+
+	desktop_step_client(d, arg->i);
+	desktop_arrange(d);
 }
 
 static void
 action_stepdesktop(union argument *arg)
 {
 	monitor_step_desktop(focus->selmon, arg->i);
+}
+
+static void
+action_steplayout(union argument *arg)
+{
+	struct desktop *d = focus->selmon->seldt;
+
+	desktop_step_layout(d, arg->i);
+	desktop_arrange(d);
 }
 
 static void
@@ -588,7 +604,8 @@ init(void)
 	cursor = cursor_new();
 	grabkeys();
 
-	/* session, focus */
+	/* layouts, session, focus */
+	layout_init();
 	session = session_new();
 	focus = focus_new(session);
 }
@@ -789,6 +806,7 @@ term(void)
 		session_save(session, sid, sizeof(sid));
 	session_delete(session);
 	cursor_delete(cursor);
+	layout_term();
 
 	XUngrabKey(kwm.dpy, AnyKey, AnyModifier, kwm.root);
 	XSetInputFocus(kwm.dpy, PointerRoot, RevertToPointerRoot, CurrentTime);
