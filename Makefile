@@ -18,7 +18,7 @@ KWM_CFLAGS += -Wshadow #-Wpadded
 KWM_CFLAGS += $(shell pkg-config --cflags x11)
 
 KWM_CFLAGS_ASAN = -fsanitize=address -fno-omit-frame-pointer
-KWM_CFLAGS_DEBUG = -Werror -g -O1
+KWM_CFLAGS_DEBUG = -Werror -g -O1 -DMODE_DEBUG
 KWM_CFLAGS_RELEASE = -O2
 KWM_CFLAGS_XINERAMA = $(shell pkg-config --cflags xinerama) -DXINERAMA
 
