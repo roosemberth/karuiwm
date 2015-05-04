@@ -1,8 +1,11 @@
 # Compiler:
 CC ?= gcc
 
-# Installation prefix:
+# Library/configuration prefix:
 PREFIX ?= /usr/local
+
+# Installation prefix:
+INSTALLDIR ?= /usr/local
 
 # Application name:
 APPNAME = karuiwm
@@ -12,9 +15,9 @@ KWM_CFLAGS = -std=c99
 KWM_CFLAGS += -W -Wall -Wextra -pedantic
 KWM_CFLAGS += -Wcast-align -Wcast-qual -Wconversion -Wwrite-strings -Wfloat-equal
 KWM_CFLAGS += -Wlogical-op -Wpointer-arith -Wformat=2
-KWM_CFLAGS += -Winit-self -Wuninitialized -Wmaybe-uninitialized
+KWM_CFLAGS += -Winit-self -Wuninitialized -Wmaybe-uninitialized -Wshadow
 KWM_CFLAGS += -Wstrict-prototypes -Wmissing-declarations -Wmissing-prototypes
-KWM_CFLAGS += -Wshadow #-Wpadded
+#KWM_CFLAGS += -Wpadded
 KWM_CFLAGS += $(shell pkg-config --cflags x11)
 
 KWM_CFLAGS_ASAN = -fsanitize=address -fno-omit-frame-pointer
@@ -92,9 +95,9 @@ clean:
 mrproper: clean
 	rm -f ${APPNAME}
 install:
-	install ${APPNAME} ${PREFIX}/bin/${APPNAME}
+	install ${APPNAME} ${INSTALLDIR}/bin/${APPNAME}
 uninstall:
-	rm -f ${PREFIX}/bin/${APPNAME}
+	rm -f ${INSTALLDIR}/bin/${APPNAME}
 
 # Build dependencies:
 -include ${DEPENDS}
