@@ -8,18 +8,7 @@ and workspaces.
 It is a complete rewrite from an earlier version, which can be tested at commit
 [#31a8063](https://github.com/ayekat/karuiwm/tree/31a8063da9f3960e268514952b92d9c9ce5719ee).
 
-**karuiwm is currently under heavy development and not usable.** See the
-[issues](https://github.com/ayekat/karuiwm/issues) or the list below for what's
-there and what's to come.
-
-* **!** Tiling Layouts (not modular yet)
-* **✓** Desktops
-* **!** Workspaces (not controllable yet, needs API)
-* **✗** Scratchpads
-* **✗** Session Restore
-* **✗** API + Unix Socket
-* **✗** Complete EWMH Compliance
-* **✗** Configuration through Xresources
+**karuiwm is currently under heavy development and not usable.**
 
 
 build
@@ -52,8 +41,17 @@ will launch karuiwm normally, however it is discouraged to run from within an
 existing X session, as it may cause an X hickup.
 
 
+documentation
+-------------
+
+See the [doc](doc) folder for documentation for developers.
+
+
 bugs
 ----
 
-Although crafted with utmost care, some bugs may have slipped my notice. Please
-feel free to file bug reports. I'm a hobby developer. I won't bite.
+Although karuiwm is far from being complete and usable, it has been crafted with
+utmost care and a focus on consistent coding conventions. Nevertheless, some
+bugs may have slipped my notice.
+
+Please feel free to file bug reports. I won't bite.
