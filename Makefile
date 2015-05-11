@@ -42,7 +42,7 @@ KWM_LDFLAGS_XINERAMA =
 # File names:
 SRCDIR = src
 BUILDDIR = build
-SOURCES = $(wildcard ${SRCDIR}/*.c ${SRCDIR}/layouts/*.c)
+SOURCES = $(shell find ${SRCDIR} -name '*.c')
 OBJECTS = $(SOURCES:${SRCDIR}/%.c=${BUILDDIR}/%.o)
 DEPENDS = $(OBJECTS:%.o=%.d)
 XINITRC = xinitrc
