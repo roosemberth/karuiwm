@@ -109,6 +109,7 @@ focus_scan_monitors(struct focus *f)
 		m = monitor_new(f, f->session->workspaces->desktops, 0, 0,
 	                     (int unsigned) DisplayWidth(kwm.dpy, kwm.screen),
 	                     (int unsigned) DisplayHeight(kwm.dpy, kwm.screen));
+		m->index = 0;
 		focus_attach_monitor(f, m);
 	}
 	m = f->monitors;
@@ -195,6 +196,7 @@ scan_xinerama(struct focus *f)
 			                        (int unsigned) info[i].width,
 			                        (int unsigned) info[i].height);
 		}
+		m->index = i;
 	}
 	monitor_focus(f->monitors, true);
 

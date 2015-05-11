@@ -592,6 +592,7 @@ init(void)
 	/* X screen, root window, atoms */
 	kwm.screen = DefaultScreen(kwm.dpy);
 	kwm.root = RootWindow(kwm.dpy, kwm.screen);
+	kwm.xfd = ConnectionNumber(kwm.dpy);
 	init_atoms();
 
 	/* events */

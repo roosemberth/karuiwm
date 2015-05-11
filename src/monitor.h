@@ -11,6 +11,7 @@ struct monitor {
 	int unsigned w, h;
 	struct desktop *seldt;
 	struct focus *focus;
+	int unsigned index;
 };
 
 int unsigned monitor_client_intersect(struct monitor *m, struct client *c);

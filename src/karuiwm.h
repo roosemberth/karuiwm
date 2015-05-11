@@ -23,6 +23,7 @@
 #define _NET_WM_STATE_REMOVE 0
 #define _NET_WM_STATE_ADD 1
 #define _NET_WM_STATE_TOGGLE 2
+
 enum atom_type {
 	WM_PROTOCOLS,
 	WM_DELETE_WINDOW,
@@ -30,6 +31,7 @@ enum atom_type {
 	WM_TAKE_FOCUS,
 	ATOM_LAST
 };
+
 enum netatom_type {
 	_NET_ACTIVE_WINDOW,
 	_NET_SUPPORTED,
@@ -72,6 +74,7 @@ struct {
 	Display *dpy;
 	Window root;
 	int screen;
+	int xfd;
 } kwm;
 
 #endif /* _KARUIWM_H */
