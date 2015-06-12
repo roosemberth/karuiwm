@@ -1,5 +1,5 @@
 #include "event.h"
-#include <util.h>
+#include "util.h"
 
 struct subscription {
 	void (*event_handler)(union event *ev);
@@ -50,7 +50,7 @@ event_trigger(union event *ev)
 	int unsigned i;
 
 	for (i = 0; i < ns; ++i)
-		if (ev->type & subscriptions[i].event_mask != 0)
+		if ((ev->type & subscriptions[i].event_mask) != 0)
 			subscriptions[i].event_handler(ev);
 }
 
