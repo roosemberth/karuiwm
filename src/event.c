@@ -44,6 +44,16 @@ event_set_subscription(enum event_type type,
 	}
 }
 
+void
+event_trigger(union event *ev)
+{
+	int unsigned i;
+
+	for (i = 0; i < ns; ++i)
+		if (ev->type & subscriptions[i].event_mask != 0)
+			subscriptions[i].event_handler(ev);
+}
+
 static struct subscription *
 find_subscription(void (*event_handler)(union event *ev))
 {
