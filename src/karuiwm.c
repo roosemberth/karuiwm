@@ -736,7 +736,6 @@ mouse_resize(struct client *c, int mx, int my,
 			handle[ev.type](&ev);
 			break;
 		case MotionNotify:
-			/* FIXME prevent resizing to negative dimensions */
 			dx = ev.xmotion.x - mx;
 			dy = ev.xmotion.y - my;
 			if (c->incw > 0)
@@ -745,18 +744,22 @@ mouse_resize(struct client *c, int mx, int my,
 			if (c->inch > 0)
 				dy = dy / (int signed) c->inch
 				        * (int signed) c->inch;
-			if (left) {
+			if (left
+			&& (int signed) cw - dx >= (int signed) c->minw) {
 				cx += dx;
 				cw = (int unsigned) ((int signed) cw - dx);
-			} else if (right) {
-				cw = (int unsigned) ((int signed) cw + dx);
 			}
-			if (top) {
+			if (right
+			&& (int signed) cw + dx >= (int signed) c->minw)
+				cw = (int unsigned) ((int signed) cw + dx);
+			if (top
+			&& (int signed) ch - dy >= (int signed) c->minh) {
 				cy += dy;
 				ch = (int unsigned) ((int signed) ch - dy);
-			} else if (bottom) {
-				ch = (int unsigned) ((int signed) ch + dy);
 			}
+			if (bottom
+			&& (int signed) ch + dy >= (int signed) c->minh)
+				ch = (int unsigned) ((int signed) ch + dy);
 			mx += dx;
 			my += dy;
 			client_moveresize(c, cx, cy, cw, ch);
