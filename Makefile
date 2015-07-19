@@ -97,6 +97,11 @@ install:
 uninstall:
 	rm -f ${BINDIR}/${APPNAME}
 
+# Ctags:
+ctags:
+	rm -f tags
+	find ${SRCDIR} -name '*.[ch]' | ctags --append -L -
+
 # Build dependencies:
 -include ${DEPENDS}
 

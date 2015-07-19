@@ -683,7 +683,7 @@ mouse_moveresize(struct client *c, void (*mh)(struct client *c, int, int,
 	}
 	focus_monitor_by_mouse(focus, mx, my);
 
-	/* fix client position */
+	/* fix client floating position, float */
 	if (c->floatx + (int signed) c->floatw < mx)
 		c->floatx = mx - (int signed) c->floatw + 1;
 	if (c->floatx > mx)
@@ -775,6 +775,30 @@ mouse_resize(struct client *c, int mx, int my,
 }
 
 static void
+parse_args(int argc, char **argv)
+{
+	int i;
+	char *opt;
+
+	set_log_level(LOG_NORMAL);
+	for (i = 1; i < argc; ++i) {
+		opt = argv[i];
+		if (strcmp(opt, "-v") == 0) {
+			set_log_level(LOG_VERBOSE);
+			VERBOSE("verbose log level");
+		} else if (strcmp(opt, "-d") == 0) {
+			set_log_level(LOG_DEBUG);
+			DEBUG("debug log level");
+		} else if (strcmp(opt, "-q") == 0) {
+			set_log_level(LOG_FATAL);
+		} else {
+			puts("Usage: "APPNAME" [-v|-d|-q]");
+			FATAL("Unknown option: %s\n", argv[i]);
+		}
+	}
+}
+
+static void
 run(void)
 {
 	XEvent xe;
@@ -796,8 +820,8 @@ sigchld(int s)
 	if (signal(SIGCHLD, sigchld) == SIG_ERR)
 		FATAL("could not install SIGCHLD handler");
 	/* pid -1 makes it equivalent to wait() (wait for all children);
-	 * here we just add WNOHANG */
-	while (0 < waitpid(-1, NULL, WNOHANG));
+	 * the purpose of waitpid() is to add WNOHANG */
+	while (waitpid(-1, NULL, WNOHANG) > 0);
 }
 
 static void
@@ -820,14 +844,7 @@ term(void)
 int
 main(int argc, char **argv)
 {
-	(void) argv;
-
-	set_log_level(LOG_DEBUG);
-
-	if (argc > 1) {
-		puts(APPNAME" © 2015 ayekat, see LICENSE for details");
-		return EXIT_FAILURE;
-	}
+	parse_args(argc, argv);
 	init();
 	run();
 	term();

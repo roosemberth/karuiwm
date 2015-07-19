@@ -11,7 +11,7 @@ if [ -n "$VALGRIND" ] && [ $VALGRIND = '1' ]; then
 	              --leak-check=full \
 	              --show-leak-kinds=all \
 	              -v \
-	              ./karuiwm
+	              ./karuiwm -d
 else
-	exec ./karuiwm
+	exec ./karuiwm -d
 fi
