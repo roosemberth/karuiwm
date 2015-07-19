@@ -41,11 +41,14 @@ enum netatom_type {
 	_NET_WM_STATE_HIDDEN,
 	_NET_WM_WINDOW_TYPE,
 	_NET_WM_WINDOW_TYPE_DIALOG,
+	_NET_WM_STRUT,
+	_NET_WM_STRUT_PARTIAL,
 	NETATOM_LAST
 };
 
 /* enumerations */
 enum direction { LEFT, RIGHT, UP, DOWN, NO_DIRECTION };
+enum runstate { STOPPED, STARTING, RUNNING, STOPPING, RESTARTING };
 
 /* unions, structures */
 union argument {
@@ -75,6 +78,7 @@ struct {
 	Window root;
 	int screen;
 	int xfd;
-} kwm;
+	enum runstate state;
+} karuiwm;
 
 #endif /* _KARUIWM_H */

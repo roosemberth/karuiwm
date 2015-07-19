@@ -93,7 +93,7 @@ focus_scan_monitors(struct focus *f)
 	struct monitor *m;
 
 #ifdef XINERAMA
-	if (XineramaIsActive(kwm.dpy)) {
+	if (XineramaIsActive(karuiwm.dpy)) {
 		scan_xinerama(f);
 		return;
 	}
@@ -107,8 +107,8 @@ focus_scan_monitors(struct focus *f)
 	}
 	if (f->nmon < 1) {
 		m = monitor_new(f, f->session->workspaces->desktops, 0, 0,
-	                     (int unsigned) DisplayWidth(kwm.dpy, kwm.screen),
-	                     (int unsigned) DisplayHeight(kwm.dpy, kwm.screen));
+	             (int unsigned) DisplayWidth(karuiwm.dpy, karuiwm.screen),
+	             (int unsigned) DisplayHeight(karuiwm.dpy, karuiwm.screen));
 		m->index = 0;
 		focus_attach_monitor(f, m);
 	}
@@ -152,7 +152,7 @@ scan_xinerama(struct focus *f)
 	XineramaScreenInfo *raw_info, *info;
 
 	/* get screen information */
-	raw_info = XineramaQueryScreens(kwm.dpy, (int *) &raw_n);
+	raw_info = XineramaQueryScreens(karuiwm.dpy, (int *) &raw_n);
 
 	/* de-duplicate screen information: O(n²) */
 	info = scalloc(raw_n, sizeof(XineramaScreenInfo),
@@ -201,6 +201,6 @@ scan_xinerama(struct focus *f)
 	monitor_focus(f->monitors, true);
 
 	XFree(info);
-	XSync(kwm.dpy, kwm.screen);
+	XSync(karuiwm.dpy, karuiwm.screen);
 }
 #endif /* def XINERAMA */

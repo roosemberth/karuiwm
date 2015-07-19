@@ -13,7 +13,7 @@ scan_windows(struct session *s)
 	int unsigned i, nwins;
 	struct client *c;
 
-	if (!XQueryTree(kwm.dpy, kwm.root, &win, &win, &wins, &nwins)) {
+	if (!XQueryTree(karuiwm.dpy, karuiwm.root, &win, &win, &wins, &nwins)) {
 		WARN("XQueryTree() failed");
 		return -1;
 	}

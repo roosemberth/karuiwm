@@ -44,7 +44,7 @@ desktop_arrange(struct desktop *d)
 			if (c->state != STATE_FULLSCREEN && c != d->seltiled)
 				stack[is++] = c->win;
 	}
-	XRestackWindows(kwm.dpy, stack, (int signed) (d->nt + d->nf));
+	XRestackWindows(karuiwm.dpy, stack, (int signed) (d->nt + d->nf));
 	desktop_set_clientmask(d, CLIENTMASK);
 }
 
@@ -69,7 +69,8 @@ desktop_delete(struct desktop *d)
 	struct client *c;
 
 	if (d->nt + d->nf > 0) {
-		WARN("deleting desktop that still contains clients");
+		if (karuiwm.state != RESTARTING)
+			WARN("deleting desktop that still contains clients");
 		while (d->nt > 0) {
 			c = d->tiled;
 			desktop_detach_client(d, c);
@@ -193,10 +194,10 @@ desktop_set_clientmask(struct desktop *d, long mask)
 
 	/* TODO move XSelectInput to client */
 	for (i = 0, it = d->tiled; i < d->nt; ++i, it = it->next)
-		XSelectInput(kwm.dpy, it->win, mask);
+		XSelectInput(karuiwm.dpy, it->win, mask);
 	for (i = 0, it = d->floating; i < d->nf; ++i, it = it->next)
-		XSelectInput(kwm.dpy, it->win, mask);
-	XSync(kwm.dpy, kwm.screen);
+		XSelectInput(karuiwm.dpy, it->win, mask);
+	XSync(karuiwm.dpy, karuiwm.screen);
 }
 
 void
@@ -270,7 +271,7 @@ desktop_update_focus(struct desktop *d)
 	struct client *c;
 
 	if (d->nt + d->nf == 0) {
-		XSetInputFocus(kwm.dpy, kwm.root, RevertToPointerRoot,
+		XSetInputFocus(karuiwm.dpy, karuiwm.root, RevertToPointerRoot,
 		               CurrentTime);
 		return;
 	}

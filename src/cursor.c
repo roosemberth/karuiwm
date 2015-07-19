@@ -8,7 +8,7 @@ cursor_delete(struct cursor *cur)
 	int unsigned i;
 
 	for (i = 0; i < CURSOR_LAST; ++i)
-		XFreeCursor(kwm.dpy, cur->fonts[i]);
+		XFreeCursor(karuiwm.dpy, cur->fonts[i]);
 	free(cur);
 }
 
@@ -19,18 +19,18 @@ cursor_new(void)
 	XSetWindowAttributes wa;
 
 	cur = smalloc(sizeof(struct cursor), "cursor");
-	cur->fonts[CURSOR_NORMAL] = XCreateFontCursor(kwm.dpy, XC_left_ptr);
-	cur->fonts[CURSOR_RESIZE_TOP_LEFT] = XCreateFontCursor(kwm.dpy, XC_top_left_corner);
-	cur->fonts[CURSOR_RESIZE_TOP_RIGHT] = XCreateFontCursor(kwm.dpy, XC_top_right_corner);
-	cur->fonts[CURSOR_RESIZE_BOTTOM_LEFT] = XCreateFontCursor(kwm.dpy, XC_bottom_left_corner);
-	cur->fonts[CURSOR_RESIZE_BOTTOM_RIGHT] = XCreateFontCursor(kwm.dpy, XC_bottom_right_corner);
-	cur->fonts[CURSOR_RESIZE_LEFT] = XCreateFontCursor(kwm.dpy, XC_left_side);
-	cur->fonts[CURSOR_RESIZE_RIGHT] = XCreateFontCursor(kwm.dpy, XC_right_side);
-	cur->fonts[CURSOR_RESIZE_TOP] = XCreateFontCursor(kwm.dpy, XC_top_side);
-	cur->fonts[CURSOR_RESIZE_BOTTOM] = XCreateFontCursor(kwm.dpy, XC_bottom_side);
-	cur->fonts[CURSOR_MOVE] = XCreateFontCursor(kwm.dpy, XC_fleur);
+	cur->fonts[CURSOR_NORMAL] = XCreateFontCursor(karuiwm.dpy, XC_left_ptr);
+	cur->fonts[CURSOR_RESIZE_TOP_LEFT] = XCreateFontCursor(karuiwm.dpy, XC_top_left_corner);
+	cur->fonts[CURSOR_RESIZE_TOP_RIGHT] = XCreateFontCursor(karuiwm.dpy, XC_top_right_corner);
+	cur->fonts[CURSOR_RESIZE_BOTTOM_LEFT] = XCreateFontCursor(karuiwm.dpy, XC_bottom_left_corner);
+	cur->fonts[CURSOR_RESIZE_BOTTOM_RIGHT] = XCreateFontCursor(karuiwm.dpy, XC_bottom_right_corner);
+	cur->fonts[CURSOR_RESIZE_LEFT] = XCreateFontCursor(karuiwm.dpy, XC_left_side);
+	cur->fonts[CURSOR_RESIZE_RIGHT] = XCreateFontCursor(karuiwm.dpy, XC_right_side);
+	cur->fonts[CURSOR_RESIZE_TOP] = XCreateFontCursor(karuiwm.dpy, XC_top_side);
+	cur->fonts[CURSOR_RESIZE_BOTTOM] = XCreateFontCursor(karuiwm.dpy, XC_bottom_side);
+	cur->fonts[CURSOR_MOVE] = XCreateFontCursor(karuiwm.dpy, XC_fleur);
 	wa.cursor = cur->fonts[CURSOR_NORMAL];
-	XChangeWindowAttributes(kwm.dpy, kwm.root, CWCursor, &wa);
+	XChangeWindowAttributes(karuiwm.dpy, karuiwm.root, CWCursor, &wa);
 	return cur;
 }
 
@@ -42,7 +42,7 @@ cursor_get_pos(struct cursor *cur, int *x, int *y)
 	Window w;
 	(void) cur;
 
-	if (!XQueryPointer(kwm.dpy, kwm.root, &w, &w, x, y, &i, &i, &ui)) {
+	if (!XQueryPointer(karuiwm.dpy, karuiwm.root, &w, &w, x, y, &i, &i, &ui)) {
 		WARN("XQueryPointer() failed");
 		return -1;
 	}
@@ -53,9 +53,10 @@ int
 cursor_set_type(struct cursor *cur, enum cursor_type type)
 {
 	if (type == CURSOR_NORMAL)
-		return XUngrabPointer(kwm.dpy, CurrentTime);
+		return XUngrabPointer(karuiwm.dpy, CurrentTime);
 
-	return GrabSuccess == XGrabPointer(kwm.dpy, kwm.root, true, MOUSEMASK,
-	                                   GrabModeAsync, GrabModeAsync, None,
-	                                   cur->fonts[type], CurrentTime);
+	return XGrabPointer(karuiwm.dpy, karuiwm.root, true, MOUSEMASK,
+	                    GrabModeAsync, GrabModeAsync, None,
+	                    cur->fonts[type], CurrentTime)
+	       == GrabSuccess;
 }
