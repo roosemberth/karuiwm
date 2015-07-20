@@ -8,6 +8,7 @@
 #include "focus.h"
 #include "cursor.h"
 #include "layout.h"
+#include "actions.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -29,20 +30,6 @@
 #define INIT_ATOM(D, L, A) L[A] = XInternAtom(D, #A, false)
 
 /* functions */
-static void action_killclient(union argument *arg);
-static void action_mousemove(union argument *arg, Window win);
-static void action_mouseresize(union argument *arg, Window win);
-static void action_restart(union argument *arg);
-static void action_setmfact(union argument *arg);
-static void action_setnmaster(union argument *arg);
-static void action_shiftclient(union argument *arg);
-static void action_spawn(union argument *arg);
-static void action_stepclient(union argument *arg);
-static void action_stepdesktop(union argument *arg);
-static void action_steplayout(union argument *arg);
-static void action_stop(union argument *arg);
-static void action_togglefloat(union argument *arg);
-static void action_zoom(union argument *arg);
 static void check_restart(char **argv);
 static void grabkeys(void);
 static void handle_buttonpress(XEvent *xe);
@@ -62,18 +49,12 @@ static void handle_unmapnotify(XEvent *xe);
 static int handle_xerror(Display *dpy, XErrorEvent *xe);
 static void init(void);
 static void init_atoms(void);
-static void mouse_move(struct client *c, int mx, int my);
-static void mouse_moveresize(struct client *c, void (*mh)(struct client *, int, int));
-static void mouse_resize(struct client *c, int mx, int my);
 static void parse_args(int argc, char **argv);
 static void run(void);
 static void sigchld(int);
 static void term(void);
 
 /* variables */
-static struct session *session;
-static struct focus *focus;
-static struct cursor *cursor;
 static char const *termcmd[] = { "urxvt", NULL };
 static char const *scrotcmd[] = { "prtscr", NULL };
 
@@ -135,148 +116,6 @@ static struct button buttons[] = {
 
 /* implementation */
 static void
-action_killclient(union argument *arg)
-{
-	(void) arg;
-
-	desktop_kill_client(focus->selmon->seldt);
-}
-
-static void
-action_mousemove(union argument *arg, Window win)
-{
-	struct client *c;
-	(void) arg;
-
-	//EVENT("movemouse(%lu)", c->win);
-
-	if (session_locate_window(session, &c, win) < 0) {
-		WARN("attempt to mouse-move unhandled window %lu", win);
-		return;
-	}
-	mouse_moveresize(focus->selmon->seldt->selcli, mouse_move);
-}
-
-static void
-action_mouseresize(union argument *arg, Window win)
-{
-	struct client *c;
-	(void) arg;
-
-	//EVENT("resizemouse(%lu)", c->win);
-
-	if (session_locate_window(session, &c, win) < 0) {
-		WARN("attempt to mouse-resize unhandled window %lu", win);
-		return;
-	}
-	mouse_moveresize(c, mouse_resize);
-}
-
-static void
-action_restart(union argument *arg)
-{
-	action_stop(arg);
-	karuiwm.state = RESTARTING;
-}
-
-static void
-action_setmfact(union argument *arg)
-{
-	struct desktop *d = focus->selmon->seldt;
-
-	desktop_set_mfact(d, d->mfact + arg->f);
-	desktop_arrange(d);
-}
-
-static void
-action_setnmaster(union argument *arg)
-{
-	struct desktop *d = focus->selmon->seldt;
-
-	if (arg->i < 0 && (size_t) (-arg->i) > d->nmaster)
-		return;
-	desktop_set_nmaster(d, (size_t) ((int signed) d->nmaster + arg->i));
-	desktop_arrange(d);
-}
-
-static void
-action_shiftclient(union argument *arg)
-{
-	struct desktop *d = focus->selmon->seldt;
-
-	if (d->selcli == NULL)
-		return;
-	(void) desktop_shift_client(d, arg->i);
-	desktop_arrange(d);
-}
-
-static void
-action_spawn(union argument *arg)
-{
-	char *const *cmd = (char *const *) arg->v;
-
-	pid_t pid = fork();
-	if (pid == 0) {
-		execvp(cmd[0], cmd);
-		FATAL("execvp(%s) failed: %s", cmd[0], strerror(errno));
-	}
-	if (pid < 0)
-		WARN("fork() failed with code %d", pid);
-}
-
-static void
-action_stepclient(union argument *arg)
-{
-	struct desktop *d = focus->selmon->seldt;
-
-	desktop_step_client(d, arg->i);
-	desktop_arrange(d);
-}
-
-static void
-action_stepdesktop(union argument *arg)
-{
-	monitor_step_desktop(focus->selmon, arg->i);
-}
-
-static void
-action_steplayout(union argument *arg)
-{
-	struct desktop *d = focus->selmon->seldt;
-
-	desktop_step_layout(d, arg->i);
-	desktop_arrange(d);
-}
-
-static void
-action_stop(union argument *arg)
-{
-	(void) arg;
-
-	karuiwm.state = STOPPING;
-}
-
-static void
-action_togglefloat(union argument *arg)
-{
-	struct desktop *d = focus->selmon->seldt;
-	(void) arg;
-
-	desktop_float_client(d, d->selcli, !d->selcli->floating);
-	desktop_arrange(d);
-}
-
-static void
-action_zoom(union argument *arg)
-{
-	struct desktop *d = focus->selmon->seldt;
-	(void) arg;
-
-	desktop_zoom(d);
-	desktop_arrange(d);
-}
-
-static void
 check_restart(char **argv)
 {
 	if (karuiwm.state == RESTARTING) {
@@ -331,7 +170,7 @@ handle_clientmessage(XEvent *xe)
 
 	//EVENT("clientmessage(%lu)", e->window);
 
-	if (session_locate_window(session, &c, e->window) < 0)
+	if (session_locate_window(karuiwm.session, &c, e->window) < 0)
 		return;
 	if (e->message_type != netatoms[_NET_WM_STATE]) {
 		WARN("received client message for other than WM state");
@@ -356,7 +195,7 @@ handle_configurenotify(XEvent *xe)
 	//EVENT("configurenotify(%lu)", e->window);
 
 	if (e->window == karuiwm.root)
-		focus_scan_monitors(focus);
+		focus_scan_monitors(karuiwm.focus);
 }
 
 static void
@@ -389,7 +228,7 @@ handle_destroynotify(XEvent *xe)
 
 	//EVENT("destroynotify(%lu)", e->window);
 
-	if (session_locate_window(session, &c, e->window) < 0)
+	if (session_locate_window(karuiwm.session, &c, e->window) < 0)
 		return;
 	d = c->desktop;
 	desktop_detach_client(d, c);
@@ -407,7 +246,7 @@ handle_enternotify(XEvent *xe)
 
 	//EVENT("enternotify(%lu)", e->window);
 
-	if (session_locate_window(session, &c, e->window) < 0) {
+	if (session_locate_window(karuiwm.session, &c, e->window) < 0) {
 		WARN("entering unhandled window %lu", e->window);
 		return;
 	}
@@ -429,7 +268,7 @@ static void
 handle_focusin(XEvent *xe)
 {
 	XFocusInEvent *e = &xe->xfocus;
-	struct client *selcli = focus->selmon->seldt->selcli;
+	struct client *selcli = karuiwm.focus->selmon->seldt->selcli;
 
 	//EVENT("focusin(%lu)", e->window);
 
@@ -493,7 +332,7 @@ handle_maprequest(XEvent *xe)
 	//EVENT("maprequest(%lu)", e->window);
 
 	/* window is being remapped */
-	if (session_locate_window(session, &c, e->window) == 0) {
+	if (session_locate_window(karuiwm.session, &c, e->window) == 0) {
 		XMapWindow(karuiwm.dpy, c->win);
 		return;
 	}
@@ -503,7 +342,7 @@ handle_maprequest(XEvent *xe)
 		return;
 
 	/* fix floating dimensions */
-	d = focus->selmon->seldt;
+	d = karuiwm.focus->selmon->seldt;
 	desktop_attach_client(d, c);
 	if (c->floating)
 		client_moveresize(c, MAX(c->floatx, 0),
@@ -524,7 +363,7 @@ handle_propertynotify(XEvent *xe)
 
 	//EVENT("propertynotify(%lu)", e->window);
 
-	if (session_locate_window(session, &c, e->window) < 0)
+	if (session_locate_window(karuiwm.session, &c, e->window) < 0)
 		return;
 
 	if (e->state == PropertyDelete) {
@@ -615,13 +454,13 @@ init(void)
 	XChangeWindowAttributes(karuiwm.dpy, karuiwm.root, CWEventMask, &wa);
 
 	/* input (mouse, keyboard) */
-	cursor = cursor_new();
+	karuiwm.cursor = cursor_new();
 	grabkeys();
 
 	/* layouts, session, focus */
 	layout_init();
-	session = session_new();
-	focus = focus_new(session);
+	karuiwm.session = session_new();
+	karuiwm.focus = focus_new(karuiwm.session);
 }
 
 static void
@@ -641,165 +480,6 @@ init_atoms(void)
 	INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_WINDOW_TYPE_DIALOG);
 	INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_STRUT);
 	INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_STRUT_PARTIAL);
-}
-
-static void
-mouse_move(struct client *c, int mx, int my)
-{
-	XEvent ev;
-	long evmask = MOUSEMASK | ExposureMask | SubstructureRedirectMask;
-	int dx, dy;
-	int cx = c->floatx;
-	int cy = c->floaty;
-
-	if (cursor_set_type(cursor, CURSOR_MOVE) < 0)
-		WARN("could not change cursor appearance to moving");
-	do {
-		XMaskEvent(karuiwm.dpy, evmask, &ev);
-		switch (ev.type) {
-		case ButtonRelease:
-			break;
-		case ConfigureRequest:
-		case Expose:
-		case MapRequest:
-			handle[ev.type](&ev);
-			break;
-		case MotionNotify:
-			dx = ev.xmotion.x - mx;
-			dy = ev.xmotion.y - my;
-			cx = cx + dx;
-			cy = cy + dy;
-			mx = ev.xmotion.x;
-			my = ev.xmotion.y;
-			client_move(c, cx, cy);
-			break;
-		default:
-			WARN("unhandled event %d", ev.type);
-		}
-	} while (ev.type != ButtonRelease);
-	if (cursor_set_type(cursor, CURSOR_NORMAL) < 0)
-		WARN("could not reset cursor appearance");
-	focus_associate_client(focus, c);
-}
-
-static void
-mouse_moveresize(struct client *c, void (*mh)(struct client *c, int, int))
-{
-	int mx, my;
-
-	if (c == NULL || c->state != STATE_NORMAL)
-		return;
-
-	if (cursor_get_pos(cursor, &mx, &my) < 0) {
-		WARN("could not get cursor position");
-		return;
-	}
-	focus_monitor_by_mouse(focus, mx, my);
-
-	/* fix client floating position, float */
-	if (c->floatx + (int signed) c->floatw < mx)
-		c->floatx = mx - (int signed) c->floatw + 1;
-	if (c->floatx > mx)
-		c->floatx = mx;
-	if (c->floaty + (int signed) c->floath < my)
-		c->floaty = my - (int signed) c->floath + 1;
-	if (c->floaty > my)
-		c->floaty = my;
-	desktop_float_client(focus->selmon->seldt, c, true);
-	desktop_arrange(focus->selmon->seldt);
-
-	/* handle events */
-	mh(c, mx, my);
-}
-
-static void
-mouse_resize(struct client *c, int mx, int my)
-{
-	XEvent ev;
-	long evmask = MOUSEMASK | ExposureMask | SubstructureRedirectMask;
-	int dx, dy;
-	bool left, right, top, bottom;
-	int cx = c->floatx;
-	int cy = c->floaty;
-	int unsigned cw = c->floatw;
-	int unsigned ch = c->floath;
-
-	/* determine area, set cursor appearance */
-	top = my - cy < (int signed) ch / 3;
-	bottom = my - cy > 2 * (int signed) ch / 3;
-	left = mx - cx < (int signed) cw / 3;
-	right = mx - cx > 2 * (int signed) cw / 3;
-	if (!top && !bottom && !left && !right)
-		return;
-	if (cursor_set_type(cursor,
-	                    top && left     ? CURSOR_RESIZE_TOP_LEFT     :
-	                    top && right    ? CURSOR_RESIZE_TOP_RIGHT    :
-	                    bottom && left  ? CURSOR_RESIZE_BOTTOM_LEFT  :
-	                    bottom && right ? CURSOR_RESIZE_BOTTOM_RIGHT :
-	                    left            ? CURSOR_RESIZE_LEFT         :
-	                    right           ? CURSOR_RESIZE_RIGHT        :
-	                    top             ? CURSOR_RESIZE_TOP          :
-	                    bottom          ? CURSOR_RESIZE_BOTTOM       :
-	                    /* ignore */      CURSOR_NORMAL) < 0)
-	        WARN("could not change cursor appearance to resizing");
-	do {
-		XMaskEvent(karuiwm.dpy, evmask, &ev);
-		switch (ev.type) {
-		case ButtonRelease:
-			break;
-		case ConfigureRequest:
-		case Expose:
-		case MapRequest:
-			handle[ev.type](&ev);
-			break;
-		case MotionNotify:
-			dx = ev.xmotion.x - mx;
-			dy = ev.xmotion.y - my;
-
-			/* incremental size */
-			if (c->incw > 0)
-				dx = dx / (int signed) c->incw
-				        * (int signed) c->incw;
-			if (c->inch > 0)
-				dy = dy / (int signed) c->inch
-				        * (int signed) c->inch;
-
-			/* minimum size (x) */
-			if (left
-			&& (int signed) cw - dx >= (int signed) c->minw) {
-				cx += dx;
-				cw = (int unsigned) ((int signed) cw - dx);
-			} else if (right
-			&& (int signed) cw + dx >= (int signed) c->minw) {
-				cw = (int unsigned) ((int signed) cw + dx);
-			} else {
-				dx = 0;
-			}
-
-			/* minimum size (y) */
-			if (top
-			&& (int signed) ch - dy >= (int signed) c->minh) {
-				cy += dy;
-				ch = (int unsigned) ((int signed) ch - dy);
-			} else if (bottom
-			&& (int signed) ch + dy >= (int signed) c->minh) {
-				ch = (int unsigned) ((int signed) ch + dy);
-			} else {
-				dy = 0;
-			}
-
-			/* update cursor position, resize */
-			mx += dx;
-			my += dy;
-			client_moveresize(c, cx, cy, cw, ch);
-			break;
-		default:
-			WARN("unhandled event %d", ev.type);
-		}
-	} while (ev.type != ButtonRelease);
-	if (cursor_set_type(cursor, CURSOR_NORMAL) < 0)
-		WARN("could not reset cursor appearance");
-	focus_associate_client(focus, c);
 }
 
 static void
@@ -860,11 +540,11 @@ term(void)
 {
 	char sid[BUFSIZ];
 
-	focus_delete(focus);
+	focus_delete(karuiwm.focus);
 	if (karuiwm.state == RESTARTING)
-		session_save(session, sid, sizeof(sid));
-	session_delete(session);
-	cursor_delete(cursor);
+		session_save(karuiwm.session, sid, sizeof(sid));
+	session_delete(karuiwm.session);
+	cursor_delete(karuiwm.cursor);
 	layout_term();
 
 	XUngrabKey(karuiwm.dpy, AnyKey, AnyModifier, karuiwm.root);

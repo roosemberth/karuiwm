@@ -3,6 +3,7 @@
 
 #include <X11/Xlib.h>
 #include <stdbool.h>
+#include "actions.h"
 
 /* macros */
 #define BORDERWIDTH 1          /* window border width */
@@ -50,13 +51,7 @@ enum netatom_type {
 enum direction { LEFT, RIGHT, UP, DOWN, NO_DIRECTION };
 enum runstate { STOPPED, STARTING, RUNNING, STOPPING, RESTARTING };
 
-/* unions, structures */
-union argument {
-	int i;
-	float f;
-	void *v;
-};
-
+/* structures */
 struct button {
 	int unsigned mod;
 	int unsigned button;
@@ -79,6 +74,9 @@ struct {
 	int screen;
 	int xfd;
 	enum runstate state;
+	struct focus *focus;
+	struct session *session;
+	struct cursor *cursor;
 } karuiwm;
 
 #endif /* _KARUIWM_H */
