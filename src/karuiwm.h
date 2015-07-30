@@ -67,16 +67,23 @@ struct key {
 };
 
 /* variables */
+#define BUFSIZE_HOSTNAME 128
+
 Atom atoms[ATOM_LAST], netatoms[NETATOM_LAST];
 struct {
 	Display *dpy;
 	Window root;
 	int screen;
 	int xfd;
+	Colormap cm;
 	enum runstate state;
 	struct focus *focus;
 	struct session *session;
 	struct cursor *cursor;
+	struct {
+		char HOSTNAME[BUFSIZE_HOSTNAME];
+		char *HOME;
+	} env;
 } karuiwm;
 
 #endif /* _KARUIWM_H */

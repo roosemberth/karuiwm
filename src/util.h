@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdarg.h>
 
 #ifdef MODE_DEBUG
 # define DEBUG(...)  print(stdout,LOG_DEBUG,  __FILE__,__LINE__,__VA_ARGS__)
@@ -34,5 +35,9 @@ void *scalloc(size_t nmemb, size_t size, char const *ctx);
 void *smalloc(size_t size, char const *context);
 void *srealloc(void *ptr, size_t size, char const *ctx);
 void sfree(void *ptr);
+
+/* strings */
+char *strdupf(char const *format, ...);
+int vstrlenf(char const *format, va_list ap);
 
 #endif /* ndef _UTIL_H */

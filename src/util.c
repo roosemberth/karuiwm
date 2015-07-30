@@ -107,3 +107,41 @@ sfree(void *ptr)
 {
 	free(ptr);
 }
+
+char *
+strdupf(char const *format, ...)
+{
+	int len;
+	size_t slen;
+	char *dst;
+	va_list ap;
+
+	va_start(ap, format);
+	len = vstrlenf(format, ap);
+	va_end(ap);
+
+	if (len < 0)
+		return NULL;
+	slen = (size_t) len + 1;
+
+	dst = smalloc(slen, "formatted string duplication");
+	va_start(ap, format);
+	len = vsnprintf(dst, slen, format, ap);
+	va_end(ap);
+
+	if (len < 0) {
+		sfree(dst);
+		return NULL;
+	}
+	return dst;
+}
+
+int
+vstrlenf(char const *format, va_list ap)
+{
+	int len;
+	char *buf = NULL;
+
+	len = vsnprintf(buf, 0, format, ap);
+	return len;
+}

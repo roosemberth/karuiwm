@@ -428,6 +428,10 @@ init(void)
 
 	karuiwm.state = STARTING;
 
+	/* environment */
+	karuiwm.env.HOME = getenv("HOME");
+	gethostname(karuiwm.env.HOSTNAME, BUFSIZE_HOSTNAME);
+
 	/* connect to X */
 	karuiwm.dpy = XOpenDisplay(NULL);
 	if (karuiwm.dpy == NULL)
@@ -445,6 +449,7 @@ init(void)
 	karuiwm.screen = DefaultScreen(karuiwm.dpy);
 	karuiwm.root = RootWindow(karuiwm.dpy, karuiwm.screen);
 	karuiwm.xfd = ConnectionNumber(karuiwm.dpy);
+	karuiwm.cm = DefaultColormap(karuiwm.dpy, karuiwm.screen);
 	init_atoms();
 
 	/* events */
