@@ -11,12 +11,14 @@ struct xresource {
 	char *name;
 };
 
-void xresources_delete(struct xresource *xr);
+void xresource_delete(struct xresource *xr);
 struct xresource *xresource_new(char const *name);
 int xresource_query_boolean(struct xresource *xr, char const *key, bool def,
                             bool *ret);
 int xresource_query_colour(struct xresource *xr, char const *key, uint32_t def,
                            uint32_t *ret);
+int xresource_query_floating(struct xresource *xr, char const *key, float def,
+                             float *ret);
 int xresource_query_integer(struct xresource *xr, char const *key, int def,
                             int *ret);
 int xresource_query_string(struct xresource *xr, char const *key,

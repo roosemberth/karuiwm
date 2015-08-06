@@ -4,6 +4,7 @@
 #include <string.h>
 #include <strings.h>
 #include <X11/Xlib.h>
+#include <errno.h>
 
 #define BUFSIZE 256
 
@@ -11,7 +12,7 @@ static void xresource_get_key(struct xresource *xr, char const *key, bool host,
                               char *buf, size_t buflen);
 
 void
-xresources_delete(struct xresource *xr)
+xresource_delete(struct xresource *xr)
 {
 	XrmDestroyDatabase(xr->xdb);
 	sfree(xr->name);
@@ -59,7 +60,7 @@ xresource_query_boolean(struct xresource *xr, char const *key, bool def,
 {
 	char str[BUFSIZE];
 
-	if (xresource_query_string(xr, key, "", str, BUFSIZE) < 0) {
+	if (xresource_query_string(xr, key, NULL, str, BUFSIZE) < 0) {
 		*ret = def;
 		return -1;
 	}
@@ -74,15 +75,33 @@ xresource_query_colour(struct xresource *xr, char const *key, uint32_t def,
 	XColor xcolour;
 	char str[BUFSIZE];
 
-	if (xresource_query_string(xr, key, "", str, BUFSIZE) < 0) {
+	if (xresource_query_string(xr, key, NULL, str, BUFSIZE) < 0) {
 		*ret = def;
 		return -1;
 	}
-	if (XAllocNamedColor(karuiwm.dpy, karuiwm.cm, str, &xcolour, &xcolour) == 0) {
-		WARN("resource '%s' carries invalid colour value", key);
+	if (!XAllocNamedColor(karuiwm.dpy,karuiwm.cm, str, &xcolour,&xcolour)) {
+		WARN("X resources: %s: expected colour code, found `%s`",
+		     key, str);
 		return -1;
 	}
 	*ret = (uint32_t) xcolour.pixel;
+	return 0;
+}
+
+int
+xresource_query_floating(struct xresource *xr, char const *key, float def,
+                         float *ret)
+{
+	char str[BUFSIZE];
+
+	if (xresource_query_string(xr, key, NULL, str, BUFSIZE) < 0) {
+		*ret = def;
+		return -1;
+	}
+	if (sscanf(str, "%f", ret) < 1) {
+		WARN("X resources: %s: expected float, found `%s`", key, str);
+		return -1;
+	}
 	return 0;
 }
 
@@ -92,11 +111,14 @@ xresource_query_integer(struct xresource *xr, char const *key, int def,
 {
 	char str[BUFSIZE];
 
-	if (xresource_query_string(xr, key, "", str, BUFSIZE) < 0) {
+	if (xresource_query_string(xr, key, NULL, str, BUFSIZE) < 0) {
 		*ret = def;
 		return -1;
 	}
-	*ret = (int) strtol(str, NULL, 0);
+	if (sscanf(str, "%i", ret) < 1) {
+		WARN("X resources: %s: expected integer, found `%s`", key, str);
+		return -1;
+	}
 	return 0;
 }
 
@@ -108,21 +130,26 @@ xresource_query_string(struct xresource *xr, char const *key, char const *def,
 	char *type = NULL;
 	XrmValue val = { 0, NULL };
 
+	if (xr == NULL)
+		goto xresource_query_string_default;
+
 	/* host-specific */
 	xresource_get_key(xr, key, true, rname, BUFSIZE);
 	if (XrmGetResource(xr->xdb, rname, "*", &type, &val))
-		goto xresources_string_success;
+		goto xresource_query_string_success;
 
 	/* generic */
 	xresource_get_key(xr, key, false, rname, BUFSIZE);
 	if (XrmGetResource(xr->xdb, rname, "*", &type, &val))
-		goto xresources_string_success;
+		goto xresource_query_string_success;
 
 	/* default */
-	strncpy(ret, def, retlen);
+ xresource_query_string_default:
+	if (def != NULL)
+		strncpy(ret, def, retlen);
 	return -1;
 
- xresources_string_success:
+ xresource_query_string_success:
 	strncpy(ret, val.addr, retlen);
 	return 0;
 }
