@@ -1,5 +1,5 @@
-#ifndef _WORKSPACE_H
-#define _WORKSPACE_H
+#ifndef _KARUIWM_WORKSPACE_H
+#define _KARUIWM_WORKSPACE_H
 
 #include "desktop.h"
 #include "karuiwm.h"
@@ -20,4 +20,4 @@ int workspace_locate_window(struct workspace *ws, struct client **c, Window win)
 void workspace_locate_free_slot(struct workspace *ws, int *posx, int *posy);
 struct workspace *workspace_new(char const *name);
 
-#endif /* ndef _WORKSPACE_H */
+#endif /* ndef _KARUIWM_WORKSPACE_H */

@@ -1,5 +1,5 @@
-#ifndef _UTIL_H
-#define _UTIL_H
+#ifndef _KARUIWM_UTIL_H
+#define _KARUIWM_UTIL_H
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -40,4 +40,4 @@ void sfree(void *ptr);
 char *strdupf(char const *format, ...);
 int vstrlenf(char const *format, va_list ap);
 
-#endif /* ndef _UTIL_H */
+#endif /* ndef _KARUIWM_UTIL_H */

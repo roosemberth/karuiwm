@@ -87,4 +87,4 @@ struct {
 	} env;
 } karuiwm;
 
-#endif /* _KARUIWM_H */
+#endif /* ndef _KARUIWM_H */

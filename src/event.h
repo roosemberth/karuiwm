@@ -1,5 +1,5 @@
-#ifndef _EVENT_H
-#define _EVENT_H
+#ifndef _KARUIWM_EVENT_H
+#define _KARUIWM_EVENT_H
 
 #define BUFSIZE 256
 
@@ -77,4 +77,4 @@ void event_set_subscription(enum event_type type,
                             bool subscribe);
 void event_trigger(union event *ev);
 
-#endif /* def _EVENT_H */
+#endif /* ndef _KARUIWM_EVENT_H */

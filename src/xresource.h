@@ -1,5 +1,5 @@
-#ifndef _XRESOURCE_H
-#define _XRESOURCE_H
+#ifndef _KARUIWM_XRESOURCE_H
+#define _KARUIWM_XRESOURCE_H
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -24,4 +24,4 @@ int xresource_query_integer(struct xresource *xr, char const *key, int def,
 int xresource_query_string(struct xresource *xr, char const *key,
                            char const *def, char *ret, size_t retlen);
 
-#endif /* ndef _XRESOURCE_H */
+#endif /* ndef _KARUIWM_XRESOURCE_H */

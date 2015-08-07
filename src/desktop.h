@@ -1,5 +1,5 @@
-#ifndef _DESKTOP_H
-#define _DESKTOP_H
+#ifndef _KARUIWM_DESKTOP_H
+#define _KARUIWM_DESKTOP_H
 
 #include "client.h"
 #include "workspace.h"
@@ -41,4 +41,4 @@ void desktop_step_layout(struct desktop *d, int dir);
 void desktop_update_focus(struct desktop *d);
 void desktop_zoom(struct desktop *d);
 
-#endif /* ndef _DESKTOP_H */
+#endif /* ndef _KARUIWM_DESKTOP_H */

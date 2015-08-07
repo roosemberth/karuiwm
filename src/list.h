@@ -1,5 +1,5 @@
-#ifndef _LIST_H
-#define _LIST_H
+#ifndef _KARUIWM_LIST_H
+#define _KARUIWM_LIST_H
 
 #define LIST_APPEND(H, E) list_append((struct list_element **) (H), \
                                       (struct list_element *) (E))
@@ -19,4 +19,4 @@ void list_remove(struct list_element **head, struct list_element *e);
 void list_swap(struct list_element **head, struct list_element *e1,
                                            struct list_element *e2);
 
-#endif /* ndef _LIST_H */
+#endif /* ndef _KARUIWM_LIST_H */

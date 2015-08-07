@@ -1,5 +1,5 @@
-#ifndef _CLIENT_H
-#define _CLIENT_H
+#ifndef _KARUIWM_CLIENT_H
+#define _KARUIWM_CLIENT_H
 
 #include "karuiwm.h"
 #include <X11/Xlib.h>
@@ -47,4 +47,4 @@ void client_set_fullscreen(struct client *c, bool fullscreen);
 void client_set_visibility(struct client *c, bool visible);
 bool client_supports_atom(struct client *c, Atom atom);
 
-#endif /* _CLIENT_H */
+#endif /* ndef _KARUIWM_CLIENT_H */

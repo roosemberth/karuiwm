@@ -1,5 +1,5 @@
-#ifndef _ACTIONS_H
-#define _ACTIONS_H
+#ifndef _KARUIWM_ACTIONS_H
+#define _KARUIWM_ACTIONS_H
 
 #include <X11/Xlib.h>
 
@@ -24,4 +24,4 @@ void action_stop(union argument *arg);
 void action_togglefloat(union argument *arg);
 void action_zoom(union argument *arg);
 
-#endif /* def _ACTIONS_H */
+#endif /* ndef _KARUIWM_ACTIONS_H */

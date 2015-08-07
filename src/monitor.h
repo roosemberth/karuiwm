@@ -1,5 +1,5 @@
-#ifndef _MONITOR_H
-#define _MONITOR_H
+#ifndef _KARUIWM_MONITOR_H
+#define _KARUIWM_MONITOR_H
 
 #include "desktop.h"
 #include "focus.h"
@@ -24,4 +24,4 @@ void monitor_step_desktop(struct monitor *m, enum direction dir);
 void monitor_update_geometry(struct monitor *m,
                              int x, int y, int unsigned w, int unsigned h);
 
-#endif /* ndef _MONITOR_H */
+#endif /* ndef _KARUIWM_MONITOR_H */
