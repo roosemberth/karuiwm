@@ -9,7 +9,7 @@
 #include "cursor.h"
 #include "layout.h"
 #include "actions.h"
-#include "xresource.h"
+#include "xresources.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -432,9 +432,8 @@ init(void)
 	/* environment */
 	karuiwm.env.HOME = getenv("HOME");
 	gethostname(karuiwm.env.HOSTNAME, BUFSIZE_HOSTNAME);
-	karuiwm.xresource = xresource_new(APPNAME);
-	if (karuiwm.xresource == NULL)
-		WARN("could not initialise X resources");
+	if (xresources_init(APPNAME) < 0)
+		FATAL("could not initialise X resources");
 
 	/* connect to X */
 	karuiwm.dpy = XOpenDisplay(NULL);
@@ -555,8 +554,7 @@ term(void)
 	session_delete(karuiwm.session);
 	cursor_delete(karuiwm.cursor);
 	layout_term();
-	if (karuiwm.xresource != NULL)
-		xresource_delete(karuiwm.xresource);
+	xresources_term();
 
 	XUngrabKey(karuiwm.dpy, AnyKey, AnyModifier, karuiwm.root);
 	XSetInputFocus(karuiwm.dpy, PointerRoot, RevertToPointerRoot,

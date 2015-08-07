@@ -80,7 +80,6 @@ struct {
 	struct focus *focus;
 	struct session *session;
 	struct cursor *cursor;
-	struct xresource *xresource;
 	struct {
 		char HOSTNAME[BUFSIZE_HOSTNAME];
 		char *HOME;
