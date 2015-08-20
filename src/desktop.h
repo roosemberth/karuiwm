@@ -7,7 +7,7 @@
 #include <stdbool.h>
 
 struct desktop {
-	struct desktop *prev, *next;
+	struct desktop *prev, *next; /* list.h */
 	struct workspace *workspace;
 	struct monitor *monitor;
 	size_t nt, nf, nmaster;

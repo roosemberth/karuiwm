@@ -5,7 +5,7 @@
 #include "karuiwm.h"
 
 struct workspace {
-	struct workspace *prev, *next;
+	struct workspace *prev, *next; /* list.h */
 	size_t nd;
 	struct desktop *desktops;
 	char name[BUFSIZ];

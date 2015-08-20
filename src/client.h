@@ -9,7 +9,7 @@
 enum client_state { STATE_NORMAL, STATE_FULLSCREEN, STATE_SCRATCHPAD };
 
 struct client {
-	struct client *prev, *next;
+	struct client *prev, *next; /* list.h */
 	struct desktop *desktop;
 	int x, y, floatx, floaty;
 	int unsigned w, h, floatw, floath, border;
