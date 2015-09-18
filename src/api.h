@@ -4,12 +4,11 @@
 #include "module.h"
 #include <stdlib.h>
 
-#define API_PATHLEN 512
-
 struct {
 	/* modules */
 	size_t npaths;
 	char **paths;
+	size_t nmodules;
 	struct module *modules;
 } api;
 

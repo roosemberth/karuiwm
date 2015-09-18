@@ -37,13 +37,16 @@ init_modules(void)
 	init_modules_paths();
 	(void) xresources_string("modules", "core", modlist, 512);
 
+	api.nmodules = 0;
 	modname = strtok(modlist, delim);
 	while (modname != NULL) {
 		mod = module_new(modname);
-		if (mod == NULL)
-			WARN("could not initialise module '%s'", modname);
-		else
+		if (mod == NULL) {
+			WARN("could not create module '%s'", modname);
+		} else {
 			LIST_APPEND(api.modules, mod);
+			++api.nmodules;
+		}
 		modname = strtok(NULL, delim);
 	}
 	if (api.modules == NULL) {
