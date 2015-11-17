@@ -4,7 +4,7 @@
 CC ?= gcc
 
 # Installation prefix:
-PREFIX = /usr/local
+PREFIX = ~/.local
 
 # Application name:
 APPNAME = karuiwm
