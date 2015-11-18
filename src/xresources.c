@@ -12,7 +12,7 @@ static void xresources_get_key(char const *key, bool host, char *buf,
                                size_t buflen);
 
 static XrmDatabase xdb;
-static char *name;
+static char *appname;
 
 int
 xresources_boolean(char const *key, bool def, bool *ret)
@@ -65,7 +65,7 @@ xresources_floating(char const *key, float def, float *ret)
 static void
 xresources_get_key(char const *key, bool host, char *buf, size_t buflen)
 {
-	(void) snprintf(buf, buflen, "%s%s%s.%s", name, host ? "_" : "",
+	(void) snprintf(buf, buflen, "%s%s%s.%s", appname, host ? "_" : "",
 	                host ? karuiwm.env.HOSTNAME : "", key);
 }
 
@@ -73,8 +73,6 @@ int
 xresources_init(char const *name)
 {
 	char *xrm;
-	XrmDatabase xdb;
-	struct xresource *xr;
 
 	xrm = XResourceManagerString(karuiwm.dpy);
 	if (xrm == NULL) {
@@ -90,8 +88,7 @@ xresources_init(char const *name)
 		return -1;
 	}
 
-	xdb = xdb;
-	name = strdupf(name);
+	appname = strdupf(name);
 	return 0;
 }
 
@@ -129,13 +126,12 @@ xresources_string(char const *key, char const *def, char *ret, size_t retlen)
 		goto xresources_string_success;
 
 	/* default */
- xresources_string_default:
 	if (def != NULL)
-		strncpy(ret, def, retlen);
+		(void) strncpy(ret, def, retlen);
 	return -1;
 
  xresources_string_success:
-	strncpy(ret, val.addr, retlen);
+	(void) strncpy(ret, val.addr, retlen);
 	return 0;
 }
 
@@ -143,5 +139,5 @@ void
 xresources_term(void)
 {
 	XrmDestroyDatabase(xdb);
-	sfree(name);
+	sfree(appname);
 }

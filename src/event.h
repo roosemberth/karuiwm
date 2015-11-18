@@ -5,70 +5,145 @@
 
 #include <stdbool.h>
 #include <stdlib.h>
+#include <X11/Xlib.h>
 
 enum event_type {
-	EVENT_FOCUS_MONITOR    = 1<<0,
-	EVENT_FOCUS_WORKSPACE  = 1<<1,
-	EVENT_FOCUS_DESKTOP    = 1<<2,
-	EVENT_FOCUS_CLIENT     = 1<<3,
-	EVENT_LAYOUT           = 1<<4,
-	EVENT_MFACT            = 1<<5,
-	EVENT_NMASTER          = 1<<6,
-	EVENT_URGENT_WORKSPACE = 1<<7,
-	EVENT_URGENT_DESKTOP   = 1<<8,
-	EVENT_URGENT_CLIENT    = 1<<9,
+	EVENT_PRESS_BUTTON,
+	EVENT_PRESS_KEY,
+	EVENT_REGISTER_BUTTON,
+	EVENT_REGISTER_KEY,
+	EVENT_GRAB_BUTTONS,
+	EVENT_GRAB_KEYS,
+	EVENT_FOCUS_MONITOR,
+	EVENT_FOCUS_WORKSPACE,
+	EVENT_FOCUS_DESKTOP,
+	EVENT_FOCUS_CLIENT,
+	EVENT_LAYOUT,
+	EVENT_MFACT,
+	EVENT_NMASTER,
+	EVENT_URGENT_WORKSPACE,
+	EVENT_URGENT_DESKTOP,
+	EVENT_URGENT_CLIENT,
+	EVENT_LAST
 };
 
 union event {
 	enum event_type type;
-	struct {
+
+	/* registered button is pressed */
+	struct press_button {
+		enum event_type type;
+		int unsigned mod;
+		int unsigned button;
+	} press_button;
+
+	/* registered key is pressed */
+	struct press_key {
+		enum event_type type;
+		int unsigned mod;
+		KeySym key;
+	} press_key;
+
+	/* ask for a button to be registered - core handles this */
+	struct register_button {
+		enum event_type type;
+		int unsigned mod;
+		int unsigned button;
+		bool reg;
+	} register_button;
+
+	/* ask for a key to be registered - core handles this */
+	struct register_key {
+		enum event_type type;
+		int unsigned mod;
+		KeySym key;
+		bool reg;
+	} register_key;
+
+	/* ask for a window to grab all buttons */
+	struct grab_buttons {
+		enum event_type type;
+		Window win;
+		bool grab;
+	} grab_buttons;
+
+	/* ask for a window to grab all keys */
+	struct grab_keys {
+		enum event_type type;
+		Window win;
+		bool grab;
+	} grab_keys;
+
+	/* focused monitor changes */
+	struct focus_monitor {
 		enum event_type type;
 		int monitor_index;
 	} focus_monitor;
-	struct {
+
+	/* focused workspace changes */
+	struct focus_workspace {
 		enum event_type type;
 		int monitor_index;
 		char workspace_name[BUFSIZE];
 	} focus_workspace;
-	struct {
+
+	/* focused desktop changes */
+	struct focus_desktop {
 		enum event_type type;
 		int monitor_index;
 		char desktop_name[BUFSIZE];
 	} focus_desktop;
-	struct {
+
+	/* focused client changes */
+	struct focus_client {
 		enum event_type type;
 		int monitor_index;
 		char client_name[BUFSIZE];
 	} focus_client;
-	struct {
+
+	/* client layout on current desktop changes */
+	struct layout {
 		enum event_type type;
 		int monitor_index;
 		char layout_name[BUFSIZE];
 	} layout;
-	struct {
+
+	/* number of clients in the master area changes */
+	struct nmaster {
 		enum event_type type;
 		int monitor_index;
 		size_t nmaster;
 	} nmaster;
-	struct {
+
+	/* master area size factor changes */
+	struct mfact {
 		enum event_type type;
 		int monitor_index;
 		float mfact;
 	} mfact;
-	struct {
+
+	/* workspace on which URGENT hint on a client changes */
+	struct urgent_workspace {
 		enum event_type type;
 		int monitor_index;
 		char workspace_name[BUFSIZE];
+		bool urgent;
 	} urgent_workspace;
-	struct {
+
+	/* desktop on which URGENT hint on a client changes */
+	struct urgent_desktop {
 		enum event_type type;
 		int monitor_index;
 		char desktop_name[BUFSIZE];
+		bool urgent;
 	} urgent_desktop;
-	struct {
+
+	/* URGENT hint on a client changes */
+	struct urgent_client {
 		enum event_type type;
 		int monitor_index;
 		char client_name[BUFSIZE];
+		bool urgent;
 	} urgent_client;
 };
 

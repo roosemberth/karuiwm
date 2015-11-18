@@ -3,7 +3,6 @@
 
 #include <X11/Xlib.h>
 #include <stdbool.h>
-#include "actions.h"
 
 /* macros */
 #define BORDERWIDTH 1          /* window border width */
@@ -47,24 +46,8 @@ enum netatom_type {
 	NETATOM_LAST
 };
 
-/* enumerations */
 enum direction { LEFT, RIGHT, UP, DOWN, NO_DIRECTION };
 enum runstate { STOPPED, STARTING, RUNNING, STOPPING, RESTARTING };
-
-/* structures */
-struct button {
-	int unsigned mod;
-	int unsigned button;
-	void (*func)(union argument *, Window win);
-	union argument arg;
-};
-
-struct key {
-	int unsigned mod;
-	KeySym key;
-	void (*func)(union argument *);
-	union argument arg;
-};
 
 /* variables */
 #define BUFSIZE_HOSTNAME 128

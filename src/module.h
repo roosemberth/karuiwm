@@ -16,8 +16,8 @@ struct module {
 	void *data;
 
 	/* callback functions */
-	int (*init)(void **data);
-	void (*term)(void **data);
+	int (*init)(struct module *mod);
+	void (*term)(struct module *mod);
 };
 
 void module_delete(struct module *mod);

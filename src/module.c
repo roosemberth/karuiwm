@@ -28,11 +28,11 @@ static void *
 find_shared(char const *name)
 {
 	int unsigned i;
-	char so_path[API_PATHLEN];
+	char so_path[512]; /* FIXME magic number */
 	void *so_handler;
 
 	for (i = 0; i < api.npaths; ++i) {
-		if (snprintf(so_path, API_PATHLEN, "%s/%s.so",
+		if (snprintf(so_path, 512, "%s/%s.so", /* FIXME magic number */
 		             api.paths[i], name) < 0) {
 			WARN("snprintf() < 0");
 			return NULL;

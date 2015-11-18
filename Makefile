@@ -24,7 +24,7 @@ _CFLAGS_RELEASE = -O2
 _CFLAGS_XINERAMA = $(shell pkg-config --cflags xinerama) -DXINERAMA
 
 # Libraries:
-_LIBS = $(shell pkg-config --libs x11)
+_LIBS = $(shell pkg-config --libs x11) -ldl
 _LIBS_ASAN =
 _LIBS_DEBUG =
 _LIBS_RELEASE =

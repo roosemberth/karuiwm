@@ -1,5 +1,5 @@
 #include "karuiwm.h"
-#include "util.h"
+#include "action.h"
 #include "client.h"
 #include "desktop.h"
 #include "workspace.h"
@@ -8,8 +8,12 @@
 #include "focus.h"
 #include "cursor.h"
 #include "layout.h"
-#include "actions.h"
 #include "xresources.h"
+#include "util.h"
+#include "argument.h"
+#include "key_binding.h"
+#include "button_binding.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -31,6 +35,20 @@
 #define INIT_ATOM(D, L, A) L[A] = XInternAtom(D, #A, false)
 
 /* functions */
+static void action_killclient(union argument *arg);
+static void action_mousemove(union argument *arg);
+static void action_mouseresize(union argument *arg);
+static void action_restart(union argument *arg);
+static void action_setmfact(union argument *arg);
+static void action_setnmaster(union argument *arg);
+static void action_shiftclient(union argument *arg);
+static void action_spawn(union argument *arg);
+static void action_stepclient(union argument *arg);
+static void action_stepdesktop(union argument *arg);
+static void action_steplayout(union argument *arg);
+static void action_stop(union argument *arg);
+static void action_togglefloat(union argument *arg);
+static void action_zoom(union argument *arg);
 static void check_restart(char **argv);
 static void grabkeys(void);
 static void handle_buttonpress(XEvent *xe);
@@ -42,7 +60,6 @@ static void handle_enternotify(XEvent *xe);
 static void handle_expose(XEvent *xe);
 static void handle_focusin(XEvent *xe);
 static void handle_keypress(XEvent *xe);
-static void handle_keyrelease(XEvent *xe);
 static void handle_mappingnotify(XEvent *xe);
 static void handle_maprequest(XEvent *xe);
 static void handle_propertynotify(XEvent *xe);
@@ -50,6 +67,9 @@ static void handle_unmapnotify(XEvent *xe);
 static int handle_xerror(Display *dpy, XErrorEvent *xe);
 static void init(void);
 static void init_atoms(void);
+static void mouse_move(struct client *c, int mx, int my);
+static void mouse_moveresize(struct client *c, void (*mh)(struct client *, int, int));
+static void mouse_resize(struct client *c, int mx, int my);
 static void parse_args(int argc, char **argv);
 static void run(void);
 static void sigchld(int);
@@ -58,8 +78,12 @@ static void term(void);
 /* variables */
 static char const *termcmd[] = { "urxvt", NULL };
 static char const *scrotcmd[] = { "prtscr", NULL };
+static struct key_binding *keybinds;
+static struct button_binding *buttonbinds;
+static struct action *actions;
+static size_t nkeybinds, nbuttonbinds, nactions;
 
-/* event handlers, as array to allow O(1) access; codes in X.h */
+/* event handlers, as array to allow O(1) access; numeric codes are in X.h */
 static void (*handle[LASTEvent])(XEvent *) = {
 	[ButtonPress]      = handle_buttonpress,      /* 4*/
 	[ClientMessage]    = handle_clientmessage,    /*33*/
@@ -70,7 +94,6 @@ static void (*handle[LASTEvent])(XEvent *) = {
 	[Expose]           = handle_expose,           /*12*/
 	[FocusIn]          = handle_focusin,          /* 9*/
 	[KeyPress]         = handle_keypress,         /* 2*/
-	[KeyRelease]       = handle_keyrelease,       /* 3*/
 	[MapRequest]       = handle_maprequest,       /*20*/
 	[MappingNotify]    = handle_mappingnotify,    /*34*/
 	[PropertyNotify]   = handle_propertynotify,   /*28*/
@@ -78,44 +101,149 @@ static void (*handle[LASTEvent])(XEvent *) = {
 };
 static int (*xerrorxlib)(Display *dpy, XErrorEvent *xe);
 
-static struct key keys[] = {
-	/* applications */
-	{ MODKEY,             XK_n,       action_spawn,       { .v=termcmd } },
-	{ MODKEY,             XK_Print,   action_spawn,       { .v=scrotcmd } },
-
-	/* windows */
-	{ MODKEY,             XK_j,       action_stepclient,   { .i=+1 } },
-	{ MODKEY,             XK_k,       action_stepclient,   { .i=-1 } },
-	{ MODKEY,             XK_l,       action_setmfact,    { .f=+0.02f } },
-	{ MODKEY,             XK_h,       action_setmfact,    { .f=-0.02f } },
-	{ MODKEY,             XK_t,       action_togglefloat, { 0 } },
-	{ MODKEY|ShiftMask,   XK_c,       action_killclient,  { 0 } },
-
-	/* layout */
-	{ MODKEY|ShiftMask,   XK_j,       action_shiftclient, { .i=+1 } },
-	{ MODKEY|ShiftMask,   XK_k,       action_shiftclient, { .i=-1 } },
-	{ MODKEY,             XK_comma,   action_setnmaster,  { .i=+1 } },
-	{ MODKEY,             XK_period,  action_setnmaster,  { .i=-1 } },
-	{ MODKEY,             XK_Return,  action_zoom,        { 0 } },
-	{ MODKEY,             XK_space,   action_steplayout,  { .i=+1 } },
-	{ MODKEY|ShiftMask,   XK_space,   action_steplayout,  { .i=-1 } },
-
-	/* desktop */
-	{ MODKEY|ControlMask, XK_h,       action_stepdesktop, { .i=LEFT } },
-	{ MODKEY|ControlMask, XK_l,       action_stepdesktop, { .i=RIGHT } },
-	{ MODKEY|ControlMask, XK_k,       action_stepdesktop, { .i=UP } },
-	{ MODKEY|ControlMask, XK_j,       action_stepdesktop, { .i=DOWN } },
-
-	/* session */
-	{ MODKEY,             XK_q,       action_restart,     { 0 } },
-	{ MODKEY|ShiftMask,   XK_q,       action_stop,        { 0 } },
-};
-static struct button buttons[] = {
-	{ MODKEY,             Button1,    action_mousemove,   { 0 } },
-	{ MODKEY,             Button3,    action_mouseresize, { 0 } },
-};
-
 /* implementation */
+static void
+action_killclient(union argument *arg)
+{
+	(void) arg;
+
+	desktop_kill_client(karuiwm.focus->selmon->seldt);
+}
+
+static void
+action_mousemove(union argument *arg)
+{
+	struct client *c;
+	Window win = *((Window *) arg->v);
+
+	//EVENT("movemouse(%lu)", c->win);
+
+	if (session_locate_window(karuiwm.session, &c, win) < 0) {
+		WARN("attempt to mouse-move unhandled window %lu", win);
+		return;
+	}
+	mouse_moveresize(karuiwm.focus->selmon->seldt->selcli, mouse_move);
+}
+
+static void
+action_mouseresize(union argument *arg)
+{
+	struct client *c;
+	Window win = *((Window *) arg->v);
+
+	//EVENT("resizemouse(%lu)", c->win);
+
+	if (session_locate_window(karuiwm.session, &c, win) < 0) {
+		WARN("attempt to mouse-resize unhandled window %lu", win);
+		return;
+	}
+	mouse_moveresize(c, mouse_resize);
+}
+
+static void
+action_restart(union argument *arg)
+{
+	action_stop(arg);
+	karuiwm.state = RESTARTING;
+}
+
+static void
+action_setmfact(union argument *arg)
+{
+	struct desktop *d = karuiwm.focus->selmon->seldt;
+
+	desktop_set_mfact(d, d->mfact + arg->f);
+	desktop_arrange(d);
+}
+
+static void
+action_setnmaster(union argument *arg)
+{
+	struct desktop *d = karuiwm.focus->selmon->seldt;
+
+	if (arg->i < 0 && (size_t) (-arg->i) > d->nmaster)
+		return;
+	desktop_set_nmaster(d, (size_t) ((int signed) d->nmaster + arg->i));
+	desktop_arrange(d);
+}
+
+static void
+action_shiftclient(union argument *arg)
+{
+	struct desktop *d = karuiwm.focus->selmon->seldt;
+
+	if (d->selcli == NULL)
+		return;
+	(void) desktop_shift_client(d, arg->i);
+	desktop_arrange(d);
+}
+
+static void
+action_spawn(union argument *arg)
+{
+	char *const *cmd = (char *const *) arg->v;
+
+	pid_t pid = fork();
+	if (pid == 0) {
+		execvp(cmd[0], cmd);
+		FATAL("execvp(%s) failed: %s", cmd[0], strerror(errno));
+	}
+	if (pid < 0)
+		WARN("fork() failed with code %d", pid);
+}
+
+static void
+action_stepclient(union argument *arg)
+{
+	struct desktop *d = karuiwm.focus->selmon->seldt;
+
+	desktop_step_client(d, arg->i);
+	desktop_arrange(d);
+}
+
+static void
+action_stepdesktop(union argument *arg)
+{
+	monitor_step_desktop(karuiwm.focus->selmon, arg->i);
+}
+
+static void
+action_steplayout(union argument *arg)
+{
+	struct desktop *d = karuiwm.focus->selmon->seldt;
+
+	desktop_step_layout(d, arg->i);
+	desktop_arrange(d);
+}
+
+static void
+action_stop(union argument *arg)
+{
+	(void) arg;
+
+	karuiwm.state = STOPPING;
+}
+
+static void
+action_togglefloat(union argument *arg)
+{
+	struct desktop *d = karuiwm.focus->selmon->seldt;
+	(void) arg;
+
+	desktop_float_client(d, d->selcli, !d->selcli->floating);
+	desktop_arrange(d);
+}
+
+static void
+action_zoom(union argument *arg)
+{
+	struct desktop *d = karuiwm.focus->selmon->seldt;
+	(void) arg;
+
+	desktop_zoom(d);
+	desktop_arrange(d);
+}
+
 static void
 check_restart(char **argv)
 {
@@ -132,11 +260,12 @@ static void
 grabkeys(void)
 {
 	int unsigned i;
+	struct key_binding *k;
 
 	XUngrabKey(karuiwm.dpy, AnyKey, AnyModifier, karuiwm.root);
-	for (i = 0; i < LENGTH(keys); i++)
-		XGrabKey(karuiwm.dpy, XKeysymToKeycode(karuiwm.dpy,keys[i].key),
-		         keys[i].mod, karuiwm.root, True, GrabModeAsync,
+	for (i = 0, k = keybinds; i < nkeybinds; ++i, k = k->next)
+		XGrabKey(karuiwm.dpy, XKeysymToKeycode(karuiwm.dpy, k->key),
+		         k->mod, karuiwm.root, True, GrabModeAsync,
 		         GrabModeAsync);
 }
 
@@ -144,6 +273,7 @@ static void
 handle_buttonpress(XEvent *xe)
 {
 	int unsigned i;
+	struct button_binding *b;
 	XButtonEvent *e = &xe->xbutton;
 
 	//EVENT("buttonpress(%lu)", e->window);
@@ -152,11 +282,11 @@ handle_buttonpress(XEvent *xe)
 	if (e->window == karuiwm.root)
 		return;
 
-	for (i = 0; i < LENGTH(buttons); ++i) {
-		if (buttons[i].mod == e->state
-		&& buttons[i].button == e->button
-		&& buttons[i].func != NULL) {
-			buttons[i].func(&buttons[i].arg, e->window);
+	for (i = 0, b = buttonbinds; i < nbuttonbinds; ++i, b = b->next) {
+		if (b->mod == e->state
+		&& b->button == e->button
+		&& b->action != NULL) {
+			b->action->action(&b->arg);
 			break;
 		}
 	}
@@ -286,30 +416,18 @@ static void
 handle_keypress(XEvent *xe)
 {
 	int unsigned i;
+	struct key_binding *k;
 	XKeyPressedEvent *e = &xe->xkey;
 
 	//EVENT("keypress()");
 
 	KeySym keysym = XLookupKeysym(e, 0);
-	for (i = 0; i < LENGTH(keys); i++) {
-		if (e->state == keys[i].mod
-		&& keysym == keys[i].key
-		&& keys[i].func) {
-			keys[i].func(&keys[i].arg);
+	for (i = 0, k = keybinds; i < nkeybinds; ++i, k = k->next) {
+		if (e->state == k->mod && keysym == k->key && k->action) {
+			k->action->action(&k->arg);
 			break;
 		}
 	}
-}
-
-static void
-handle_keyrelease(XEvent *xe)
-{
-	XKeyReleasedEvent *e = &xe->xkey;
-
-	//EVENT("keyrelease()");
-
-	/* TODO keyrelease might not be needed, remove this handler? */
-	(void) e;
 }
 
 static void
@@ -320,7 +438,7 @@ handle_mappingnotify(XEvent *xe)
 	//EVENT("mappingnotify(%lu)", e->window);
 
 	/* TODO handle keyboard mapping changes */
-	(void) e;
+	WARN("keyboard mapping not implemented (window %lu)", e->window);
 }
 
 static void
@@ -352,7 +470,7 @@ handle_maprequest(XEvent *xe)
 		                     MIN(c->floath, d->monitor->h));
 	desktop_arrange(d);
 	XMapWindow(karuiwm.dpy, c->win);
-	client_grab_buttons(c, LENGTH(buttons), buttons);
+	client_grab_buttons(c, nbuttonbinds, buttonbinds);
 	desktop_focus_client(d, c);
 }
 
@@ -369,7 +487,7 @@ handle_propertynotify(XEvent *xe)
 
 	if (e->state == PropertyDelete) {
 		/* TODO handle property deletion */
-		NOTICE("property_delete");
+		WARN("property deletion not implemented (window %lu)", c->win);
 		return;
 	}
 
@@ -488,6 +606,165 @@ init_atoms(void)
 	INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_WINDOW_TYPE_DIALOG);
 	INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_STRUT);
 	INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_STRUT_PARTIAL);
+}
+
+static void
+mouse_move(struct client *c, int mx, int my)
+{
+	XEvent ev;
+	long evmask = MOUSEMASK | ExposureMask | SubstructureRedirectMask;
+	int dx, dy;
+	int cx = c->floatx;
+	int cy = c->floaty;
+
+	if (cursor_set_type(karuiwm.cursor, CURSOR_MOVE) < 0)
+		WARN("could not change cursor appearance to moving");
+	do {
+		XMaskEvent(karuiwm.dpy, evmask, &ev);
+		switch (ev.type) {
+		case ButtonRelease:
+			break;
+		case ConfigureRequest:
+		case Expose:
+		case MapRequest:
+			handle[ev.type](&ev);
+			break;
+		case MotionNotify:
+			dx = ev.xmotion.x - mx;
+			dy = ev.xmotion.y - my;
+			cx = cx + dx;
+			cy = cy + dy;
+			mx = ev.xmotion.x;
+			my = ev.xmotion.y;
+			client_move(c, cx, cy);
+			break;
+		default:
+			WARN("unhandled event %d", ev.type);
+		}
+	} while (ev.type != ButtonRelease);
+	if (cursor_set_type(karuiwm.cursor, CURSOR_NORMAL) < 0)
+		WARN("could not reset cursor appearance");
+	focus_associate_client(karuiwm.focus, c);
+}
+
+static void
+mouse_moveresize(struct client *c, void (*mh)(struct client *c, int, int))
+{
+	int mx, my;
+
+	if (c == NULL || c->state != STATE_NORMAL)
+		return;
+
+	if (cursor_get_pos(karuiwm.cursor, &mx, &my) < 0) {
+		WARN("could not get cursor position");
+		return;
+	}
+	focus_monitor_by_mouse(karuiwm.focus, mx, my);
+
+	/* fix client floating position, float */
+	if (c->floatx + (int signed) c->floatw < mx)
+		c->floatx = mx - (int signed) c->floatw + 1;
+	if (c->floatx > mx)
+		c->floatx = mx;
+	if (c->floaty + (int signed) c->floath < my)
+		c->floaty = my - (int signed) c->floath + 1;
+	if (c->floaty > my)
+		c->floaty = my;
+	desktop_float_client(karuiwm.focus->selmon->seldt, c, true);
+	desktop_arrange(karuiwm.focus->selmon->seldt);
+
+	/* handle events */
+	mh(c, mx, my);
+}
+
+static void
+mouse_resize(struct client *c, int mx, int my)
+{
+	XEvent ev;
+	long evmask = MOUSEMASK | ExposureMask | SubstructureRedirectMask;
+	int dx, dy;
+	bool left, right, top, bottom;
+	int cx = c->floatx;
+	int cy = c->floaty;
+	int unsigned cw = c->floatw;
+	int unsigned ch = c->floath;
+
+	/* determine area, set cursor appearance */
+	top = my - cy < (int signed) ch / 3;
+	bottom = my - cy > 2 * (int signed) ch / 3;
+	left = mx - cx < (int signed) cw / 3;
+	right = mx - cx > 2 * (int signed) cw / 3;
+	if (!top && !bottom && !left && !right)
+		return;
+	if (cursor_set_type(karuiwm.cursor,
+	                    top && left     ? CURSOR_RESIZE_TOP_LEFT     :
+	                    top && right    ? CURSOR_RESIZE_TOP_RIGHT    :
+	                    bottom && left  ? CURSOR_RESIZE_BOTTOM_LEFT  :
+	                    bottom && right ? CURSOR_RESIZE_BOTTOM_RIGHT :
+	                    left            ? CURSOR_RESIZE_LEFT         :
+	                    right           ? CURSOR_RESIZE_RIGHT        :
+	                    top             ? CURSOR_RESIZE_TOP          :
+	                    bottom          ? CURSOR_RESIZE_BOTTOM       :
+	                    /* ignore */      CURSOR_NORMAL) < 0)
+	        WARN("could not change cursor appearance to resizing");
+	do {
+		XMaskEvent(karuiwm.dpy, evmask, &ev);
+		switch (ev.type) {
+		case ButtonRelease:
+			break;
+		case ConfigureRequest:
+		case Expose:
+		case MapRequest:
+			handle[ev.type](&ev);
+			break;
+		case MotionNotify:
+			dx = ev.xmotion.x - mx;
+			dy = ev.xmotion.y - my;
+
+			/* incremental size */
+			if (c->incw > 0)
+				dx = dx / (int signed) c->incw
+				        * (int signed) c->incw;
+			if (c->inch > 0)
+				dy = dy / (int signed) c->inch
+				        * (int signed) c->inch;
+
+			/* minimum size (x) */
+			if (left
+			&& (int signed) cw - dx >= (int signed) c->minw) {
+				cx += dx;
+				cw = (int unsigned) ((int signed) cw - dx);
+			} else if (right
+			&& (int signed) cw + dx >= (int signed) c->minw) {
+				cw = (int unsigned) ((int signed) cw + dx);
+			} else {
+				dx = 0;
+			}
+
+			/* minimum size (y) */
+			if (top
+			&& (int signed) ch - dy >= (int signed) c->minh) {
+				cy += dy;
+				ch = (int unsigned) ((int signed) ch - dy);
+			} else if (bottom
+			&& (int signed) ch + dy >= (int signed) c->minh) {
+				ch = (int unsigned) ((int signed) ch + dy);
+			} else {
+				dy = 0;
+			}
+
+			/* update cursor position, resize */
+			mx += dx;
+			my += dy;
+			client_moveresize(c, cx, cy, cw, ch);
+			break;
+		default:
+			WARN("unhandled event %d", ev.type);
+		}
+	} while (ev.type != ButtonRelease);
+	if (cursor_set_type(karuiwm.cursor, CURSOR_NORMAL) < 0)
+		WARN("could not reset cursor appearance");
+	focus_associate_client(karuiwm.focus, c);
 }
 
 static void

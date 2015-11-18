@@ -9,7 +9,7 @@
 
 static int init_modules(void);
 static int init_modules_paths(void);
-static void term_modules();
+static void term_modules(void);
 
 int
 api_init(void)
@@ -73,6 +73,8 @@ init_modules_paths(void)
 	api.paths[api.npaths - 3] = strdupf("%s/.local/"MODULE_PATH, karuiwm.env.HOME);
 	api.paths[api.npaths - 2] = strdupf("/usr/local/"MODULE_PATH);
 	api.paths[api.npaths - 1] = strdupf("/usr/"MODULE_PATH);
+
+	return 0;
 }
 
 static void

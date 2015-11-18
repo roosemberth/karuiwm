@@ -2,6 +2,8 @@
 #define _KARUIWM_CLIENT_H
 
 #include "karuiwm.h"
+#include "button_binding.h"
+
 #include <X11/Xlib.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -23,11 +25,10 @@ struct client {
 };
 
 void client_delete(struct client *);
-void client_grab_buttons(struct client *c, size_t nb, struct button *buttons);
+void client_grab_buttons(struct client *c, size_t nb, struct button_binding *buttons);
 void client_kill(struct client *c);
 void client_move(struct client *c, int x, int y);
-void client_moveresize(struct client *c, int x, int y,
-                       int unsigned w, int unsigned h);
+void client_moveresize(struct client *c, int x, int y, int unsigned w, int unsigned h);
 struct client *client_new(Window win);
 Atom client_query_atom(struct client *c, Atom property);
 void client_query_dialog(struct client *c);
