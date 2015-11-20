@@ -1,8 +1,8 @@
 #ifndef _KARUIWM_H
 #define _KARUIWM_H
 
-#include <X11/Xlib.h>
 #include <stdbool.h>
+#include <X11/Xlib.h>
 
 /* macros */
 #define BORDERWIDTH 1          /* window border width */
@@ -47,7 +47,6 @@ enum netatom_type {
 };
 
 enum direction { LEFT, RIGHT, UP, DOWN, NO_DIRECTION };
-enum runstate { STOPPED, STARTING, RUNNING, STOPPING, RESTARTING };
 
 /* variables */
 #define BUFSIZE_HOSTNAME 128
@@ -59,7 +58,8 @@ struct {
 	int screen;
 	int xfd;
 	Colormap cm;
-	enum runstate state;
+	bool running;
+	bool restarting;
 	struct focus *focus;
 	struct session *session;
 	struct cursor *cursor;

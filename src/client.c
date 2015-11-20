@@ -54,7 +54,7 @@ client_delete(struct client *c)
 }
 
 void
-client_grab_buttons(struct client *c, size_t nb, struct button_binding *buttons)
+client_grab_buttons(struct client *c, size_t nb, struct buttonbind *buttons)
 {
 	int unsigned i;
 

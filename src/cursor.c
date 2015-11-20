@@ -2,6 +2,8 @@
 #include "karuiwm.h"
 #include "util.h"
 
+#include <stdbool.h>
+
 void
 cursor_delete(struct cursor *cur)
 {

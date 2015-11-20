@@ -1,3 +1,4 @@
+#define _XOPEN_SOURCE 500
 #include "karuiwm.h"
 #include "action.h"
 #include "client.h"
@@ -10,16 +11,16 @@
 #include "layout.h"
 #include "xresources.h"
 #include "util.h"
+#include "list.h"
 #include "argument.h"
-#include "key_binding.h"
-#include "button_binding.h"
+#include "keybind.h"
+#include "buttonbind.h"
 
-#include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <stdarg.h>
 #include <string.h>
 #include <strings.h>
+#include <stdbool.h>
+#include <unistd.h>
 #include <time.h>
 #include <locale.h>
 #include <signal.h>
@@ -32,7 +33,9 @@
 #include <X11/Xproto.h>
 
 /* macros */
-#define INIT_ATOM(D, L, A) L[A] = XInternAtom(D, #A, false)
+#define _INIT_ATOM(D, L, A) L[A] = XInternAtom(D, #A, false)
+#define _INIT_ACTION(L, N) \
+    LIST_APPEND(L, &((struct action) {.name=strdupf(#N), .function=action_ ## N}))
 
 /* functions */
 static void action_killclient(union argument *arg);
@@ -66,7 +69,9 @@ static void handle_propertynotify(XEvent *xe);
 static void handle_unmapnotify(XEvent *xe);
 static int handle_xerror(Display *dpy, XErrorEvent *xe);
 static void init(void);
+static void init_actions(void);
 static void init_atoms(void);
+static void init_config(void);
 static void mouse_move(struct client *c, int mx, int my);
 static void mouse_moveresize(struct client *c, void (*mh)(struct client *, int, int));
 static void mouse_resize(struct client *c, int mx, int my);
@@ -76,10 +81,8 @@ static void sigchld(int);
 static void term(void);
 
 /* variables */
-static char const *termcmd[] = { "urxvt", NULL };
-static char const *scrotcmd[] = { "prtscr", NULL };
-static struct key_binding *keybinds;
-static struct button_binding *buttonbinds;
+static struct keybind *keybinds;
+static struct buttonbind *buttonbinds;
 static struct action *actions;
 static size_t nkeybinds, nbuttonbinds, nactions;
 
@@ -144,7 +147,7 @@ static void
 action_restart(union argument *arg)
 {
 	action_stop(arg);
-	karuiwm.state = RESTARTING;
+	karuiwm.restarting = true;
 }
 
 static void
@@ -221,7 +224,8 @@ action_stop(union argument *arg)
 {
 	(void) arg;
 
-	karuiwm.state = STOPPING;
+	karuiwm.running = false;
+	karuiwm.restarting = false;
 }
 
 static void
@@ -247,7 +251,7 @@ action_zoom(union argument *arg)
 static void
 check_restart(char **argv)
 {
-	if (karuiwm.state == RESTARTING) {
+	if (karuiwm.restarting) {
 		VERBOSE("restarting ...");
 		execvp(argv[0], argv);
 		ERROR("restart failed: %s", strerror(errno));
@@ -260,7 +264,7 @@ static void
 grabkeys(void)
 {
 	int unsigned i;
-	struct key_binding *k;
+	struct keybind *k;
 
 	XUngrabKey(karuiwm.dpy, AnyKey, AnyModifier, karuiwm.root);
 	for (i = 0, k = keybinds; i < nkeybinds; ++i, k = k->next)
@@ -273,7 +277,7 @@ static void
 handle_buttonpress(XEvent *xe)
 {
 	int unsigned i;
-	struct button_binding *b;
+	struct buttonbind *b;
 	XButtonEvent *e = &xe->xbutton;
 
 	//EVENT("buttonpress(%lu)", e->window);
@@ -286,7 +290,7 @@ handle_buttonpress(XEvent *xe)
 		if (b->mod == e->state
 		&& b->button == e->button
 		&& b->action != NULL) {
-			b->action->action(&b->arg);
+			b->action->function(&b->arg);
 			break;
 		}
 	}
@@ -416,7 +420,7 @@ static void
 handle_keypress(XEvent *xe)
 {
 	int unsigned i;
-	struct key_binding *k;
+	struct keybind *k;
 	XKeyPressedEvent *e = &xe->xkey;
 
 	//EVENT("keypress()");
@@ -424,7 +428,7 @@ handle_keypress(XEvent *xe)
 	KeySym keysym = XLookupKeysym(e, 0);
 	for (i = 0, k = keybinds; i < nkeybinds; ++i, k = k->next) {
 		if (e->state == k->mod && keysym == k->key && k->action) {
-			k->action->action(&k->arg);
+			k->action->function(&k->arg);
 			break;
 		}
 	}
@@ -545,13 +549,12 @@ init(void)
 {
 	XSetWindowAttributes wa;
 
-	karuiwm.state = STARTING;
-
 	/* environment */
 	karuiwm.env.HOME = getenv("HOME");
-	gethostname(karuiwm.env.HOSTNAME, BUFSIZE_HOSTNAME);
-	if (xresources_init(APPNAME) < 0)
-		FATAL("could not initialise X resources");
+	if (gethostname(karuiwm.env.HOSTNAME, BUFSIZE_HOSTNAME) < 0) {
+		WARN("could not get hostname");
+		strncpy(karuiwm.env.HOSTNAME, "karui", BUFSIZE_HOSTNAME);
+	}
 
 	/* connect to X */
 	karuiwm.dpy = XOpenDisplay(NULL);
@@ -579,6 +582,9 @@ init(void)
 	                KeyPressMask | PointerMotionMask | StructureNotifyMask;
 	XChangeWindowAttributes(karuiwm.dpy, karuiwm.root, CWEventMask, &wa);
 
+	/* actions */
+	init_actions();
+
 	/* input (mouse, keyboard) */
 	karuiwm.cursor = cursor_new();
 	grabkeys();
@@ -587,25 +593,56 @@ init(void)
 	layout_init();
 	karuiwm.session = session_new();
 	karuiwm.focus = focus_new(karuiwm.session);
+
+	/* user configuration */
+	init_config();
+}
+
+static void
+init_actions(void)
+{
+	actions = NULL;
+	LIST_APPEND(&actions, action_new("killclient",  action_killclient));
+	LIST_APPEND(&actions, action_new("mousemove",   action_mousemove));
+	LIST_APPEND(&actions, action_new("mouseresize", action_mouseresize));
+	LIST_APPEND(&actions, action_new("restart",     action_restart));
+	LIST_APPEND(&actions, action_new("setmfact",    action_setmfact));
+	LIST_APPEND(&actions, action_new("setnmaster",  action_setnmaster));
+	LIST_APPEND(&actions, action_new("shiftclient", action_shiftclient));
+	LIST_APPEND(&actions, action_new("spawn",       action_spawn));
+	LIST_APPEND(&actions, action_new("stepclient",  action_stepclient));
+	LIST_APPEND(&actions, action_new("stepdesktop", action_stepdesktop));
+	LIST_APPEND(&actions, action_new("steplayout",  action_steplayout));
+	LIST_APPEND(&actions, action_new("stop",        action_stop));
+	LIST_APPEND(&actions, action_new("togglefloat", action_togglefloat));
+	LIST_APPEND(&actions, action_new("zoom",        action_zoom));
+	nactions = LIST_SIZE(actions);
 }
 
 static void
 init_atoms(void)
 {
-	INIT_ATOM(karuiwm.dpy, atoms,    WM_PROTOCOLS);
-	INIT_ATOM(karuiwm.dpy, atoms,    WM_DELETE_WINDOW);
-	INIT_ATOM(karuiwm.dpy, atoms,    WM_STATE);
-	INIT_ATOM(karuiwm.dpy, atoms,    WM_TAKE_FOCUS);
-	INIT_ATOM(karuiwm.dpy, netatoms, _NET_ACTIVE_WINDOW);
-	INIT_ATOM(karuiwm.dpy, netatoms, _NET_SUPPORTED);
-	INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_NAME);
-	INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_STATE);
-	INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_STATE_FULLSCREEN);
-	INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_STATE_HIDDEN);
-	INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_WINDOW_TYPE);
-	INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_WINDOW_TYPE_DIALOG);
-	INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_STRUT);
-	INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_STRUT_PARTIAL);
+	_INIT_ATOM(karuiwm.dpy, atoms,    WM_PROTOCOLS);
+	_INIT_ATOM(karuiwm.dpy, atoms,    WM_DELETE_WINDOW);
+	_INIT_ATOM(karuiwm.dpy, atoms,    WM_STATE);
+	_INIT_ATOM(karuiwm.dpy, atoms,    WM_TAKE_FOCUS);
+	_INIT_ATOM(karuiwm.dpy, netatoms, _NET_ACTIVE_WINDOW);
+	_INIT_ATOM(karuiwm.dpy, netatoms, _NET_SUPPORTED);
+	_INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_NAME);
+	_INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_STATE);
+	_INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_STATE_FULLSCREEN);
+	_INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_STATE_HIDDEN);
+	_INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_WINDOW_TYPE);
+	_INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_WINDOW_TYPE_DIALOG);
+	_INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_STRUT);
+	_INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_STRUT_PARTIAL);
+}
+
+static void
+init_config(void)
+{
+	if (xresources_init(APPNAME) < 0)
+		FATAL("could not initialise X resources");
 }
 
 static void
@@ -796,8 +833,8 @@ run(void)
 {
 	XEvent xe;
 
-	karuiwm.state = RUNNING;
-	while (karuiwm.state == RUNNING) {
+	karuiwm.running = true;
+	while (karuiwm.running) {
 		if (XNextEvent(karuiwm.dpy, &xe) != 0) {
 			FATAL("failed to fetch next X event");
 			break;
@@ -824,9 +861,16 @@ static void
 term(void)
 {
 	char sid[BUFSIZ];
+	int unsigned i;
+	struct action *a;
 
+	for (i = 0; i < nactions; ++i) {
+		a = actions;
+		LIST_REMOVE(actions, a);
+		action_delete(a);
+	}
 	focus_delete(karuiwm.focus);
-	if (karuiwm.state == RESTARTING)
+	if (karuiwm.restarting)
 		session_save(karuiwm.session, sid, sizeof(sid));
 	session_delete(karuiwm.session);
 	cursor_delete(karuiwm.cursor);

@@ -5,8 +5,11 @@
 
 struct action {
 	struct action *prev, *next;
-	char const *name;
-	void (*action)(union argument *arg);
+	char *name;
+	void (*function)(union argument *arg);
 };
+
+void action_delete(struct action *a);
+struct action *action_new(char const *name, void (*function)(union argument *));
 
 #endif /* ndef _KARUIWM_ACTION_H */
