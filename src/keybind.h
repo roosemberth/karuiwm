@@ -13,4 +13,10 @@ struct keybind {
 	union argument arg;
 };
 
+void keybind_delete(struct keybind *kb);
+struct keybind *keybind_new(int unsigned mod, KeySym key, struct action *a,
+                            union argument arg);
+struct keybind *keybind_new_fromstring(char const *keystr, struct action *a,
+                                       union argument arg);
+
 #endif /* ndef _KARUIBAR_KEYBIND_H */

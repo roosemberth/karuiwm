@@ -12,4 +12,11 @@ struct buttonbind {
 	union argument arg;
 };
 
+void buttonbind_delete(struct buttonbind *bb);
+struct buttonbind *buttonbind_new(int unsigned mod, int unsigned button,
+                                  struct action *a, union argument arg);
+struct buttonbind *buttonbind_new_fromstring(char const *buttonstr,
+                                             struct action *a,
+                                             union argument arg);
+
 #endif /* ndef _KARUIBAR_BUTTONBIND_H */

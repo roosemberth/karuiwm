@@ -1,4 +1,5 @@
 #define _XOPEN_SOURCE 500
+
 #include "karuiwm.h"
 #include "action.h"
 #include "client.h"
@@ -34,8 +35,7 @@
 
 /* macros */
 #define _INIT_ATOM(D, L, A) L[A] = XInternAtom(D, #A, false)
-#define _INIT_ACTION(L, N) \
-    LIST_APPEND(L, &((struct action) {.name=strdupf(#N), .function=action_ ## N}))
+#define BUFSIZE 1024
 
 /* functions */
 static void action_killclient(union argument *arg);
@@ -641,7 +641,7 @@ init_atoms(void)
 static void
 init_config(void)
 {
-	if (xresources_init(APPNAME) < 0)
+	if (xresources_init(APPNAME, karuiwm.env.HOSTNAME) < 0)
 		FATAL("could not initialise X resources");
 }
 
@@ -822,7 +822,7 @@ parse_args(int argc, char **argv)
 		} else if (strcmp(opt, "-q") == 0) {
 			set_log_level(LOG_FATAL);
 		} else {
-			puts("Usage: "APPNAME" [-v|-d|-q]");
+			fputs("Usage: "APPNAME" [-v|-d|-q]", stderr);
 			FATAL("Unknown option: %s\n", argv[i]);
 		}
 	}

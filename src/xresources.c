@@ -1,3 +1,5 @@
+#define _POSIX_SOURCE
+
 #include "xresources.h"
 #include "util.h"
 #include "karuiwm.h"
@@ -6,20 +8,24 @@
 #include <X11/Xlib.h>
 #include <errno.h>
 
-#define BUFSIZE 256
+#define DEFAULT_BUFSIZE 256
 
+#if 0
 static void xresources_get_key(char const *key, bool host, char *buf,
                                size_t buflen);
+#endif
 
-static XrmDatabase xdb;
-static char *appname;
+static char *linbuf;
+static size_t linbufsize;
+//static char *xrstr;
+static char *_prefix;
 
 int
 xresources_boolean(char const *key, bool def, bool *ret)
 {
-	char str[BUFSIZE];
+	char str[linbufsize];
 
-	if (xresources_string(key, NULL, str, BUFSIZE) < 0) {
+	if (xresources_string(key, NULL, str, linbufsize) < 0) {
 		*ret = def;
 		return -1;
 	}
@@ -31,9 +37,9 @@ int
 xresources_colour(char const *key, uint32_t def, uint32_t *ret)
 {
 	XColor xcolour;
-	char str[BUFSIZE];
+	char str[linbufsize];
 
-	if (xresources_string(key, NULL, str, BUFSIZE) < 0) {
+	if (xresources_string(key, NULL, str, linbufsize) < 0) {
 		*ret = def;
 		return -1;
 	}
@@ -49,9 +55,9 @@ xresources_colour(char const *key, uint32_t def, uint32_t *ret)
 int
 xresources_floating(char const *key, float def, float *ret)
 {
-	char str[BUFSIZE];
+	char str[linbufsize];
 
-	if (xresources_string(key, NULL, str, BUFSIZE) < 0) {
+	if (xresources_string(key, NULL, str, linbufsize) < 0) {
 		*ret = def;
 		return -1;
 	}
@@ -62,42 +68,68 @@ xresources_floating(char const *key, float def, float *ret)
 	return 0;
 }
 
+#if 0
 static void
 xresources_get_key(char const *key, bool host, char *buf, size_t buflen)
 {
+	/* TODO */
+
+	(void) key;
+	(void) host;
+	(void) buf;
+	(void) buflen;
+
+	/*
 	(void) snprintf(buf, buflen, "%s%s%s.%s", appname, host ? "_" : "",
 	                host ? karuiwm.env.HOSTNAME : "", key);
+	*/
 }
+#endif
 
 int
-xresources_init(char const *name)
+xresources_init(char const *appname, char const *hostname)
 {
-	char *xrm;
+	char *xrmstr;
+	char const *line;
+	char *xrprefix, *xrprefix_long;
 
-	xrm = XResourceManagerString(karuiwm.dpy);
-	if (xrm == NULL) {
+	/* initialise buffer */
+	linbufsize = 0;
+	linbuf = NULL;
+	xresources_set_bufsize(DEFAULT_BUFSIZE);
+
+	/* filter relevant X resource entries */
+	xrmstr = XResourceManagerString(karuiwm.dpy);
+	if (xrmstr == NULL) {
 		WARN("could not get X resources manager string");
 		return -1;
 	}
+	xrmstr = strdupf("%s", xrmstr);
+	DEBUG("xrstr = %s", xrmstr);
+	xrprefix = strdupf("%s.", appname);
+	xrprefix_long = strdupf("%s_%s.", appname, hostname);
+	line = strtok(xrmstr, "\n");
+	do {
+		if (strncmp(line, xrprefix, strlen(xrprefix)) == 0
+		|| strncmp(line, xrprefix_long, strlen(xrprefix_long)) == 0)
+			/* TODO */
+			DEBUG("%s", line);
+		line = strtok(NULL, "\n");
+	} while (line != NULL);
 
-	XrmInitialize();
-	//XrmParseCommand(...); TODO
-	xdb = XrmGetStringDatabase(xrm);
-	if (xdb == NULL) {
-		WARN("could not get X resources string database");
-		return -1;
-	}
+	sfree(xrprefix);
+	sfree(xrprefix_long);
+	sfree(xrmstr);
 
-	appname = strdupf(name);
 	return 0;
 }
 
 int
 xresources_integer(char const *key, int def, int *ret)
 {
-	char str[BUFSIZE];
+	char str[linbufsize];
 
-	if (xresources_string(key, NULL, str, BUFSIZE) < 0) {
+	if (xresources_string(key, NULL, str, linbufsize) < 0) {
 		*ret = def;
 		return -1;
 	}
@@ -108,9 +140,36 @@ xresources_integer(char const *key, int def, int *ret)
 	return 0;
 }
 
+void
+xresources_set_bufsize(size_t size)
+{
+	linbufsize = size;
+	linbuf = srealloc(linbuf, linbufsize, "X resources line buffer");
+	if (linbufsize == 0)
+		linbuf = NULL;
+}
+
+void
+xresources_set_prefix(char const *prefix)
+{
+	if (_prefix != NULL) {
+		sfree(_prefix);
+		_prefix = NULL;
+	}
+	if (prefix != NULL)
+		_prefix = strdupf("%s", prefix);
+}
+
 int
 xresources_string(char const *key, char const *def, char *ret, size_t retlen)
 {
+	(void) key;
+	(void) def;
+	(void) ret;
+	(void) retlen;
+
+	return -1;
+#if 0
 	char rname[BUFSIZE] = { '\0' };
 	char *type = NULL;
 	XrmValue val = { 0, NULL };
@@ -133,11 +192,11 @@ xresources_string(char const *key, char const *def, char *ret, size_t retlen)
  xresources_string_success:
 	(void) strncpy(ret, val.addr, retlen);
 	return 0;
+#endif
 }
 
 void
 xresources_term(void)
 {
-	XrmDestroyDatabase(xdb);
-	sfree(appname);
+	/* TODO */
 }
