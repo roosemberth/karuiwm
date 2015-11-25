@@ -82,7 +82,7 @@ struct session *session_new(void)
 	s->workspaces = NULL;
 
 	/* initial workspace (TODO configurable initial workspace name) */
-	ws = workspace_new(APPNAME);
+	ws = workspace_new(karuiwm.env.APPNAME);
 	session_attach_workspace(s, ws);
 
 	/* scan for previously existing windows */

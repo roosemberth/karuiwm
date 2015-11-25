@@ -5,8 +5,6 @@
 #include "karuiwm.h"
 #include <string.h>
 
-#define MODULE_PATH "share/"APPNAME"/modules"
-
 static int init_modules(void);
 static int init_modules_paths(void);
 static void term_modules(void);
@@ -60,9 +58,11 @@ static int
 init_modules_paths(void)
 {
 	char path[128];
+	char *modulepath;
 	api.npaths = 0;
 	api.paths = NULL;
 
+	modulepath = strdupf("share/%s/modules", karuiwm.env.APPNAME);
 	if (xresources_string("modules.path", NULL, path, 128) < 0) {
 		++api.npaths;
 		api.paths = scalloc(api.npaths, sizeof(char *), "module path");
@@ -70,9 +70,10 @@ init_modules_paths(void)
 	}
 	api.npaths += 3;
 	api.paths = srealloc(api.paths, api.npaths*sizeof(char *), "module paths");
-	api.paths[api.npaths - 3] = strdupf("%s/.local/"MODULE_PATH, karuiwm.env.HOME);
-	api.paths[api.npaths - 2] = strdupf("/usr/local/"MODULE_PATH);
-	api.paths[api.npaths - 1] = strdupf("/usr/"MODULE_PATH);
+	api.paths[api.npaths - 3] = strdupf("%s/.local/%s", karuiwm.env.HOME, modulepath);
+	api.paths[api.npaths - 2] = strdupf("/usr/local/%s", modulepath);
+	api.paths[api.npaths - 1] = strdupf("/usr/%s", modulepath);
+	sfree(modulepath);
 
 	return 0;
 }

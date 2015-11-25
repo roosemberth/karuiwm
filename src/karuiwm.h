@@ -14,7 +14,6 @@
 #define MOUSEMASK (BUTTONMASK | PointerMotionMask)
 #define MODKEY Mod1Mask
 
-#define APPNAME "karuiwm"
 #define LENGTH(ARR) (sizeof(ARR)/sizeof(ARR[0]))
 #define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
@@ -66,6 +65,7 @@ struct {
 	struct {
 		char HOSTNAME[BUFSIZE_HOSTNAME];
 		char *HOME;
+		char const *APPNAME;
 	} env;
 } karuiwm;
 

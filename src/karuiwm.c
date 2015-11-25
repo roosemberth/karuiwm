@@ -641,7 +641,7 @@ init_atoms(void)
 static void
 init_config(void)
 {
-	if (xresources_init(APPNAME) < 0)
+	if (xresources_init(karuiwm.env.APPNAME) < 0)
 		FATAL("could not initialise X resources");
 }
 
@@ -822,7 +822,8 @@ parse_args(int argc, char **argv)
 		} else if (strcmp(opt, "-q") == 0) {
 			set_log_level(LOG_FATAL);
 		} else {
-			fputs("Usage: "APPNAME" [-v|-d|-q]", stderr);
+			fprintf(stderr, "Usage: %s [-v|-d|-q]",
+			        karuiwm.env.APPNAME);
 			FATAL("Unknown option: %s\n", argv[i]);
 		}
 	}
@@ -887,6 +888,7 @@ term(void)
 int
 main(int argc, char **argv)
 {
+	karuiwm.env.APPNAME = "karuiwm";
 	parse_args(argc, argv);
 	init();
 	run();

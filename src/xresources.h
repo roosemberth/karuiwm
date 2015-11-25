@@ -12,7 +12,6 @@ int xresources_floating(char const *key, float def, float *ret);
 int xresources_init(char const *appname);
 int xresources_integer(char const *key, int def, int *ret);
 void xresources_set_bufsize(size_t size);
-void xresources_set_prefix(char const *prefix);
 int xresources_string(char const *key, char const *def, char *ret, size_t retlen);
 void xresources_term(void);
 

@@ -5,13 +5,8 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#ifdef MODE_DEBUG
-# define DEBUG(...)  print(stdout,LOG_DEBUG,  __FILE__,__LINE__,__VA_ARGS__)
-# define EVENT(...)  print(stderr,LOG_EVENT,  __FILE__,__LINE__,__VA_ARGS__)
-#else
-# define DEBUG(...)
-# define EVENT(...)
-#endif
+#define DEBUG(...)   print(stderr,LOG_DEBUG,  __FILE__,__LINE__,__VA_ARGS__)
+#define EVENT(...)   print(stderr,LOG_EVENT,  __FILE__,__LINE__,__VA_ARGS__)
 #define VERBOSE(...) print(stdout,LOG_VERBOSE,__FILE__,__LINE__,__VA_ARGS__)
 #define NORMAL(...)  print(stdout,LOG_NORMAL, __FILE__,__LINE__,__VA_ARGS__)
 #define NOTICE(...)  print(stdout,LOG_NOTICE, __FILE__,__LINE__,__VA_ARGS__)

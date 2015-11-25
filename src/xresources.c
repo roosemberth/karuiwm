@@ -3,6 +3,7 @@
 #include "xresources.h"
 #include "util.h"
 #include "karuiwm.h"
+#include "list.h"
 #include <string.h>
 #include <strings.h>
 #include <X11/Xlib.h>
@@ -10,16 +11,71 @@
 
 #define DEFAULT_BUFSIZE 256
 
-#if 0
-static void xresources_get_key(char const *key, bool host, char *buf,
-                               size_t buflen);
-#endif
+struct xresource {
+	struct xresource *prev, *next;
+	char *key;
+	char *value;
+};
+
+static void delete(struct xresource *xr);
+static struct xresource *new(char const *line);
 
 static char *linbuf = NULL;
 static size_t linbufsize;
-static char **xresources;
+static struct xresource *xresources;
 static size_t nxresources;
-static char *_prefix;
+
+static void
+delete(struct xresource *xr)
+{
+	sfree(xr->key);
+	sfree(xr->value);
+	sfree(xr);
+}
+
+static struct xresource *
+new(char const *line)
+{
+	struct xresource *xr;
+	int unsigned offset, length;
+	char *key, *value;
+
+	/* key */
+	for (offset = 0; line[offset] == ' ' || line[offset] == '\t'; ++offset);
+	for (length = 0; line[offset + length] != ' '
+	              && line[offset + length] != '\t'
+	              && line[offset + length] != ':'; ++length);
+	if (length == 0) {
+		WARN("%s: empty key", line);
+		return NULL;
+	}
+	key = smalloc(length + 1, "X resource key");
+	strncpy(key, line + offset, length);
+	key[length] = '\0';
+
+	/* value */
+	for (offset = 0; line[offset] != ':'; ++offset);
+	++offset;
+	for (; line[offset] == ' ' || line[offset] == '\t'; ++offset);
+	length = (int unsigned) strlen(line) - offset;
+	for (; (line[offset+length-1] == ' ' || line[offset+length-1] == '\t')
+	     && length > 0; --length);
+	if (length == 0) {
+		WARN("%s: empty value", line);
+		sfree(key);
+		return NULL;
+	}
+	value = smalloc(length + 1, "X resource value");
+	strncpy(value, line + offset, length);
+	value[length] = '\0';
+
+	/* X resource */
+	xr = smalloc(sizeof(struct xresource), "X resource");
+	xr->key = key;
+	xr->value = value;
+
+	return xr;
+}
 
 int
 xresources_boolean(char const *key, bool def, bool *ret)
@@ -69,30 +125,13 @@ xresources_floating(char const *key, float def, float *ret)
 	return 0;
 }
 
-#if 0
-static void
-xresources_get_key(char const *key, bool host, char *buf, size_t buflen)
-{
-	/* TODO */
-
-	(void) key;
-	(void) host;
-	(void) buf;
-	(void) buflen;
-
-	/*
-	(void) snprintf(buf, buflen, "%s%s%s.%s", appname, host ? "_" : "",
-	                host ? karuiwm.env.HOSTNAME : "", key);
-	*/
-}
-#endif
-
 int
 xresources_init(char const *appname)
 {
 	char *xrmstr;
 	char const *line;
 	size_t appnamelen;
+	struct xresource *xr;
 
 	/* initialise buffer */
 	linbufsize = 0;
@@ -115,12 +154,13 @@ xresources_init(char const *appname)
 	do {
 		if (strncmp(line, appname, appnamelen) == 0
 		&& (line[appnamelen] == '.' || line[appnamelen] == '_')) {
-			++nxresources;
-			xresources = srealloc(xresources,
-			                      nxresources * sizeof(char *),
-			                      "X resources list");
-			xresources[nxresources - 1] = strdupf(line);
-			DEBUG("added [%s]", line);
+			xr = new(line);
+			if (xr == NULL) {
+				WARN("invalid line: %s", line);
+			} else {
+				++nxresources;
+				LIST_APPEND(&xresources, xr);
+			}
 		}
 		line = strtok(NULL, "\n");
 	} while (line != NULL);
@@ -154,59 +194,34 @@ xresources_set_bufsize(size_t size)
 		linbuf = NULL;
 }
 
-void
-xresources_set_prefix(char const *prefix)
-{
-	if (_prefix != NULL) {
-		sfree(_prefix);
-		_prefix = NULL;
-	}
-	if (prefix != NULL)
-		_prefix = strdupf("%s", prefix);
-}
-
 int
 xresources_string(char const *key, char const *def, char *ret, size_t retlen)
 {
-	(void) key;
-	(void) def;
-	(void) ret;
-	(void) retlen;
+	int unsigned i;
+	struct xresource *xr;
 
+	for (i = 0, xr = xresources; i < nxresources; ++i, xr = xr->next) {
+		if (strcmp(xr->key, key) == 0) {
+			strncpy(ret, xr->value, retlen);
+			ret[retlen - 1] = '\0';
+			return 0;
+		}
+	}
+	strncpy(ret, def, retlen);
+	ret[retlen - 1] = '\0';
 	return -1;
-#if 0
-	char rname[BUFSIZE] = { '\0' };
-	char *type = NULL;
-	XrmValue val = { 0, NULL };
-
-	/* host-specific */
-	xresources_get_key(key, true, rname, BUFSIZE);
-	if (XrmGetResource(xdb, rname, "*", &type, &val))
-		goto xresources_string_success;
-
-	/* generic */
-	xresources_get_key(key, false, rname, BUFSIZE);
-	if (XrmGetResource(xdb, rname, "*", &type, &val))
-		goto xresources_string_success;
-
-	/* default */
-	if (def != NULL)
-		(void) strncpy(ret, def, retlen);
-	return -1;
-
- xresources_string_success:
-	(void) strncpy(ret, val.addr, retlen);
-	return 0;
-#endif
 }
 
 void
 xresources_term(void)
 {
-	int unsigned i;
+	struct xresource *xr;
 
 	xresources_set_bufsize(0);
-	for (i = 0; i < nxresources; ++i)
-		sfree(xresources[i]);
-	sfree(xresources);
+	while (nxresources > 0) {
+		xr = xresources;
+		LIST_REMOVE(&xresources, xr);
+		--nxresources;
+		delete(xr);
+	}
 }
