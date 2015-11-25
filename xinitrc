@@ -10,6 +10,7 @@ if [ -n "$VALGRIND" ] && [ $VALGRIND = '1' ]; then
 	exec valgrind --log-file=valgrind.log \
 	              --leak-check=full \
 	              --show-leak-kinds=all \
+	              --show-reachable=no \
 	              -v \
 	              ./karuiwm -d
 else

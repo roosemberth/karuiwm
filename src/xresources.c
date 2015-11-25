@@ -15,9 +15,10 @@ static void xresources_get_key(char const *key, bool host, char *buf,
                                size_t buflen);
 #endif
 
-static char *linbuf;
+static char *linbuf = NULL;
 static size_t linbufsize;
-//static char *xrstr;
+static char **xresources;
+static size_t nxresources;
 static char *_prefix;
 
 int
@@ -87,16 +88,20 @@ xresources_get_key(char const *key, bool host, char *buf, size_t buflen)
 #endif
 
 int
-xresources_init(char const *appname, char const *hostname)
+xresources_init(char const *appname)
 {
 	char *xrmstr;
 	char const *line;
-	char *xrprefix, *xrprefix_long;
+	size_t appnamelen;
 
 	/* initialise buffer */
 	linbufsize = 0;
 	linbuf = NULL;
 	xresources_set_bufsize(DEFAULT_BUFSIZE);
+
+	/* initialise relevant X resources */
+	xresources = NULL;
+	nxresources = 0;
 
 	/* filter relevant X resource entries */
 	xrmstr = XResourceManagerString(karuiwm.dpy);
@@ -105,20 +110,20 @@ xresources_init(char const *appname, char const *hostname)
 		return -1;
 	}
 	xrmstr = strdupf("%s", xrmstr);
-	DEBUG("xrstr = %s", xrmstr);
-	xrprefix = strdupf("%s.", appname);
-	xrprefix_long = strdupf("%s_%s.", appname, hostname);
+	appnamelen = strlen(appname);
 	line = strtok(xrmstr, "\n");
 	do {
-		if (strncmp(line, xrprefix, strlen(xrprefix)) == 0
-		|| strncmp(line, xrprefix_long, strlen(xrprefix_long)) == 0)
-			/* TODO */
-			DEBUG("%s", line);
+		if (strncmp(line, appname, appnamelen) == 0
+		&& (line[appnamelen] == '.' || line[appnamelen] == '_')) {
+			++nxresources;
+			xresources = srealloc(xresources,
+			                      nxresources * sizeof(char *),
+			                      "X resources list");
+			xresources[nxresources - 1] = strdupf(line);
+			DEBUG("added [%s]", line);
+		}
 		line = strtok(NULL, "\n");
 	} while (line != NULL);
-
-	sfree(xrprefix);
-	sfree(xrprefix_long);
 	sfree(xrmstr);
 
 	return 0;
@@ -198,5 +203,10 @@ xresources_string(char const *key, char const *def, char *ret, size_t retlen)
 void
 xresources_term(void)
 {
-	/* TODO */
+	int unsigned i;
+
+	xresources_set_bufsize(0);
+	for (i = 0; i < nxresources; ++i)
+		sfree(xresources[i]);
+	sfree(xresources);
 }

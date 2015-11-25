@@ -39,6 +39,14 @@ focus_attach_monitor(struct focus *f, struct monitor *m)
 void
 focus_delete(struct focus *f)
 {
+	struct monitor *m;
+
+	while (f->nmon > 0) {
+		m = f->monitors;
+		LIST_REMOVE(&f->monitors, m);
+		--f->nmon;
+		monitor_delete(m);
+	}
 	sfree(f);
 }
 

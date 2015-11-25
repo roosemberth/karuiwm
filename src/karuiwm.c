@@ -641,7 +641,7 @@ init_atoms(void)
 static void
 init_config(void)
 {
-	if (xresources_init(APPNAME, karuiwm.env.HOSTNAME) < 0)
+	if (xresources_init(APPNAME) < 0)
 		FATAL("could not initialise X resources");
 }
 
@@ -842,6 +842,7 @@ run(void)
 		//DEBUG("run(): e.type = %d", xe.type);
 		if (handle[xe.type] != NULL)
 			handle[xe.type](&xe);
+		karuiwm.running = false;
 	}
 }
 
@@ -861,12 +862,12 @@ static void
 term(void)
 {
 	char sid[BUFSIZ];
-	int unsigned i;
 	struct action *a;
 
-	for (i = 0; i < nactions; ++i) {
+	while (nactions > 0) {
 		a = actions;
-		LIST_REMOVE(actions, a);
+		LIST_REMOVE(&actions, a);
+		--nactions;
 		action_delete(a);
 	}
 	focus_delete(karuiwm.focus);
