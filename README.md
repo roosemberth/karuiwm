@@ -2,13 +2,11 @@ karuiwm
 =======
 
 karuiwm is an attempt to write a lightweight, dynamically tiling window manager
-for X. It is inspired by dwm's simplicity, replacing its tag system by desktops
-and workspaces.
+for X.
 
-It is a complete rewrite from an earlier version, which can be tested at commit
-[#31a8063](https://github.com/ayekat/karuiwm/tree/31a8063da9f3960e268514952b92d9c9ce5719ee).
-
-**karuiwm is currently under heavy development and not usable.**
+**karuiwm is currently under heavy development and not usable.** It is a
+complete rewrite of the currently used, but rather buggy [legacy
+version](https://github.com/ayekat/karuiwm/tree/legacy).
 
 
 build
@@ -31,27 +29,29 @@ will install karuiwm to /usr/local. Pass `INSTALLDIR=...` to install karuiwm to
 a different location.
 
 
-run
----
+for developers
+--------------
+
+For testing purposes, karuiwm can also be launched via Xephyr (X server in a
+window):
 
 	make xephyr
 
-launches karuiwm inside Xephyr (X server in a window). Alternatively, `make run`
-will launch karuiwm normally, however it is discouraged to run from within an
-existing X session, as it may cause an X hickup.
+To run it with valgrind in Xephyr, you can use the `valphyr` target:
 
+	make valphyr
 
-documentation
--------------
+Alternatively, `make run` will launch karuiwm normally, however it is
+discouraged to run from within an existing X session, as it may cause an X
+hickup.
 
-See the [doc](doc) folder for documentation for developers.
+See the [doc](doc) folder for the documentation.
 
 
 bugs
 ----
 
-Although karuiwm is far from being complete and usable, it has been crafted with
-utmost care and a focus on consistent coding conventions. Nevertheless, some
-bugs may have slipped my notice.
+Although karuiwm has been crafted with utmost care and love, some bugs may have
+slipped my notice. Please feel free to file bug reports.
 
-Please feel free to file bug reports. I won't bite.
+I won't bite.
