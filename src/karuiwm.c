@@ -10,7 +10,7 @@
 #include "focus.h"
 #include "cursor.h"
 #include "layout.h"
-#include "xresources.h"
+#include "config.h"
 #include "util.h"
 #include "list.h"
 #include "argument.h"
@@ -71,7 +71,6 @@ static int handle_xerror(Display *dpy, XErrorEvent *xe);
 static void init(void);
 static void init_actions(void);
 static void init_atoms(void);
-static void init_config(void);
 static void mouse_move(struct client *c, int mx, int my);
 static void mouse_moveresize(struct client *c, void (*mh)(struct client *, int, int));
 static void mouse_resize(struct client *c, int mx, int my);
@@ -595,7 +594,9 @@ init(void)
 	karuiwm.focus = focus_new(karuiwm.session);
 
 	/* user configuration */
-	init_config();
+	if (config_init() < 0)
+		FATAL("could not initialise X resources");
+
 }
 
 static void
@@ -636,13 +637,6 @@ init_atoms(void)
 	_INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_WINDOW_TYPE_DIALOG);
 	_INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_STRUT);
 	_INIT_ATOM(karuiwm.dpy, netatoms, _NET_WM_STRUT_PARTIAL);
-}
-
-static void
-init_config(void)
-{
-	if (xresources_init(karuiwm.env.APPNAME) < 0)
-		FATAL("could not initialise X resources");
 }
 
 static void
@@ -877,7 +871,7 @@ term(void)
 	session_delete(karuiwm.session);
 	cursor_delete(karuiwm.cursor);
 	layout_term();
-	xresources_term();
+	config_term();
 
 	XUngrabKey(karuiwm.dpy, AnyKey, AnyModifier, karuiwm.root);
 	XSetInputFocus(karuiwm.dpy, PointerRoot, RevertToPointerRoot,

@@ -1,8 +1,8 @@
 #include "api.h"
-#include "xresources.h"
 #include "util.h"
 #include "list.h"
 #include "karuiwm.h"
+#include "config.h"
 #include <string.h>
 
 static int init_modules(void);
@@ -33,7 +33,7 @@ init_modules(void)
 	struct module *mod;
 
 	init_modules_paths();
-	(void) xresources_string("modules", "core", modlist, 512);
+	(void) config_get_string("modules", "core", modlist, 512);
 
 	api.nmodules = 0;
 	modname = strtok(modlist, delim);
@@ -63,7 +63,7 @@ init_modules_paths(void)
 	api.paths = NULL;
 
 	modulepath = strdupf("share/%s/modules", karuiwm.env.APPNAME);
-	if (xresources_string("modules.path", NULL, path, 128) < 0) {
+	if (config_get_string("modules.path", NULL, path, 128) < 0) {
 		++api.npaths;
 		api.paths = scalloc(api.npaths, sizeof(char *), "module path");
 		api.paths[0] = strdupf("%s", path);
