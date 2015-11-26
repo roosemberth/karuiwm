@@ -17,45 +17,6 @@ static struct xresource *xresources;
 static size_t nxresources;
 
 int
-config_init(void)
-{
-	char *xrmstr, *line, *prefix;
-	struct xresource *xr;
-
-	/* initialise buffer */
-	linbufsize = 0;
-	linbuf = NULL;
-	config_set_bufsize(DEFAULT_LINBUFSIZE);
-
-	/* initialise relevant X resources */
-	xresources = NULL;
-	nxresources = 0;
-
-	/* filter relevant X resource entries */
-	xrmstr = XResourceManagerString(karuiwm.dpy);
-	if (xrmstr == NULL) {
-		WARN("could not get X resources manager string");
-		return -1;
-	}
-	xrmstr = strdupf("%s", xrmstr);
-	prefix = strdupf("%s.", karuiwm.env.APPNAME);
-	line = strtok(xrmstr, "\n");
-	do {
-		xr = xresource_new(prefix, line);
-		if (xr == NULL)
-			continue;
-		LIST_APPEND(&xresources, xr);
-		++nxresources;
-	} while ((line = strtok(NULL, "\n")) != NULL);
-	sfree(xrmstr);
-	sfree(prefix);
-
-	init_default();
-
-	return 0;
-}
-
-int
 config_get_bool(char const *key, bool def, bool *ret)
 {
 	char str[linbufsize];
@@ -160,6 +121,45 @@ config_get_string(char const *key, char const *def, char *ret, size_t retlen)
 	return -1;
 }
 
+int
+config_init(void)
+{
+	char *xrmstr, *line, *prefix;
+	struct xresource *xr;
+
+	/* initialise buffer */
+	linbufsize = 0;
+	linbuf = NULL;
+	config_set_bufsize(DEFAULT_LINBUFSIZE);
+
+	/* initialise relevant X resources */
+	xresources = NULL;
+	nxresources = 0;
+
+	/* filter relevant X resource entries */
+	xrmstr = XResourceManagerString(karuiwm.dpy);
+	if (xrmstr == NULL) {
+		WARN("could not get X resources manager string");
+		return -1;
+	}
+	xrmstr = strdupf("%s", xrmstr);
+	prefix = strdupf("%s.", karuiwm.env.APPNAME);
+	line = strtok(xrmstr, "\n");
+	do {
+		xr = xresource_new(prefix, line);
+		if (xr == NULL)
+			continue;
+		LIST_APPEND(&xresources, xr);
+		++nxresources;
+	} while ((line = strtok(NULL, "\n")) != NULL);
+	sfree(xrmstr);
+	sfree(prefix);
+
+	init_default();
+
+	return 0;
+}
+
 void
 config_set_bufsize(size_t size)
 {
@@ -192,5 +192,4 @@ init_default(void)
 	(void) config_get_int("border.width", 1, (int signed *) &config.border.width);
 	(void) config_get_string("modifier", "W", modstr, 2);
 	config.modifier = key_mod_fromstring(modstr);
-	DEBUG("config.modifier = %u", config.modifier);
 }
