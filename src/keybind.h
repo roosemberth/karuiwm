@@ -1,22 +1,21 @@
 #ifndef _KARUIBAR_KEYBIND_H
 #define _KARUIBAR_KEYBIND_H
 
+#include "key.h"
 #include "action.h"
 #include "argument.h"
-#include <X11/Xlib.h>
 
 struct keybind {
 	struct keybind *prev, *next;
-	int unsigned mod;
-	KeySym key;
+	struct key *key;
 	struct action *action;
 	union argument arg;
 };
 
 void keybind_delete(struct keybind *kb);
-struct keybind *keybind_new(int unsigned mod, KeySym key, struct action *a,
+struct keybind *keybind_new(struct key *key, struct action *action,
                             union argument arg);
-struct keybind *keybind_new_fromstring(char const *keystr, struct action *a,
-                                       union argument arg);
+struct keybind *keybind_fromstring(char const *keystr,
+                                   char const *actionargstr);
 
 #endif /* ndef _KARUIBAR_KEYBIND_H */

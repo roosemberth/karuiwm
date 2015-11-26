@@ -2,7 +2,9 @@
 #define _KARUIWM_H
 
 #include <stdbool.h>
+#include <stdlib.h>
 #include <X11/Xlib.h>
+#include "action.h"
 
 /* macros */
 #define BORDERWIDTH 1          /* window border width */
@@ -45,8 +47,6 @@ enum netatom_type {
 	NETATOM_LAST
 };
 
-enum direction { LEFT, RIGHT, UP, DOWN, NO_DIRECTION };
-
 /* variables */
 #define BUFSIZE_HOSTNAME 128
 
@@ -68,5 +68,7 @@ struct {
 		char const *APPNAME;
 	} env;
 } karuiwm;
+struct action *actions;
+size_t nactions;
 
 #endif /* ndef _KARUIWM_H */

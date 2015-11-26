@@ -5,7 +5,6 @@
 #include "karuiwm.h"
 #include "list.h"
 #include <string.h>
-#include <strings.h>
 #include <X11/Xlib.h>
 #include <errno.h>
 

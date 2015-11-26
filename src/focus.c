@@ -77,8 +77,8 @@ void
 focus_monitor(struct focus *f, struct monitor *m)
 {
 	monitor_focus(f->selmon, false);
-	monitor_focus(m, true);
 	f->selmon = m;
+	monitor_focus(f->selmon, true);
 }
 
 struct focus *

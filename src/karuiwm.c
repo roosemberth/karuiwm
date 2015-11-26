@@ -1,7 +1,6 @@
 #define _XOPEN_SOURCE 500
 
 #include "karuiwm.h"
-#include "action.h"
 #include "client.h"
 #include "desktop.h"
 #include "workspace.h"
@@ -82,8 +81,7 @@ static void term(void);
 /* variables */
 static struct keybind *keybinds;
 static struct buttonbind *buttonbinds;
-static struct action *actions;
-static size_t nkeybinds, nbuttonbinds, nactions;
+static size_t nkeybinds, nbuttonbinds;
 
 /* event handlers, as array to allow O(1) access; numeric codes are in X.h */
 static void (*handle[LASTEvent])(XEvent *) = {
@@ -263,12 +261,13 @@ static void
 grabkeys(void)
 {
 	int unsigned i;
-	struct keybind *k;
+	struct keybind *kb;
 
 	XUngrabKey(karuiwm.dpy, AnyKey, AnyModifier, karuiwm.root);
-	for (i = 0, k = keybinds; i < nkeybinds; ++i, k = k->next)
-		XGrabKey(karuiwm.dpy, XKeysymToKeycode(karuiwm.dpy, k->key),
-		         k->mod, karuiwm.root, True, GrabModeAsync,
+	for (i = 0, kb = keybinds; i < nkeybinds; ++i, kb = kb->next)
+		XGrabKey(karuiwm.dpy,
+		         XKeysymToKeycode(karuiwm.dpy, kb->key->sym),
+		         kb->key->mod, karuiwm.root, True, GrabModeAsync,
 		         GrabModeAsync);
 }
 
@@ -419,15 +418,16 @@ static void
 handle_keypress(XEvent *xe)
 {
 	int unsigned i;
-	struct keybind *k;
+	struct keybind *kb;
 	XKeyPressedEvent *e = &xe->xkey;
 
 	//EVENT("keypress()");
 
 	KeySym keysym = XLookupKeysym(e, 0);
-	for (i = 0, k = keybinds; i < nkeybinds; ++i, k = k->next) {
-		if (e->state == k->mod && keysym == k->key && k->action) {
-			k->action->function(&k->arg);
+	for (i = 0, kb = keybinds; i < nkeybinds; ++i, kb = kb->next) {
+		if (e->state == kb->key->mod && keysym == kb->key->sym
+		&& kb->action != NULL) {
+			kb->action->function(&kb->arg);
 			break;
 		}
 	}
@@ -596,27 +596,27 @@ init(void)
 	/* user configuration */
 	if (config_init() < 0)
 		FATAL("could not initialise X resources");
-
+	keybinds = config_get_keybinds();
 }
 
 static void
 init_actions(void)
 {
 	actions = NULL;
-	LIST_APPEND(&actions, action_new("killclient",  action_killclient));
-	LIST_APPEND(&actions, action_new("mousemove",   action_mousemove));
-	LIST_APPEND(&actions, action_new("mouseresize", action_mouseresize));
-	LIST_APPEND(&actions, action_new("restart",     action_restart));
-	LIST_APPEND(&actions, action_new("setmfact",    action_setmfact));
-	LIST_APPEND(&actions, action_new("setnmaster",  action_setnmaster));
-	LIST_APPEND(&actions, action_new("shiftclient", action_shiftclient));
-	LIST_APPEND(&actions, action_new("spawn",       action_spawn));
-	LIST_APPEND(&actions, action_new("stepclient",  action_stepclient));
-	LIST_APPEND(&actions, action_new("stepdesktop", action_stepdesktop));
-	LIST_APPEND(&actions, action_new("steplayout",  action_steplayout));
-	LIST_APPEND(&actions, action_new("stop",        action_stop));
-	LIST_APPEND(&actions, action_new("togglefloat", action_togglefloat));
-	LIST_APPEND(&actions, action_new("zoom",        action_zoom));
+	LIST_APPEND(&actions, action_new("killclient",  action_killclient, ARGTYPE_NONE));
+	LIST_APPEND(&actions, action_new("mousemove",   action_mousemove,  ARGTYPE_NONE));
+	LIST_APPEND(&actions, action_new("mouseresize", action_mouseresize,ARGTYPE_NONE));
+	LIST_APPEND(&actions, action_new("restart",     action_restart,    ARGTYPE_NONE));
+	LIST_APPEND(&actions, action_new("setmfact",    action_setmfact,   ARGTYPE_FLOATING));
+	LIST_APPEND(&actions, action_new("setnmaster",  action_setnmaster, ARGTYPE_INTEGER));
+	LIST_APPEND(&actions, action_new("shiftclient", action_shiftclient,ARGTYPE_LIST_DIRECTION));
+	LIST_APPEND(&actions, action_new("spawn",       action_spawn,      ARGTYPE_STRING));
+	LIST_APPEND(&actions, action_new("stepclient",  action_stepclient, ARGTYPE_LIST_DIRECTION));
+	LIST_APPEND(&actions, action_new("stepdesktop", action_stepdesktop,ARGTYPE_DIRECTION));
+	LIST_APPEND(&actions, action_new("steplayout",  action_steplayout, ARGTYPE_LIST_DIRECTION));
+	LIST_APPEND(&actions, action_new("stop",        action_stop,       ARGTYPE_NONE));
+	LIST_APPEND(&actions, action_new("togglefloat", action_togglefloat,ARGTYPE_NONE));
+	LIST_APPEND(&actions, action_new("zoom",        action_zoom,       ARGTYPE_NONE));
 	nactions = LIST_SIZE(actions);
 }
 

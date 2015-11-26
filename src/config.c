@@ -120,8 +120,23 @@ config_get_int(char const *key, int def, int *ret)
 struct keybind *
 config_get_keybinds(void)
 {
-	/* TODO */
-	return NULL;
+	struct xresource *xr;
+	struct keybind *kb, *keybinds = NULL;
+	int unsigned i;
+
+	for (i = 0, xr = xresources; i < nxresources; ++i, xr = xr->next) {
+		if (strncmp(xr->key, "keysym.", 7) != 0)
+			continue;
+		kb = keybind_fromstring(xr->key + 7, xr->value);
+		if (kb == NULL) {
+			WARN("failed to create key binding for `%s: %s`",
+			     xr->key, xr->value);
+			continue;
+		}
+		LIST_APPEND(&keybinds, kb);
+	}
+
+	return keybinds;
 }
 
 int
