@@ -13,6 +13,6 @@ struct xresource {
 };
 
 void xresource_delete(struct xresource *xr);
-struct xresource *xresource_new(char const *line);
+struct xresource *xresource_new(char const *prefix, char const *line);
 
 #endif /* ndef _KARUIWM_XRESOURCES_H */

@@ -16,9 +16,7 @@ static size_t nxresources;
 int
 config_init(void)
 {
-	char *xrmstr;
-	char const *line;
-	size_t appnamelen;
+	char *xrmstr, *line, *prefix;
 	struct xresource *xr;
 
 	/* initialise buffer */
@@ -37,22 +35,19 @@ config_init(void)
 		return -1;
 	}
 	xrmstr = strdupf("%s", xrmstr);
-	appnamelen = strlen(karuiwm.env.APPNAME);
+	prefix = strdupf("%s.", karuiwm.env.APPNAME);
 	line = strtok(xrmstr, "\n");
 	do {
-		if (strncmp(line, karuiwm.env.APPNAME, appnamelen) == 0
-		&& (line[appnamelen] == '.' || line[appnamelen] == '_')) {
-			xr = xresource_new(line);
-			if (xr == NULL) {
-				WARN("invalid line: `%s`", line);
-			} else {
-				++nxresources;
-				LIST_APPEND(&xresources, xr);
-			}
+		xr = xresource_new(prefix, line);
+		if (xr != NULL) {
+			LIST_APPEND(&xresources, xr);
+			++nxresources;
+			DEBUG("detected [%s] [%s]", xr->key, xr->value);
 		}
 		line = strtok(NULL, "\n");
 	} while (line != NULL);
 	sfree(xrmstr);
+	sfree(prefix);
 
 	return 0;
 }

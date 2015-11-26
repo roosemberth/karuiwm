@@ -20,7 +20,7 @@ xresource_delete(struct xresource *xr)
 }
 
 struct xresource *
-xresource_new(char const *line)
+xresource_new(char const *prefix, char const *line)
 {
 	struct xresource *xr;
 	int unsigned offset, length;
@@ -31,6 +31,8 @@ xresource_new(char const *line)
 	for (length = 0; line[offset + length] != ' '
 	              && line[offset + length] != '\t'
 	              && line[offset + length] != ':'; ++length);
+	if (strncmp(line + offset, prefix, strlen(prefix)) != 0)
+		return NULL;
 	key = smalloc(length + 1, "X resource key");
 	strncpy(key, line + offset, length);
 	key[length] = '\0';
