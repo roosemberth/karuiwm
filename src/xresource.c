@@ -9,8 +9,6 @@
 #include <X11/Xlib.h>
 #include <errno.h>
 
-#define DEFAULT_BUFSIZE 256
-
 void
 xresource_delete(struct xresource *xr)
 {
@@ -25,16 +23,22 @@ xresource_new(char const *prefix, char const *line)
 	struct xresource *xr;
 	int unsigned offset, length;
 	char *key, *value;
+	size_t prefixlen = strlen(prefix);
 
 	/* key */
 	for (offset = 0; line[offset] == ' ' || line[offset] == '\t'; ++offset);
 	for (length = 0; line[offset + length] != ' '
 	              && line[offset + length] != '\t'
 	              && line[offset + length] != ':'; ++length);
-	if (strncmp(line + offset, prefix, strlen(prefix)) != 0)
+	if (strncmp(line + offset, prefix, prefixlen) != 0)
 		return NULL;
+	length -= (int unsigned) prefixlen;
+	if (length == 0) {
+		WARN("invalid key for `%s`", line);
+		return NULL;
+	}
 	key = smalloc(length + 1, "X resource key");
-	strncpy(key, line + offset, length);
+	strncpy(key, line + offset + prefixlen, length);
 	key[length] = '\0';
 
 	/* value */
@@ -45,7 +49,7 @@ xresource_new(char const *prefix, char const *line)
 	for (; (line[offset+length-1] == ' ' || line[offset+length-1] == '\t')
 	     && length > 0; --length);
 	if (length == 0) {
-		WARN("empty value: `%s`", line);
+		WARN("invalid value for `%s`", line);
 		sfree(key);
 		return NULL;
 	}

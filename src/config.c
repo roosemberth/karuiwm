@@ -5,6 +5,7 @@
 #include "util.h"
 #include "string.h"
 #include "strings.h"
+#include "keybind.h"
 
 #define DEFAULT_LINBUFSIZE 256
 
@@ -114,6 +115,13 @@ config_get_int(char const *key, int def, int *ret)
 		return -1;
 	}
 	return 0;
+}
+
+struct keybind *
+config_get_keybinds(void)
+{
+	/* TODO */
+	return NULL;
 }
 
 int
