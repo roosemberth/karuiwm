@@ -6,6 +6,8 @@
 void
 keybind_delete(struct keybind *kb)
 {
+	if (kb->action->argtype == ARGTYPE_STRING)
+		sfree(kb->arg.v);
 	sfree(kb);
 }
 

@@ -7,14 +7,9 @@
 #include "action.h"
 
 /* macros */
-#define BORDERWIDTH 1          /* window border width */
-#define CBORDERNORM 0x222222   /* normal windows */
-#define CBORDERSEL  0x00FF00   /* selected windows */
-
 #define CLIENTMASK (EnterWindowMask | PropertyChangeMask | StructureNotifyMask)
 #define BUTTONMASK (ButtonPressMask | ButtonReleaseMask)
 #define MOUSEMASK (BUTTONMASK | PointerMotionMask)
-#define MODKEY Mod1Mask
 
 #define LENGTH(ARR) (sizeof(ARR)/sizeof(ARR[0]))
 #define MAX(X, Y) ((X) < (Y) ? (Y) : (X))

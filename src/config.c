@@ -9,6 +9,8 @@
 
 #define DEFAULT_LINBUFSIZE 256
 
+static void init_default(void);
+
 static char *linbuf;
 static size_t linbufsize;
 static struct xresource *xresources;
@@ -40,15 +42,15 @@ config_init(void)
 	line = strtok(xrmstr, "\n");
 	do {
 		xr = xresource_new(prefix, line);
-		if (xr != NULL) {
-			LIST_APPEND(&xresources, xr);
-			++nxresources;
-			DEBUG("detected [%s] [%s]", xr->key, xr->value);
-		}
-		line = strtok(NULL, "\n");
-	} while (line != NULL);
+		if (xr == NULL)
+			continue;
+		LIST_APPEND(&xresources, xr);
+		++nxresources;
+	} while ((line = strtok(NULL, "\n")) != NULL);
 	sfree(xrmstr);
 	sfree(prefix);
+
+	init_default();
 
 	return 0;
 }
@@ -152,7 +154,8 @@ config_get_string(char const *key, char const *def, char *ret, size_t retlen)
 			return 0;
 		}
 	}
-	strncpy(ret, def, retlen);
+	if (def != NULL)
+		strncpy(ret, def, retlen);
 	ret[retlen - 1] = '\0';
 	return -1;
 }
@@ -178,4 +181,16 @@ config_term(void)
 		--nxresources;
 		xresource_delete(xr);
 	}
+}
+
+static void
+init_default(void)
+{
+	char modstr[2];
+	(void) config_get_colour("border.colour", 0x222222, &config.border.colour);
+	(void) config_get_colour("border.colour_focus", 0x00FF00, &config.border.colour_focus);
+	(void) config_get_int("border.width", 1, (int signed *) &config.border.width);
+	(void) config_get_string("modifier", "W", modstr, 2);
+	config.modifier = key_mod_fromstring(modstr);
+	DEBUG("config.modifier = %u", config.modifier);
 }

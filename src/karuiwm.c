@@ -181,12 +181,12 @@ action_shiftclient(union argument *arg)
 static void
 action_spawn(union argument *arg)
 {
-	char *const *cmd = (char *const *) arg->v;
+	char const *cmd = (char const *) arg->v;
 
 	pid_t pid = fork();
 	if (pid == 0) {
-		execvp(cmd[0], cmd);
-		FATAL("execvp(%s) failed: %s", cmd[0], strerror(errno));
+		execl("/bin/sh", "sh", "-c", cmd, (char *) NULL);
+		FATAL("execl(%s) failed: %s", cmd, strerror(errno));
 	}
 	if (pid < 0)
 		WARN("fork() failed with code %d", pid);
@@ -584,6 +584,12 @@ init(void)
 	/* actions */
 	init_actions();
 
+	/* user configuration */
+	if (config_init() < 0)
+		FATAL("could not initialise X resources");
+	keybinds = config_get_keybinds();
+	nkeybinds = LIST_SIZE(keybinds);
+
 	/* input (mouse, keyboard) */
 	karuiwm.cursor = cursor_new();
 	grabkeys();
@@ -592,11 +598,6 @@ init(void)
 	layout_init();
 	karuiwm.session = session_new();
 	karuiwm.focus = focus_new(karuiwm.session);
-
-	/* user configuration */
-	if (config_init() < 0)
-		FATAL("could not initialise X resources");
-	keybinds = config_get_keybinds();
 }
 
 static void
@@ -837,7 +838,6 @@ run(void)
 		//DEBUG("run(): e.type = %d", xe.type);
 		if (handle[xe.type] != NULL)
 			handle[xe.type](&xe);
-		karuiwm.running = false;
 	}
 }
 

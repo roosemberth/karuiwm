@@ -5,6 +5,14 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+struct {
+	struct {
+		uint32_t colour, colour_focus;
+		int unsigned width;
+	} border;
+	int unsigned modifier;
+} config;
+
 int config_get_bool(char const *key, bool def, bool *ret);
 int config_get_colour(char const *key, uint32_t def, uint32_t *ret);
 int config_get_float(char const *key, float def, float *ret);

@@ -1,12 +1,11 @@
 #include "karuiwm.h"
 #include "client.h"
 #include "util.h"
+#include "config.h"
 #include <string.h>
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
 #include <stdarg.h>
-
-#define BORDERWIDTH 1
 
 static int check_sizehints(struct client *c, int unsigned *w, int unsigned *h);
 static int get_name(char *buf, Window win);
@@ -356,7 +355,8 @@ client_set_floating(struct client *c, bool floating)
 void
 client_set_focus(struct client *c, bool focus)
 {
-	XSetWindowBorder(karuiwm.dpy, c->win, focus ? CBORDERSEL : CBORDERNORM);
+	XSetWindowBorder(karuiwm.dpy, c->win, focus ? config.border.colour_focus
+	                                            : config.border.colour);
 	if (focus)
 		XSetInputFocus(karuiwm.dpy, c->win, RevertToPointerRoot,
 		               CurrentTime);
@@ -366,7 +366,7 @@ void
 client_set_fullscreen(struct client *c, bool fullscreen)
 {
 	c->state = fullscreen ? STATE_FULLSCREEN : STATE_NORMAL;
-	client_set_border(c, fullscreen ? 0 : BORDERWIDTH);
+	client_set_border(c, fullscreen ? 0 : config.border.width);
 }
 
 void

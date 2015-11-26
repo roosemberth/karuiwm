@@ -5,7 +5,7 @@
 
 static struct client *get_head(struct desktop *d, struct client *c);
 static struct client *get_last(struct desktop *d, struct client *c);
-static struct client *get_neighbour(struct client *c, int dir);
+static struct client *get_neighbour(struct client *c, enum list_direction dir);
 
 void
 desktop_arrange(struct desktop *d)
@@ -249,7 +249,7 @@ desktop_show(struct desktop *d, struct monitor *m)
 }
 
 void
-desktop_step_client(struct desktop *d, int dir)
+desktop_step_client(struct desktop *d, enum list_direction dir)
 {
 	if (d->selcli == NULL || d->selcli->state == STATE_FULLSCREEN)
 		return;
@@ -258,9 +258,9 @@ desktop_step_client(struct desktop *d, int dir)
 }
 
 void
-desktop_step_layout(struct desktop *d, int dir)
+desktop_step_layout(struct desktop *d, enum list_direction dir)
 {
-	d->sellayout = dir < 0 ? d->sellayout->prev : d->sellayout->next;
+	d->sellayout = (dir == PREV) ? d->sellayout->prev : d->sellayout->next;
 }
 
 void
@@ -319,7 +319,7 @@ get_last(struct desktop *d, struct client *c)
 }
 
 inline static struct client *
-get_neighbour(struct client *c, int dir)
+get_neighbour(struct client *c, enum list_direction dir)
 {
-	return c == NULL ? NULL : dir < 0 ? c->prev : c->next;
+	return c == NULL ? NULL : (dir == PREV) ? c->prev : c->next;
 }
