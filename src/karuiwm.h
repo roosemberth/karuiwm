@@ -11,7 +11,6 @@
 #define BUTTONMASK (ButtonPressMask | ButtonReleaseMask)
 #define MOUSEMASK (BUTTONMASK | PointerMotionMask)
 
-#define LENGTH(ARR) (sizeof(ARR)/sizeof(ARR[0]))
 #define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
 #define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
 
@@ -43,8 +42,6 @@ enum netatom_type {
 };
 
 /* variables */
-#define BUFSIZE_HOSTNAME 128
-
 Atom atoms[ATOM_LAST], netatoms[NETATOM_LAST];
 struct {
 	Display *dpy;
@@ -58,7 +55,6 @@ struct {
 	struct session *session;
 	struct cursor *cursor;
 	struct {
-		char HOSTNAME[BUFSIZE_HOSTNAME];
 		char *HOME;
 		char const *APPNAME;
 	} env;

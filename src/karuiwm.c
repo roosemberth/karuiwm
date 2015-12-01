@@ -547,10 +547,8 @@ init(void)
 
 	/* environment */
 	karuiwm.env.HOME = getenv("HOME");
-	if (gethostname(karuiwm.env.HOSTNAME, BUFSIZE_HOSTNAME) < 0) {
-		WARN("could not get hostname");
-		strncpy(karuiwm.env.HOSTNAME, "karui", BUFSIZE_HOSTNAME);
-	}
+	if (karuiwm.env.HOME == NULL)
+		WARN("HOME is not set, user-specific modules cannot be loaded");
 
 	/* connect to X */
 	karuiwm.dpy = XOpenDisplay(NULL);

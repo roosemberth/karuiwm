@@ -68,9 +68,13 @@ init_modules_paths(void)
 		api.paths = scalloc(api.npaths, sizeof(char *), "module path");
 		api.paths[0] = strdupf("%s", path);
 	}
-	api.npaths += 3;
+	api.npaths += 2 + (karuiwm.env.HOME != NULL) ? 1 : 0;
 	api.paths = srealloc(api.paths, api.npaths*sizeof(char *), "module paths");
-	api.paths[api.npaths - 3] = strdupf("%s/.local/%s", karuiwm.env.HOME, modulepath);
+	if (karuiwm.env.HOME != NULL) {
+		api.paths[api.npaths - 3] = strdupf("%s/.local/%s",
+		                                    karuiwm.env.HOME,
+		                                    modulepath);
+	}
 	api.paths[api.npaths - 2] = strdupf("/usr/local/%s", modulepath);
 	api.paths[api.npaths - 1] = strdupf("/usr/%s", modulepath);
 	sfree(modulepath);
