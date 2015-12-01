@@ -9,12 +9,9 @@ int
 argument_fromstring(union argument *arg, char const *str,
                     enum argument_type type)
 {
-	if (strlen(str) == 0)
-		return (type == ARGTYPE_NONE) ? 0 : -1;
-
 	switch (type) {
 	case ARGTYPE_NONE:
-		return -1; /* it's supposed to be empty */
+		return -((int signed) strlen(str));
 	case ARGTYPE_CHARACTER:
 		if (strlen(str) != 1) {
 			if (strlen(str) != 3

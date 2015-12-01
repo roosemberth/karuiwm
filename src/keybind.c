@@ -12,18 +12,6 @@ keybind_delete(struct keybind *kb)
 }
 
 struct keybind *
-keybind_new(struct key *key, struct action *action, union argument arg)
-{
-	struct keybind *kb;
-
-	kb = smalloc(sizeof(struct keybind), "key binding");
-	kb->key = key;
-	kb->action = action;
-	kb->arg = arg;
-	return kb;
-}
-
-struct keybind *
 keybind_fromstring(char const *keystr, char const *actionargstr)
 {
 	struct key *key;
@@ -56,7 +44,7 @@ keybind_fromstring(char const *keystr, char const *actionargstr)
 	}
 	if (argument_fromstring(&arg, argstr, action->argtype) < 0) {
 		WARN("action `%s` requires argument of type %s, but `%s` given",
-		     action->name, argument_typestring(action->argtype), argstr);
+		    action->name, argument_typestring(action->argtype), argstr);
 		goto keybind_fromstring_out;
 	}
 
@@ -72,5 +60,17 @@ keybind_fromstring(char const *keystr, char const *actionargstr)
 
  keybind_fromstring_out:
 	sfree(actionstr);
+	return kb;
+}
+
+struct keybind *
+keybind_new(struct key *key, struct action *action, union argument arg)
+{
+	struct keybind *kb;
+
+	kb = smalloc(sizeof(struct keybind), "key binding");
+	kb->key = key;
+	kb->action = action;
+	kb->arg = arg;
 	return kb;
 }

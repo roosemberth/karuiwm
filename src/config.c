@@ -6,10 +6,13 @@
 #include "string.h"
 #include "strings.h"
 #include "keybind.h"
+#include "buttonbind.h"
 
 #define DEFAULT_LINBUFSIZE 256
 
 static void init_default(void);
+static void scan_buttonbinds(void);
+static void scan_keybinds(void);
 
 static char *linbuf;
 static size_t linbufsize;
@@ -80,28 +83,6 @@ config_get_int(char const *key, int def, int *ret)
 	return 0;
 }
 
-struct keybind *
-config_get_keybinds(void)
-{
-	struct xresource *xr;
-	struct keybind *kb, *keybinds = NULL;
-	int unsigned i;
-
-	for (i = 0, xr = xresources; i < nxresources; ++i, xr = xr->next) {
-		if (strncmp(xr->key, "keysym.", 7) != 0)
-			continue;
-		kb = keybind_fromstring(xr->key + 7, xr->value);
-		if (kb == NULL) {
-			WARN("failed to create key binding for `%s: %s`",
-			     xr->key, xr->value);
-			continue;
-		}
-		LIST_APPEND(&keybinds, kb);
-	}
-
-	return keybinds;
-}
-
 int
 config_get_string(char const *key, char const *def, char *ret, size_t retlen)
 {
@@ -156,6 +137,8 @@ config_init(void)
 	sfree(prefix);
 
 	init_default();
+	scan_buttonbinds();
+	scan_keybinds();
 
 	return 0;
 }
@@ -192,4 +175,50 @@ init_default(void)
 	(void) config_get_int("border.width", 1, (int signed *) &config.border.width);
 	(void) config_get_string("modifier", "W", modstr, 2);
 	config.modifier = key_mod_fromstring(modstr);
+}
+
+static void
+scan_buttonbinds(void)
+{
+	struct xresource *xr;
+	struct buttonbind *bb;
+	int unsigned i;
+
+	config.buttonbinds = NULL;
+	config.nbuttonbinds = 0;
+	for (i = 0, xr = xresources; i < nxresources; ++i, xr = xr->next) {
+		if (strncmp(xr->key, "button.", 7) != 0)
+			continue;
+		bb = buttonbind_fromstring(xr->key + 7, xr->value);
+		if (bb == NULL) {
+			WARN("failed to create button binding for `%s: %s`",
+			     xr->key, xr->value);
+			continue;
+		}
+		LIST_APPEND(&config.buttonbinds, bb);
+		++config.nbuttonbinds;
+	}
+}
+
+static void
+scan_keybinds(void)
+{
+	struct xresource *xr;
+	struct keybind *kb;
+	int unsigned i;
+
+	config.keybinds = NULL;
+	config.nkeybinds = 0;
+	for (i = 0, xr = xresources; i < nxresources; ++i, xr = xr->next) {
+		if (strncmp(xr->key, "keysym.", 7) != 0)
+			continue;
+		kb = keybind_fromstring(xr->key + 7, xr->value);
+		if (kb == NULL) {
+			WARN("failed to create key binding for `%s: %s`",
+			     xr->key, xr->value);
+			continue;
+		}
+		LIST_APPEND(&config.keybinds, kb);
+		++config.nkeybinds;
+	}
 }

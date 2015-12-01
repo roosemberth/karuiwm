@@ -10,26 +10,14 @@ key_delete(struct key *k)
 }
 
 struct key *
-key_new(int unsigned mod, KeySym sym)
-{
-	struct key *k;
-
-	k = smalloc(sizeof(struct key), "key");
-	k->mod = mod;
-	k->sym = sym;
-	return k;
-}
-
-struct key *
 key_fromstring(char const *keystr)
 {
-	struct key *key;
 	int unsigned sympos;
 	KeySym sym;
 	size_t keystrlen = strlen(keystr);
 	char *modstr;
 	char const *modtok;
-	int unsigned mod = 0;
+	int unsigned mod;
 
 	/* find XK_ part */
 	for (sympos = (int unsigned) keystrlen;
@@ -37,11 +25,12 @@ key_fromstring(char const *keystr)
 	     --sympos);
 	sym = XStringToKeysym(keystr + sympos);
 	if (sym == NoSymbol) {
-		WARN("symbol not found for `%s`", keystr + sympos);
+		WARN("key symbol not found for `%s`", keystr + sympos);
 		return NULL;
 	}
 
 	/* extract modifiers */
+	mod = 0;
 	if (sympos > 0) {
 		modstr = strdupf("%s", keystr);
 		modtok = strtok(modstr, "-");
@@ -53,8 +42,7 @@ key_fromstring(char const *keystr)
 		sfree(modstr);
 	}
 
-	key = key_new(mod, sym);
-	return key;
+	return key_new(mod, sym);
 }
 
 int unsigned
@@ -70,4 +58,15 @@ key_mod_fromstring(char const *modstr)
 		WARN("unknown modifier: `%s`", modstr);
 		return 0;
 	}
+}
+
+struct key *
+key_new(int unsigned mod, KeySym sym)
+{
+	struct key *k;
+
+	k = smalloc(sizeof(struct key), "key");
+	k->mod = mod;
+	k->sym = sym;
+	return k;
 }

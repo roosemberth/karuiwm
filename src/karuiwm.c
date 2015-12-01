@@ -78,11 +78,6 @@ static void run(void);
 static void sigchld(int);
 static void term(void);
 
-/* variables */
-static struct keybind *keybinds;
-static struct buttonbind *buttonbinds;
-static size_t nkeybinds, nbuttonbinds;
-
 /* event handlers, as array to allow O(1) access; numeric codes are in X.h */
 static void (*handle[LASTEvent])(XEvent *) = {
 	[ButtonPress]      = handle_buttonpress,      /* 4*/
@@ -264,7 +259,8 @@ grabkeys(void)
 	struct keybind *kb;
 
 	XUngrabKey(karuiwm.dpy, AnyKey, AnyModifier, karuiwm.root);
-	for (i = 0, kb = keybinds; i < nkeybinds; ++i, kb = kb->next)
+	for (i = 0, kb = config.keybinds; i < config.nkeybinds;
+	     ++i, kb = kb->next)
 		XGrabKey(karuiwm.dpy,
 		         XKeysymToKeycode(karuiwm.dpy, kb->key->sym),
 		         kb->key->mod, karuiwm.root, True, GrabModeAsync,
@@ -275,7 +271,7 @@ static void
 handle_buttonpress(XEvent *xe)
 {
 	int unsigned i;
-	struct buttonbind *b;
+	struct buttonbind *bb;
 	XButtonEvent *e = &xe->xbutton;
 
 	//EVENT("buttonpress(%lu)", e->window);
@@ -284,11 +280,11 @@ handle_buttonpress(XEvent *xe)
 	if (e->window == karuiwm.root)
 		return;
 
-	for (i = 0, b = buttonbinds; i < nbuttonbinds; ++i, b = b->next) {
-		if (b->mod == e->state
-		&& b->button == e->button
-		&& b->action != NULL) {
-			b->action->function(&b->arg);
+	for (i = 0, bb = config.buttonbinds; i < config.nbuttonbinds;
+	     ++i, bb = bb->next) {
+		if (bb->button->mod == e->state
+		&& bb->button->sym == e->button) {
+			bb->action->function(&((union argument) {.v = &e->window}));
 			break;
 		}
 	}
@@ -424,7 +420,8 @@ handle_keypress(XEvent *xe)
 	//EVENT("keypress()");
 
 	KeySym keysym = XLookupKeysym(e, 0);
-	for (i = 0, kb = keybinds; i < nkeybinds; ++i, kb = kb->next) {
+	for (i = 0, kb = config.keybinds; i < config.nkeybinds;
+	     ++i, kb = kb->next) {
 		if (e->state == kb->key->mod && keysym == kb->key->sym
 		&& kb->action != NULL) {
 			kb->action->function(&kb->arg);
@@ -473,7 +470,7 @@ handle_maprequest(XEvent *xe)
 		                     MIN(c->floath, d->monitor->h));
 	desktop_arrange(d);
 	XMapWindow(karuiwm.dpy, c->win);
-	client_grab_buttons(c, nbuttonbinds, buttonbinds);
+	client_grab_buttons(c, config.nbuttonbinds, config.buttonbinds);
 	desktop_focus_client(d, c);
 }
 
@@ -587,8 +584,6 @@ init(void)
 	/* user configuration */
 	if (config_init() < 0)
 		FATAL("could not initialise X resources");
-	keybinds = config_get_keybinds();
-	nkeybinds = LIST_SIZE(keybinds);
 
 	/* input (mouse, keyboard) */
 	karuiwm.cursor = cursor_new();

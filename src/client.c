@@ -53,13 +53,14 @@ client_delete(struct client *c)
 }
 
 void
-client_grab_buttons(struct client *c, size_t nb, struct buttonbind *buttons)
+client_grab_buttons(struct client *c, size_t nbb, struct buttonbind *buttons)
 {
 	int unsigned i;
+	struct buttonbind *bb;
 
 	XUngrabButton(karuiwm.dpy, AnyButton, AnyModifier, c->win);
-	for (i = 0; i < nb; ++i)
-		XGrabButton(karuiwm.dpy, buttons[i].button, buttons[i].mod,
+	for (i = 0, bb = buttons; i < nbb; ++i, bb = bb->next)
+		XGrabButton(karuiwm.dpy, bb->button->sym, bb->button->mod,
 		            c->win, False, BUTTONMASK, GrabModeAsync,
 		            GrabModeAsync, None, None);
 }
