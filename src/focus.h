@@ -1,5 +1,5 @@
-#ifndef _FOCUS_H
-#define _FOCUS_H
+#ifndef _KARUIWM_FOCUS_H
+#define _KARUIWM_FOCUS_H
 
 #include "monitor.h"
 #include "session.h"
@@ -20,4 +20,4 @@ struct focus *focus_new(struct session *s);
 void focus_scan_monitors(struct focus *f);
 void focus_step_monitor(struct focus *f, enum direction dir);
 
-#endif /* ndef _FOCUS_H */
+#endif /* ndef _KARUIWM_FOCUS_H */

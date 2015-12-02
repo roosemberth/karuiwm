@@ -1,16 +1,12 @@
-#ifndef _UTIL_H
-#define _UTIL_H
+#ifndef _KARUIWM_UTIL_H
+#define _KARUIWM_UTIL_H
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdarg.h>
 
-#ifdef MODE_DEBUG
-# define DEBUG(...)  print(stdout,LOG_DEBUG,  __FILE__,__LINE__,__VA_ARGS__)
-# define EVENT(...)  print(stderr,LOG_EVENT,  __FILE__,__LINE__,__VA_ARGS__)
-#else
-# define DEBUG(...)
-# define EVENT(...)
-#endif
+#define DEBUG(...)   print(stderr,LOG_DEBUG,  __FILE__,__LINE__,__VA_ARGS__)
+#define EVENT(...)   print(stderr,LOG_EVENT,  __FILE__,__LINE__,__VA_ARGS__)
 #define VERBOSE(...) print(stdout,LOG_VERBOSE,__FILE__,__LINE__,__VA_ARGS__)
 #define NORMAL(...)  print(stdout,LOG_NORMAL, __FILE__,__LINE__,__VA_ARGS__)
 #define NOTICE(...)  print(stdout,LOG_NOTICE, __FILE__,__LINE__,__VA_ARGS__)
@@ -35,4 +31,8 @@ void *smalloc(size_t size, char const *context);
 void *srealloc(void *ptr, size_t size, char const *ctx);
 void sfree(void *ptr);
 
-#endif /* ndef _UTIL_H */
+/* strings */
+char *strdupf(char const *format, ...);
+int vstrlenf(char const *format, va_list ap);
+
+#endif /* ndef _KARUIWM_UTIL_H */

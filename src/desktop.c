@@ -5,8 +5,7 @@
 
 static struct client *get_head(struct desktop *d, struct client *c);
 static struct client *get_last(struct desktop *d, struct client *c);
-static struct client *get_neighbour(struct client *c, int dir);
-static void swap(struct client **list, struct client *c1, struct client *c2);
+static struct client *get_neighbour(struct client *c, enum list_direction dir);
 
 void
 desktop_arrange(struct desktop *d)
@@ -44,7 +43,7 @@ desktop_arrange(struct desktop *d)
 			if (c->state != STATE_FULLSCREEN && c != d->seltiled)
 				stack[is++] = c->win;
 	}
-	XRestackWindows(kwm.dpy, stack, (int signed) (d->nt + d->nf));
+	XRestackWindows(karuiwm.dpy, stack, (int signed) (d->nt + d->nf));
 	desktop_set_clientmask(d, CLIENTMASK);
 }
 
@@ -69,7 +68,8 @@ desktop_delete(struct desktop *d)
 	struct client *c;
 
 	if (d->nt + d->nf > 0) {
-		WARN("deleting desktop that still contains clients");
+		if (!karuiwm.restarting)
+			WARN("deleting desktop that still contains clients");
 		while (d->nt > 0) {
 			c = d->tiled;
 			desktop_detach_client(d, c);
@@ -193,10 +193,10 @@ desktop_set_clientmask(struct desktop *d, long mask)
 
 	/* TODO move XSelectInput to client */
 	for (i = 0, it = d->tiled; i < d->nt; ++i, it = it->next)
-		XSelectInput(kwm.dpy, it->win, mask);
+		XSelectInput(karuiwm.dpy, it->win, mask);
 	for (i = 0, it = d->floating; i < d->nf; ++i, it = it->next)
-		XSelectInput(kwm.dpy, it->win, mask);
-	XSync(kwm.dpy, kwm.screen);
+		XSelectInput(karuiwm.dpy, it->win, mask);
+	XSync(karuiwm.dpy, karuiwm.screen);
 }
 
 void
@@ -227,7 +227,7 @@ desktop_shift_client(struct desktop *d, int dir)
 	if (this == NULL)
 		return;
 	other = get_neighbour(this, dir);
-	swap(this->floating ? &d->floating : &d->tiled, this, other);
+	LIST_SWAP(this->floating ? &d->floating : &d->tiled, this, other);
 }
 
 void
@@ -249,7 +249,7 @@ desktop_show(struct desktop *d, struct monitor *m)
 }
 
 void
-desktop_step_client(struct desktop *d, int dir)
+desktop_step_client(struct desktop *d, enum list_direction dir)
 {
 	if (d->selcli == NULL || d->selcli->state == STATE_FULLSCREEN)
 		return;
@@ -258,9 +258,9 @@ desktop_step_client(struct desktop *d, int dir)
 }
 
 void
-desktop_step_layout(struct desktop *d, int dir)
+desktop_step_layout(struct desktop *d, enum list_direction dir)
 {
-	d->sellayout = dir < 0 ? d->sellayout->prev : d->sellayout->next;
+	d->sellayout = (dir == PREV) ? d->sellayout->prev : d->sellayout->next;
 }
 
 void
@@ -270,7 +270,7 @@ desktop_update_focus(struct desktop *d)
 	struct client *c;
 
 	if (d->nt + d->nf == 0) {
-		XSetInputFocus(kwm.dpy, kwm.root, RevertToPointerRoot,
+		XSetInputFocus(karuiwm.dpy, karuiwm.root, RevertToPointerRoot,
 		               CurrentTime);
 		return;
 	}
@@ -290,12 +290,12 @@ desktop_zoom(struct desktop *d)
 
 	if (d->selcli == d->tiled) {
 		/* window is at the top: swap with next below */
-		swap(&d->tiled, d->tiled, d->tiled->next);
+		LIST_SWAP(&d->tiled, d->tiled, d->tiled->next);
 		d->selcli = d->seltiled = d->tiled;
 		desktop_update_focus(d);
 	} else {
 		/* window is somewhere else: swap with top */
-		swap(&d->tiled, d->selcli, d->tiled);
+		LIST_SWAP(&d->tiled, d->selcli, d->tiled);
 	}
 }
 
@@ -319,58 +319,7 @@ get_last(struct desktop *d, struct client *c)
 }
 
 inline static struct client *
-get_neighbour(struct client *c, int dir)
+get_neighbour(struct client *c, enum list_direction dir)
 {
-	return c == NULL ? NULL : dir < 0 ? c->prev : c->next;
-}
-
-static void
-swap(struct client **head, struct client *c1, struct client *c2)
-{
-	struct client *prev1, *next1, *prev2, *next2;
-
-	if (c1 == NULL || c2 == NULL)
-		return;
-
-	prev1 = c1->prev;
-	next1 = c1->next;
-	prev2 = c2->prev;
-	next2 = c2->next;
-
-	if (c1 == c2) {
-		/* same node */
-		goto swap_out;
-	} else if (c1->next == c2 && c2->next == c1) {
-		/* only two nodes in list */
-	} else if (c1->next == c2) {
-		/* next to each other */
-		prev1->next = c2;
-		c2->next = c1;
-		c1->next = next2;
-		next2->prev = c1;
-		c1->prev = c2;
-		c2->prev = prev1;
-	} else if (c2->next == c1) {
-		/* next to each other (alt.) */
-		swap(head, c2, c1);
-		goto swap_out;
-	} else {
-		/* general case */
-		prev1->next = c2;
-		c2->next = next1;
-		next1->prev = c2;
-		c2->prev = prev1;
-		prev2->next = c1;
-		c1->next = next2;
-		next2->prev = c1;
-		c1->prev = prev2;
-	}
-
-	/* fix list head */
-	if (*head == c1)
-		*head = c2;
-	else if (*head == c2)
-		*head = c1;
- swap_out:
-	return;
+	return c == NULL ? NULL : (dir == PREV) ? c->prev : c->next;
 }

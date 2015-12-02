@@ -1,5 +1,5 @@
-#ifndef _CURSOR_H
-#define _CURSOR_H
+#ifndef _KARUIWM_CURSOR_H
+#define _KARUIWM_CURSOR_H
 
 #include <X11/Xlib.h>
 #include <X11/cursorfont.h>
@@ -23,4 +23,4 @@ int cursor_get_pos(struct cursor *cur, int *x, int *y);
 struct cursor *cursor_new(void);
 int cursor_set_type(struct cursor *cur, enum cursor_type type);
 
-#endif /* ndef _CURSOR_H */
+#endif /* ndef _KARUIWM_CURSOR_H */

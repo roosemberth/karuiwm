@@ -1,13 +1,14 @@
-#ifndef _DESKTOP_H
-#define _DESKTOP_H
+#ifndef _KARUIWM_DESKTOP_H
+#define _KARUIWM_DESKTOP_H
 
 #include "client.h"
 #include "workspace.h"
 #include "monitor.h"
+#include "argument.h"
 #include <stdbool.h>
 
 struct desktop {
-	struct desktop *prev, *next;
+	struct desktop *prev, *next; /* list.h */
 	struct workspace *workspace;
 	struct monitor *monitor;
 	size_t nt, nf, nmaster;
@@ -36,9 +37,9 @@ void desktop_set_mfact(struct desktop *d, float mfact);
 void desktop_set_nmaster(struct desktop *d, size_t nmaster);
 void desktop_shift_client(struct desktop *d, int dir);
 void desktop_show(struct desktop *d, struct monitor *m);
-void desktop_step_client(struct desktop *d, int dir);
-void desktop_step_layout(struct desktop *d, int dir);
+void desktop_step_client(struct desktop *d, enum list_direction dir);
+void desktop_step_layout(struct desktop *d, enum list_direction dir);
 void desktop_update_focus(struct desktop *d);
 void desktop_zoom(struct desktop *d);
 
-#endif /* ndef _DESKTOP_H */
+#endif /* ndef _KARUIWM_DESKTOP_H */

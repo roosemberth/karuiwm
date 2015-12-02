@@ -1,5 +1,5 @@
-#ifndef _LAYOUT_H
-#define _LAYOUT_H
+#ifndef _KARUIWM_LAYOUT_H
+#define _KARUIWM_LAYOUT_H
 
 #include "client.h"
 #include <stdlib.h>
@@ -18,4 +18,4 @@ void layout_term(void);
 
 struct layout *layouts;
 
-#endif /* _LAYOUT_H */
+#endif /* ndef _KARUIWM_LAYOUT_H */

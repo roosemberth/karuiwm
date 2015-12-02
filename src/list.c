@@ -47,6 +47,19 @@ list_remove(struct list_element **head, struct list_element *e)
 	e->prev = e->next = NULL;
 }
 
+size_t
+list_size(struct list_element *head)
+{
+	struct list_element *e;
+	size_t n;
+
+	if (head == NULL)
+		return 0;
+
+	for (e = head->next, n = 1; e != head; e = e->next, ++n);
+	return n;
+}
+
 void
 list_swap(struct list_element **head, struct list_element *e1,
                                       struct list_element *e2)

@@ -35,7 +35,8 @@ print(FILE *f, enum log_level level, char const *filename, int unsigned line,
 	/* application name & timestamp */
 	rawtime = time(NULL);
 	date = localtime(&rawtime);
-	(void) fprintf(f, APPNAME" [%04d-%02d-%02d %02d:%02d:%02d] ",
+	(void) fprintf(f, "%s %04d-%02d-%02dT%02d:%02d:%02d ",
+	               karuiwm.env.APPNAME,
 	               date->tm_year+1900, date->tm_mon + 1, date->tm_mday,
 	               date->tm_hour, date->tm_min, date->tm_sec);
 
@@ -106,4 +107,42 @@ void
 sfree(void *ptr)
 {
 	free(ptr);
+}
+
+char *
+strdupf(char const *format, ...)
+{
+	int len;
+	size_t slen;
+	char *dst;
+	va_list ap;
+
+	va_start(ap, format);
+	len = vstrlenf(format, ap);
+	va_end(ap);
+
+	if (len < 0)
+		return NULL;
+	slen = (size_t) len + 1;
+
+	dst = smalloc(slen, "formatted string duplication");
+	va_start(ap, format);
+	len = vsnprintf(dst, slen, format, ap);
+	va_end(ap);
+
+	if (len < 0) {
+		sfree(dst);
+		return NULL;
+	}
+	return dst;
+}
+
+int
+vstrlenf(char const *format, va_list ap)
+{
+	int len;
+	char *buf = NULL;
+
+	len = vsnprintf(buf, 0, format, ap);
+	return len;
 }

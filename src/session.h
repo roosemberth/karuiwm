@@ -1,5 +1,5 @@
-#ifndef _SESSION_H
-#define _SESSION_H
+#ifndef _KARUIWM_SESSION_H
+#define _KARUIWM_SESSION_H
 
 #include "workspace.h"
 #include "client.h"
@@ -17,4 +17,4 @@ int session_locate_window(struct session *s, struct client **c, Window w);
 struct session *session_new(void);
 int session_save(struct session *s, char *sid, size_t sid_len);
 
-#endif /* ndef _SESSION_H */
+#endif /* ndef _KARUIWM_SESSION_H */

@@ -1,7 +1,9 @@
-#ifndef _CLIENT_H
-#define _CLIENT_H
+#ifndef _KARUIWM_CLIENT_H
+#define _KARUIWM_CLIENT_H
 
 #include "karuiwm.h"
+#include "buttonbind.h"
+
 #include <X11/Xlib.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -9,7 +11,7 @@
 enum client_state { STATE_NORMAL, STATE_FULLSCREEN, STATE_SCRATCHPAD };
 
 struct client {
-	struct client *prev, *next;
+	struct client *prev, *next; /* list.h */
 	struct desktop *desktop;
 	int x, y, floatx, floaty;
 	int unsigned w, h, floatw, floath, border;
@@ -23,11 +25,10 @@ struct client {
 };
 
 void client_delete(struct client *);
-void client_grab_buttons(struct client *c, size_t nb, struct button *buttons);
+void client_grab_buttons(struct client *c, size_t nb, struct buttonbind *buttons);
 void client_kill(struct client *c);
 void client_move(struct client *c, int x, int y);
-void client_moveresize(struct client *c, int x, int y,
-                       int unsigned w, int unsigned h);
+void client_moveresize(struct client *c, int x, int y, int unsigned w, int unsigned h);
 struct client *client_new(Window win);
 Atom client_query_atom(struct client *c, Atom property);
 void client_query_dialog(struct client *c);
@@ -47,4 +48,4 @@ void client_set_fullscreen(struct client *c, bool fullscreen);
 void client_set_visibility(struct client *c, bool visible);
 bool client_supports_atom(struct client *c, Atom atom);
 
-#endif /* _CLIENT_H */
+#endif /* ndef _KARUIWM_CLIENT_H */

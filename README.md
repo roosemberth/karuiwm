@@ -2,24 +2,11 @@ karuiwm
 =======
 
 karuiwm is an attempt to write a lightweight, dynamically tiling window manager
-for X. It is inspired by dwm's simplicity, replacing its tag system by desktops
-and workspaces.
+for X.
 
-It is a complete rewrite from an earlier version, which can be tested at commit
-[#31a8063](https://github.com/ayekat/karuiwm/tree/31a8063da9f3960e268514952b92d9c9ce5719ee).
-
-**karuiwm is currently under heavy development and not usable.** See the
-[issues](https://github.com/ayekat/karuiwm/issues) or the list below for what's
-there and what's to come.
-
-* **!** Tiling Layouts (not modular yet)
-* **✓** Desktops
-* **!** Workspaces (not controllable yet, needs API)
-* **✗** Scratchpads
-* **✗** Session Restore
-* **✗** API + Unix Socket
-* **✗** Complete EWMH Compliance
-* **✗** Configuration through Xresources
+**karuiwm is currently under heavy development and not usable.** It is a
+complete rewrite of the currently used (but rather buggy) [legacy
+version](https://github.com/ayekat/karuiwm/tree/legacy).
 
 
 build
@@ -42,18 +29,66 @@ will install karuiwm to /usr/local. Pass `INSTALLDIR=...` to install karuiwm to
 a different location.
 
 
-run
----
+for developers
+--------------
+
+For testing purposes, karuiwm can also be launched via Xephyr (X server in a
+window):
 
 	make xephyr
 
-launches karuiwm inside Xephyr (X server in a window). Alternatively, `make run`
-will launch karuiwm normally, however it is discouraged to run from within an
-existing X session, as it may cause an X hickup.
+To run it with valgrind in Xephyr, you can use the `valphyr` target:
+
+	make valphyr
+
+Alternatively, `make run` will launch karuiwm normally, however it is
+discouraged to run from within an existing X session, as it may cause an X
+hickup.
+
+See the [doc](doc) folder for the documentation.
+
+
+configuration
+-------------
+
+The configuration happens through X resources. Here is a sample X resources
+configuration snippet that can be used and modified:
+
+``` Xresources
+! Use windows key as the principal modifier ('M'):
+karuiwm.modifier        : W
+
+karuiwm.border.width    : 1
+karuiwm.border.color    : #00FF00
+
+karuiwm.keysym.M-k      : stepclient:prev
+karuiwm.keysym.M-j      : stepclient:next
+karuiwm.keysym.M-S-k    : shiftclient:prev
+karuiwm.keysym.M-S-j    : shiftclient:next
+karuiwm.keysym.M-Return : zoom
+karuiwm.keysym.M-S-c    : killclient
+
+karuiwm.keysym.M-C-h    : stepdesktop:left
+karuiwm.keysym.M-C-j    : stepdesktop:down
+karuiwm.keysym.M-C-k    : stepdesktop:up
+karuiwm.keysym.M-C-l    : stepdesktop:right
+
+karuiwm.keysym.M-q      : restart
+karuiwm.keysym.M-S-q    : stop
+
+karuiwm.keysym.M-n      : spawn:urxvt
+
+karuiwm.button.M-1      : mousemove
+karuiwm.button.M-3      : mouseresize
+```
+
+Documentation will follow.
 
 
 bugs
 ----
 
-Although crafted with utmost care, some bugs may have slipped my notice. Please
-feel free to file bug reports. I'm a hobby developer. I won't bite.
+Although karuiwm has been crafted with utmost care and love, some bugs may have
+slipped my notice. Please feel free to file bug reports.
+
+I won't bite.

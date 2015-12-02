@@ -1,12 +1,11 @@
 #include "karuiwm.h"
 #include "client.h"
 #include "util.h"
+#include "config.h"
 #include <string.h>
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
 #include <stdarg.h>
-
-#define BORDERWIDTH 1
 
 static int check_sizehints(struct client *c, int unsigned *w, int unsigned *h);
 static int get_name(char *buf, Window win);
@@ -54,15 +53,16 @@ client_delete(struct client *c)
 }
 
 void
-client_grab_buttons(struct client *c, size_t nb, struct button *buttons)
+client_grab_buttons(struct client *c, size_t nbb, struct buttonbind *buttons)
 {
 	int unsigned i;
+	struct buttonbind *bb;
 
-	XUngrabButton(kwm.dpy, AnyButton, AnyModifier, c->win);
-	for (i = 0; i < nb; ++i)
-		XGrabButton(kwm.dpy, buttons[i].button, buttons[i].mod,
-		            c->win, False, BUTTONMASK, GrabModeAsync,
-		            GrabModeAsync, None, None);
+	XUngrabButton(karuiwm.dpy, AnyButton, AnyModifier, c->win);
+	for (i = 0, bb = buttons; i < nbb; ++i, bb = bb->next)
+		XGrabButton(karuiwm.dpy, bb->button, bb->mod, c->win, False,
+		            BUTTONMASK, GrabModeAsync, GrabModeAsync, None,
+		            None);
 }
 
 void
@@ -94,7 +94,7 @@ client_move(struct client *c, int x, int y)
 		c->floatx = x;
 		c->floaty = y;
 	}
-	XMoveWindow(kwm.dpy, c->win, c->x, c->y);
+	XMoveWindow(karuiwm.dpy, c->win, c->x, c->y);
 }
 
 void
@@ -112,7 +112,7 @@ client_new(Window win)
 	XWindowAttributes wa;
 
 	/* ignore buggy windows and windows with override_redirect */
-	if (!XGetWindowAttributes(kwm.dpy, win, &wa)) {
+	if (!XGetWindowAttributes(karuiwm.dpy, win, &wa)) {
 		WARN("XGetWindowAttributes() failed for window %lu", win);
 		return NULL;
 	}
@@ -151,8 +151,9 @@ client_query_atom(struct client *c, Atom property)
 	char unsigned *atomp = NULL;
 	Atom a, atom = None;
 
-	ret = XGetWindowProperty(kwm.dpy, c->win, property, 0L, sizeof(Atom),
-	                         False, XA_ATOM, &a, &i, &lu, &lu, &atomp);
+	ret = XGetWindowProperty(karuiwm.dpy, c->win, property, 0L,
+	                         sizeof(Atom), False, XA_ATOM, &a, &i, &lu, &lu,
+	                         &atomp);
 	if (ret != Success) {
 		WARN("%lu: could not get property", c->win);
 	} else if (atomp != NULL) {
@@ -177,7 +178,7 @@ client_query_dimension(struct client *c)
 	Window root;
 	int unsigned u;
 
-	if (!XGetGeometry(kwm.dpy, c->win, &root, &c->floatx, &c->floaty,
+	if (!XGetGeometry(karuiwm.dpy, c->win, &root, &c->floatx, &c->floaty,
 	                  &c->floatw, &c->floath, &c->border, &u)) {
 		WARN("window %lu: could not get geometry", c->win);
 		return;
@@ -213,7 +214,7 @@ client_query_sizehints(struct client *c)
 	long size;
 	XSizeHints hints;
 
-	if (!XGetWMNormalHints(kwm.dpy, c->win, &hints, &size)) {
+	if (!XGetWMNormalHints(karuiwm.dpy, c->win, &hints, &size)) {
 		WARN("XGetWMNormalHints() failed");
 		return;
 	}
@@ -267,7 +268,7 @@ client_query_supported_atoms(struct client *c)
 		free(c->supported);
 		nsup = 0;
 	}
-	if (!XGetWMProtocols(kwm.dpy, c->win, &sup, (int signed *) &nsup)) {
+	if (!XGetWMProtocols(karuiwm.dpy, c->win, &sup, (int signed *) &nsup)) {
 		WARN("XGetWMProtocols() failed on %lu", c->win);
 		return;
 	}
@@ -283,7 +284,7 @@ client_query_transient(struct client *c)
 {
 	Window trans = 0;
 
-	if (!XGetTransientForHint(kwm.dpy, c->win, &trans))
+	if (!XGetTransientForHint(karuiwm.dpy, c->win, &trans))
 		return;
 	DEBUG("window %lu is transient", c->win);
 }
@@ -299,7 +300,7 @@ client_resize(struct client *c, int unsigned w, int unsigned h)
 		c->floatw = w;
 		c->floath = h;
 	}
-	XResizeWindow(kwm.dpy, c->win, c->w, c->h);
+	XResizeWindow(karuiwm.dpy, c->win, c->w, c->h);
 }
 
 int
@@ -324,7 +325,7 @@ client_send_atom(struct client *c, size_t natoms, ...)
 		ev.xclient.data.l[i] = (int long) va_arg(args, Atom);
 	ev.xclient.data.l[i] = CurrentTime;
 
-	if (!XSendEvent(kwm.dpy, c->win, false, NoEventMask, &ev))
+	if (!XSendEvent(karuiwm.dpy, c->win, false, NoEventMask, &ev))
 		WARN("could not send event to %lu", c->win);
 
 	va_end(args);
@@ -335,7 +336,7 @@ void
 client_set_border(struct client *c, int unsigned border)
 {
 	c->border = border;
-	XSetWindowBorderWidth(kwm.dpy, c->win, border);
+	XSetWindowBorderWidth(karuiwm.dpy, c->win, border);
 }
 
 void
@@ -355,9 +356,10 @@ client_set_floating(struct client *c, bool floating)
 void
 client_set_focus(struct client *c, bool focus)
 {
-	XSetWindowBorder(kwm.dpy, c->win, focus ? CBORDERSEL : CBORDERNORM);
+	XSetWindowBorder(karuiwm.dpy, c->win, focus ? config.border.colour_focus
+	                                            : config.border.colour);
 	if (focus)
-		XSetInputFocus(kwm.dpy, c->win, RevertToPointerRoot,
+		XSetInputFocus(karuiwm.dpy, c->win, RevertToPointerRoot,
 		               CurrentTime);
 }
 
@@ -365,7 +367,7 @@ void
 client_set_fullscreen(struct client *c, bool fullscreen)
 {
 	c->state = fullscreen ? STATE_FULLSCREEN : STATE_NORMAL;
-	client_set_border(c, fullscreen ? 0 : BORDERWIDTH);
+	client_set_border(c, fullscreen ? 0 : config.border.width);
 }
 
 void
@@ -375,9 +377,9 @@ client_set_visibility(struct client *c, bool visible)
 
 	c->visible = visible;
 	if (c->visible)
-		XMapWindow(kwm.dpy, c->win);
+		XMapWindow(karuiwm.dpy, c->win);
 	else
-		XUnmapWindow(kwm.dpy, c->win);
+		XUnmapWindow(karuiwm.dpy, c->win);
 
 	action = visible ? _NET_WM_STATE_ADD : _NET_WM_STATE_REMOVE;
 	client_send_atom(c, 3, netatoms[_NET_WM_STATE], action,
@@ -402,14 +404,14 @@ get_name(char *buf, Window win)
 	int n, ret, fret = 0;
 	char **list;
 
-	XGetTextProperty(kwm.dpy, win, &xtp, netatoms[_NET_WM_NAME]);
+	XGetTextProperty(karuiwm.dpy, win, &xtp, netatoms[_NET_WM_NAME]);
 	if (!xtp.nitems)
 		return -1;
 	if (xtp.encoding == XA_STRING) {
 		strncpy(buf, (char const *) xtp.value, 255);
 		goto get_name_out;
 	}
-	ret = XmbTextPropertyToTextList(kwm.dpy, &xtp, &list, &n);
+	ret = XmbTextPropertyToTextList(karuiwm.dpy, &xtp, &list, &n);
 	if (ret != Success || n <= 0) {
 		fret = -1;
 		goto get_name_out;
@@ -424,9 +426,9 @@ get_name(char *buf, Window win)
 static void
 massacre(struct client *c)
 {
-	XGrabServer(kwm.dpy);
-	XSetCloseDownMode(kwm.dpy, DestroyAll);
-	XKillClient(kwm.dpy, c->win);
-	XSync(kwm.dpy, false);
-	XUngrabServer(kwm.dpy);
+	XGrabServer(karuiwm.dpy);
+	XSetCloseDownMode(karuiwm.dpy, DestroyAll);
+	XKillClient(karuiwm.dpy, c->win);
+	XSync(karuiwm.dpy, false);
+	XUngrabServer(karuiwm.dpy);
 }

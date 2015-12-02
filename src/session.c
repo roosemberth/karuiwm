@@ -13,7 +13,7 @@ scan_windows(struct session *s)
 	int unsigned i, nwins;
 	struct client *c;
 
-	if (!XQueryTree(kwm.dpy, kwm.root, &win, &win, &wins, &nwins)) {
+	if (!XQueryTree(karuiwm.dpy, karuiwm.root, &win, &win, &wins, &nwins)) {
 		WARN("XQueryTree() failed");
 		return -1;
 	}
@@ -82,7 +82,7 @@ struct session *session_new(void)
 	s->workspaces = NULL;
 
 	/* initial workspace (TODO configurable initial workspace name) */
-	ws = workspace_new(APPNAME);
+	ws = workspace_new(karuiwm.env.APPNAME);
 	session_attach_workspace(s, ws);
 
 	/* scan for previously existing windows */
