@@ -261,9 +261,8 @@ grabkeys(void)
 	XUngrabKey(karuiwm.dpy, AnyKey, AnyModifier, karuiwm.root);
 	for (i = 0, kb = config.keybinds; i < config.nkeybinds;
 	     ++i, kb = kb->next)
-		XGrabKey(karuiwm.dpy,
-		         XKeysymToKeycode(karuiwm.dpy, kb->key->sym),
-		         kb->key->mod, karuiwm.root, True, GrabModeAsync,
+		XGrabKey(karuiwm.dpy, XKeysymToKeycode(karuiwm.dpy, kb->key),
+		         kb->mod, karuiwm.root, True, GrabModeAsync,
 		         GrabModeAsync);
 }
 
@@ -282,8 +281,7 @@ handle_buttonpress(XEvent *xe)
 
 	for (i = 0, bb = config.buttonbinds; i < config.nbuttonbinds;
 	     ++i, bb = bb->next) {
-		if (bb->button->mod == e->state
-		&& bb->button->sym == e->button) {
+		if (bb->mod == e->state && bb->button == e->button) {
 			bb->action->function(&((union argument) {.v = &e->window}));
 			break;
 		}
@@ -422,8 +420,7 @@ handle_keypress(XEvent *xe)
 	KeySym keysym = XLookupKeysym(e, 0);
 	for (i = 0, kb = config.keybinds; i < config.nkeybinds;
 	     ++i, kb = kb->next) {
-		if (e->state == kb->key->mod && keysym == kb->key->sym
-		&& kb->action != NULL) {
+		if (e->state == kb->mod && keysym == kb->key) {
 			kb->action->function(&kb->arg);
 			break;
 		}

@@ -60,9 +60,9 @@ client_grab_buttons(struct client *c, size_t nbb, struct buttonbind *buttons)
 
 	XUngrabButton(karuiwm.dpy, AnyButton, AnyModifier, c->win);
 	for (i = 0, bb = buttons; i < nbb; ++i, bb = bb->next)
-		XGrabButton(karuiwm.dpy, bb->button->sym, bb->button->mod,
-		            c->win, False, BUTTONMASK, GrabModeAsync,
-		            GrabModeAsync, None, None);
+		XGrabButton(karuiwm.dpy, bb->button, bb->mod, c->win, False,
+		            BUTTONMASK, GrabModeAsync, GrabModeAsync, None,
+		            None);
 }
 
 void
