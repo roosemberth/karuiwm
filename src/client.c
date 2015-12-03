@@ -125,6 +125,7 @@ client_new(Window win)
 	c->win = win;
 	c->floating = false;
 	c->dialog = false;
+	c->transient = false;
 	c->state = STATE_NORMAL;
 	c->w = c->h = c->floatw = c->floath = 0;
 	c->x = c->y = c->floatx = c->floaty = 0;
@@ -284,9 +285,10 @@ client_query_transient(struct client *c)
 {
 	Window trans = 0;
 
-	if (!XGetTransientForHint(karuiwm.dpy, c->win, &trans))
-		return;
-	DEBUG("window %lu is transient", c->win);
+	if (XGetTransientForHint(karuiwm.dpy, c->win, &trans)) {
+		c->transient = true;
+		DEBUG("window %lu is transient", c->win);
+	}
 }
 
 void
@@ -359,7 +361,7 @@ client_set_focus(struct client *c, bool focus)
 	XSetWindowBorder(karuiwm.dpy, c->win, focus ? config.border.colour_focus
 	                                            : config.border.colour);
 	if (focus)
-		XSetInputFocus(karuiwm.dpy, c->win, RevertToPointerRoot,
+		XSetInputFocus(karuiwm.dpy, c->win, RevertToParent,
 		               CurrentTime);
 }
 

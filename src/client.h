@@ -17,7 +17,7 @@ struct client {
 	int unsigned w, h, floatw, floath, border;
 	char name[BUFSIZ];
 	Window win;
-	bool floating, dialog, visible;
+	bool floating, dialog, visible, transient;
 	enum client_state state;
 	int unsigned basew, baseh, incw, inch, maxw, maxh, minw, minh;
 	size_t nsup;
