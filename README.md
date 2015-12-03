@@ -56,30 +56,31 @@ configuration snippet that can be used and modified:
 
 ``` Xresources
 ! Use windows key as the principal modifier ('M'):
-karuiwm.modifier        : W
+karuiwm.border.width       : 2
+karuiwm.border.colour      : #FF0000
+karuiwm.border.colour_focus: #00FF00
 
-karuiwm.border.width    : 1
-karuiwm.border.color    : #00FF00
+karuiwm.modifier           : W
 
-karuiwm.keysym.M-k      : stepclient:prev
-karuiwm.keysym.M-j      : stepclient:next
-karuiwm.keysym.M-S-k    : shiftclient:prev
-karuiwm.keysym.M-S-j    : shiftclient:next
-karuiwm.keysym.M-Return : zoom
-karuiwm.keysym.M-S-c    : killclient
+karuiwm.keysym.M-k         : stepclient:prev
+karuiwm.keysym.M-j         : stepclient:next
+karuiwm.keysym.M-S-k       : shiftclient:prev
+karuiwm.keysym.M-S-j       : shiftclient:next
+karuiwm.keysym.M-Return    : zoom
+karuiwm.keysym.M-S-c       : killclient
 
-karuiwm.keysym.M-C-h    : stepdesktop:left
-karuiwm.keysym.M-C-j    : stepdesktop:down
-karuiwm.keysym.M-C-k    : stepdesktop:up
-karuiwm.keysym.M-C-l    : stepdesktop:right
+karuiwm.keysym.M-C-h       : stepdesktop:left
+karuiwm.keysym.M-C-j       : stepdesktop:down
+karuiwm.keysym.M-C-k       : stepdesktop:up
+karuiwm.keysym.M-C-l       : stepdesktop:right
 
-karuiwm.keysym.M-q      : restart
-karuiwm.keysym.M-S-q    : stop
+karuiwm.keysym.M-q         : restart
+karuiwm.keysym.M-S-q       : stop
 
-karuiwm.keysym.M-n      : spawn:urxvt
+karuiwm.keysym.M-n         : spawn:urxvt
 
-karuiwm.button.M-1      : mousemove
-karuiwm.button.M-3      : mouseresize
+karuiwm.button.M-1         : mousemove
+karuiwm.button.M-3         : mouseresize
 ```
 
 Documentation will follow.

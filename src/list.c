@@ -89,6 +89,7 @@ list_swap(struct list_element **head, struct list_element *e1,
 	} else if (e2->next == e1) {
 		/* next to each other (alt.) */
 		list_swap(head, e2, e1);
+		return;
 	} else {
 		/* general case */
 		prev1->next = e2;
