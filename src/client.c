@@ -402,18 +402,19 @@ client_supports_atom(struct client *c, Atom atom)
 static int
 get_name(char *buf, Window win)
 {
-	XTextProperty xtp;
+	XTextProperty text_prop;
 	int n, ret, fret = 0;
 	char **list;
 
-	XGetTextProperty(karuiwm.dpy, win, &xtp, netatoms[_NET_WM_NAME]);
-	if (!xtp.nitems)
+	XGetTextProperty(karuiwm.dpy, win, &text_prop, netatoms[_NET_WM_NAME]);
+	if (text_prop.nitems == 0) {
 		return -1;
-	if (xtp.encoding == XA_STRING) {
-		strncpy(buf, (char const *) xtp.value, 255);
+	}
+	if (text_prop.encoding == XA_STRING) {
+		strncpy(buf, (char const *) text_prop.value, 255);
 		goto get_name_out;
 	}
-	ret = XmbTextPropertyToTextList(karuiwm.dpy, &xtp, &list, &n);
+	ret = XmbTextPropertyToTextList(karuiwm.dpy, &text_prop, &list, &n);
 	if (ret != Success || n <= 0) {
 		fret = -1;
 		goto get_name_out;
@@ -421,7 +422,7 @@ get_name(char *buf, Window win)
 	strncpy(buf, list[0], 255);
 	XFreeStringList(list);
  get_name_out:
-	XFree(xtp.value);
+	XFree(text_prop.value);
 	return fret;
 }
 

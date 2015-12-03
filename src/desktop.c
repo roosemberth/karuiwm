@@ -90,11 +90,10 @@ desktop_detach_client(struct desktop *d, struct client *c)
 	struct client *next = d->selcli;
 
 	if (next == c) {
-		if (next->next != c) {
+		if (next->next != c)
 			next = c->next;
-		} else {
+		else
 			next = c->floating ? d->tiled : d->floating;
-		}
 	}
 	if (c->floating) {
 		LIST_REMOVE(&d->floating, c);
