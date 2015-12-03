@@ -57,6 +57,7 @@ static void handle_buttonpress(XEvent *xe);
 static void handle_clientmessage(XEvent *xe);
 static void handle_configurerequest(XEvent *xe);
 static void handle_configurenotify(XEvent *xe);
+static void handle_destroynotify(XEvent *xe);
 static void handle_enternotify(XEvent *xe);
 static void handle_expose(XEvent *xe);
 static void handle_focusin(XEvent *xe);
@@ -64,7 +65,6 @@ static void handle_keypress(XEvent *xe);
 static void handle_mappingnotify(XEvent *xe);
 static void handle_maprequest(XEvent *xe);
 static void handle_propertynotify(XEvent *xe);
-static void handle_unmapnotify(XEvent *xe);
 static int handle_xerror(Display *dpy, XErrorEvent *xe);
 static void init(void);
 static void init_actions(void);
@@ -83,6 +83,7 @@ static void (*handle[LASTEvent])(XEvent *) = {
 	[ClientMessage]    = handle_clientmessage,    /*33*/
 	[ConfigureNotify]  = handle_configurenotify,  /*22*/
 	[ConfigureRequest] = handle_configurerequest, /*23*/
+	[DestroyNotify]    = handle_destroynotify,    /*17*/
 	[EnterNotify]      = handle_enternotify,      /* 7*/
 	[Expose]           = handle_expose,           /*12*/
 	[FocusIn]          = handle_focusin,          /* 9*/
@@ -90,7 +91,6 @@ static void (*handle[LASTEvent])(XEvent *) = {
 	[MapRequest]       = handle_maprequest,       /*20*/
 	[MappingNotify]    = handle_mappingnotify,    /*34*/
 	[PropertyNotify]   = handle_propertynotify,   /*28*/
-	[UnmapNotify]      = handle_unmapnotify       /*18*/
 };
 static int (*xerrorxlib)(Display *dpy, XErrorEvent *xe);
 
@@ -345,6 +345,27 @@ handle_configurerequest(XEvent *xe)
 }
 
 static void
+handle_destroynotify(XEvent *xe)
+{
+	struct client *c;
+	struct desktop *d;
+	XDestroyWindowEvent *e = &xe->xdestroywindow;
+	bool was_transient;
+
+	//EVENT("destroynotify(%lu)", e->window);
+
+	if (session_locate_window(karuiwm.session, &c, e->window) < 0)
+		return;
+	was_transient = c->transient;
+	d = c->desktop;
+	desktop_detach_client(d, c);
+	client_delete(c);
+	desktop_arrange(d);
+	if (d->monitor != NULL && !was_transient)
+		desktop_update_focus(d);
+}
+
+static void
 handle_enternotify(XEvent *xe)
 {
 	struct client *c;
@@ -491,27 +512,6 @@ handle_propertynotify(XEvent *xe)
 		client_query_dialog(c);
 		desktop_arrange(c->desktop);
 	}
-}
-
-static void
-handle_unmapnotify(XEvent *xe)
-{
-	struct client *c;
-	struct desktop *d;
-	XUnmapEvent *e = &xe->xunmap;
-	bool was_transient;
-
-	//EVENT("unmapnotify(%lu)", e->window);
-
-	if (session_locate_window(karuiwm.session, &c, e->window) < 0)
-		return;
-	was_transient = c->transient;
-	d = c->desktop;
-	desktop_detach_client(d, c);
-	client_delete(c);
-	desktop_arrange(d);
-	if (d->monitor != NULL && !was_transient)
-		desktop_update_focus(d);
 }
 
 static int
