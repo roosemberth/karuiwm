@@ -33,7 +33,7 @@
 #include <X11/Xproto.h>
 
 /* macros */
-#define _INIT_ATOM(D, L, A) L[A] = XInternAtom(D, #A, false)
+#define _INIT_ATOM(D, L, A) L[A] = XInternAtom(D, #A, False)
 #define BUFSIZE 1024
 
 /* functions */
@@ -65,7 +65,6 @@ static void handle_keypress(XEvent *xe);
 static void handle_mappingnotify(XEvent *xe);
 static void handle_maprequest(XEvent *xe);
 static void handle_propertynotify(XEvent *xe);
-static void handle_unmapnotify(XEvent *xe);
 static int handle_xerror(Display *dpy, XErrorEvent *xe);
 static void init(void);
 static void init_actions(void);
@@ -92,7 +91,6 @@ static void (*handle[LASTEvent])(XEvent *) = {
 	[MapRequest]       = handle_maprequest,       /*20*/
 	[MappingNotify]    = handle_mappingnotify,    /*34*/
 	[PropertyNotify]   = handle_propertynotify,   /*28*/
-	[UnmapNotify]      = handle_unmapnotify       /*18*/
 };
 static int (*xerrorxlib)(Display *dpy, XErrorEvent *xe);
 
@@ -352,16 +350,19 @@ handle_destroynotify(XEvent *xe)
 	struct client *c;
 	struct desktop *d;
 	XDestroyWindowEvent *e = &xe->xdestroywindow;
+	bool was_transient;
 
 	//EVENT("destroynotify(%lu)", e->window);
 
 	if (session_locate_window(karuiwm.session, &c, e->window) < 0)
 		return;
+
+	was_transient = c->transient;
 	d = c->desktop;
 	desktop_detach_client(d, c);
 	client_delete(c);
 	desktop_arrange(d);
-	if (d->monitor != NULL)
+	if (d->monitor != NULL && !was_transient)
 		desktop_update_focus(d);
 }
 
@@ -375,6 +376,10 @@ handle_enternotify(XEvent *xe)
 
 	if (session_locate_window(karuiwm.session, &c, e->window) < 0) {
 		WARN("entering unhandled window %lu", e->window);
+		return;
+	}
+	if (c->desktop->selcli == c && e->focus) {
+		/* ignore event for windows that already have focus */
 		return;
 	}
 	desktop_focus_client(c->desktop, c);
@@ -395,7 +400,8 @@ static void
 handle_focusin(XEvent *xe)
 {
 	XFocusInEvent *e = &xe->xfocus;
-	struct client *selcli = karuiwm.focus->selmon->seldt->selcli;
+	struct desktop *seldt = karuiwm.focus->selmon->seldt;
+	struct client *selcli = seldt->selcli;
 
 	//EVENT("focusin(%lu)", e->window);
 
@@ -404,7 +410,7 @@ handle_focusin(XEvent *xe)
 	if (selcli == NULL || e->window != selcli->win) {
 		WARN("attempt to steal focus by window %lu (focus is on %lu)",
 		     e->window, selcli == NULL ? 0 : selcli->win);
-		desktop_focus_client(selcli->desktop, selcli);
+		desktop_focus_client(seldt, selcli);
 	}
 }
 
@@ -512,17 +518,6 @@ handle_propertynotify(XEvent *xe)
 	}
 }
 
-static void
-handle_unmapnotify(XEvent *xe)
-{
-	XUnmapEvent *e = &xe->xunmap;
-
-	//EVENT("unmapnotify(%lu)", e->window);
-
-	/* TODO necessary to handle unmap events? */
-	(void) e;
-}
-
 static int
 handle_xerror(Display *dpy, XErrorEvent *ee)
 {
@@ -531,7 +526,8 @@ handle_xerror(Display *dpy, XErrorEvent *ee)
 
 	XGetErrorText(dpy, ee->error_code, es, 256);
 	ERROR("%s after request %d", es, ee->request_code);
-	ignore = ee->error_code == BadWindow;
+	ignore = ee->error_code == BadWindow
+	|| (ee->request_code == X_SetInputFocus && ee->error_code == BadMatch);
 
 	/* default error handler exits */
 	return ignore ? 0 : xerrorxlib(dpy, ee);

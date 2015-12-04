@@ -47,7 +47,7 @@ monitor_new(struct focus *f, struct desktop *d, int x, int y,
 }
 
 void
-monitor_show(struct monitor *m, struct desktop *d)
+monitor_show_desktop(struct monitor *m, struct desktop *d)
 {
 	struct desktop *old, *new;
 	struct monitor *othermon;
@@ -93,11 +93,11 @@ monitor_step_desktop(struct monitor *m, enum direction dir)
 	if (dst == NULL) {
 		dst = desktop_new();
 		workspace_attach_desktop(ws, dst);
-		/* TODO desktop position hack */
+		/* FIXME desktop positioning hack */
 		dst->posx = posx;
 		dst->posy = posy;
 	}
-	monitor_show(m, dst);
+	monitor_show_desktop(m, dst);
 }
 
 void

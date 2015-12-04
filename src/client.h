@@ -6,7 +6,8 @@
 
 #include <X11/Xlib.h>
 #include <stdbool.h>
-#include <stdio.h>
+
+#define CLIENT_NAMELEN 512
 
 enum client_state { STATE_NORMAL, STATE_FULLSCREEN, STATE_SCRATCHPAD };
 
@@ -15,9 +16,9 @@ struct client {
 	struct desktop *desktop;
 	int x, y, floatx, floaty;
 	int unsigned w, h, floatw, floath, border;
-	char name[BUFSIZ];
+	char name[CLIENT_NAMELEN];
 	Window win;
-	bool floating, dialog, visible;
+	bool floating, dialog, visible, transient;
 	enum client_state state;
 	int unsigned basew, baseh, incw, inch, maxw, maxh, minw, minh;
 	size_t nsup;

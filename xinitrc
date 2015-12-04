@@ -11,6 +11,7 @@ if [ -n "$VALGRIND" ] && [ $VALGRIND = '1' ]; then
 	              --leak-check=full \
 	              --show-leak-kinds=all \
 	              --show-reachable=no \
+	              --track-origins=yes \
 	              -v \
 	              ./karuiwm -d
 else

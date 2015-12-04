@@ -52,14 +52,14 @@ print(FILE *f, enum log_level level, char const *filename, int unsigned line,
 	}
 	(void) fprintf(f, "%s", col);
 
-	/* position */
-	if (level >= LOG_EVENT)
-		(void) fprintf(f, "\033[32m%s:%u\033[0m ", filename, line);
-
 	/* message */
 	va_start(args, format);
 	(void) vfprintf(f, format, args);
 	va_end(args);
+
+	/* position */
+	if (level >= LOG_EVENT)
+		(void) fprintf(f, " \033[32m%s:%u\033[0m", filename, line);
 
 	(void) fprintf(f, "\n");
 	(void) fflush(f);

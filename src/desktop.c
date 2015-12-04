@@ -38,9 +38,8 @@ desktop_arrange(struct desktop *d)
 		d->sellayout->apply(d->tiled, d->nt, MIN(d->nmaster, d->nt),
 		                    d->mfact, d->monitor->x, d->monitor->y,
 		                    d->monitor->w, d->monitor->h);
-		stack[is++] = d->seltiled->win;
 		for (i = 0, c = d->tiled; i < d->nt; ++i, c = c->next)
-			if (c->state != STATE_FULLSCREEN && c != d->seltiled)
+			if (c->state != STATE_FULLSCREEN)
 				stack[is++] = c->win;
 	}
 	XRestackWindows(karuiwm.dpy, stack, (int signed) (d->nt + d->nf));
@@ -56,7 +55,6 @@ desktop_attach_client(struct desktop *d, struct client *c)
 	} else {
 		LIST_APPEND(&d->tiled, c);
 		++d->nt;
-		d->seltiled = c;
 	}
 	d->selcli = c;
 	c->desktop = d;
@@ -87,15 +85,16 @@ desktop_delete(struct desktop *d)
 void
 desktop_detach_client(struct desktop *d, struct client *c)
 {
-	struct client *next = d->selcli;
+	struct client *next = c->next;
 
-	if (next == c) {
-		if (next->next != c) {
-			next = c->next;
-		} else {
-			next = c->floating ? d->tiled : d->floating;
-		}
-	}
+	/* determine next focused */
+	if (next == d->tiled)
+		next = c->prev;
+	if (next == c)
+		next = c->floating ? d->tiled : d->floating;
+	d->selcli = next;
+
+	/* detach */
 	if (c->floating) {
 		LIST_REMOVE(&d->floating, c);
 		--d->nf;
@@ -103,9 +102,6 @@ desktop_detach_client(struct desktop *d, struct client *c)
 		LIST_REMOVE(&d->tiled, c);
 		--d->nt;
 	}
-	d->selcli = next;
-	if (!c->floating)
-		d->seltiled = d->selcli;
 }
 
 void
@@ -122,8 +118,6 @@ void
 desktop_focus_client(struct desktop *d, struct client *c)
 {
 	d->selcli = c;
-	if (!c->floating)
-		d->seltiled = c;
 	desktop_update_focus(d);
 }
 
@@ -177,7 +171,7 @@ desktop_new(void)
 	d->nmaster = 1;
 	d->nt = d->nf = 0;
 	d->tiled = d->floating = NULL;
-	d->selcli = d->seltiled = NULL;
+	d->selcli = NULL;
 	d->sellayout = layouts;
 	d->focus = false;
 	d->workspace = NULL;
@@ -291,7 +285,7 @@ desktop_zoom(struct desktop *d)
 	if (d->selcli == d->tiled) {
 		/* window is at the top: swap with next below */
 		LIST_SWAP(&d->tiled, d->tiled, d->tiled->next);
-		d->selcli = d->seltiled = d->tiled;
+		d->selcli = d->tiled;
 		desktop_update_focus(d);
 	} else {
 		/* window is somewhere else: swap with top */

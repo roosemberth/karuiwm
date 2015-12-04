@@ -19,7 +19,7 @@ void monitor_delete(struct monitor *m);
 void monitor_focus(struct monitor *m, bool focus);
 struct monitor *monitor_new(struct focus *f, struct desktop *d, int x, int y,
                             int unsigned w, int unsigned h);
-void monitor_show(struct monitor *m, struct desktop *d);
+void monitor_show_desktop(struct monitor *m, struct desktop *d);
 void monitor_step_desktop(struct monitor *m, enum direction dir);
 void monitor_update_geometry(struct monitor *m,
                              int x, int y, int unsigned w, int unsigned h);
