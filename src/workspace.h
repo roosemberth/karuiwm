@@ -4,11 +4,13 @@
 #include "desktop.h"
 #include "karuiwm.h"
 
+#define WORKSPACE_NAMELEN 512
+
 struct workspace {
 	struct workspace *prev, *next; /* list.h */
 	size_t nd;
 	struct desktop *desktops;
-	char name[BUFSIZ];
+	char name[WORKSPACE_NAMELEN];
 };
 
 void workspace_attach_desktop(struct workspace *ws, struct desktop *d);

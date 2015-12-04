@@ -8,7 +8,7 @@
 #include <stdarg.h>
 
 static int check_sizehints(struct client *c, int unsigned *w, int unsigned *h);
-static int get_name(char *buf, Window win);
+static int get_name(char *buf, size_t buflen, Window win);
 static void massacre(struct client *c);
 
 static int
@@ -204,9 +204,9 @@ client_query_fullscreen(struct client *c)
 void
 client_query_name(struct client *c)
 {
-	if (get_name(c->name, c->win) < 0 || c->name[0] == '\0')
+	if (get_name(c->name, CLIENT_NAMELEN, c->win) < 0 || c->name[0] == '\0')
 		strcpy(c->name, "[broken]");
-	c->name[BUFSIZ-1] = '\0';
+	c->name[CLIENT_NAMELEN-1] = '\0';
 }
 
 void
@@ -266,7 +266,7 @@ client_query_supported_atoms(struct client *c)
 	Atom *sup;
 
 	if (c->supported != NULL) {
-		free(c->supported);
+		sfree(c->supported);
 		nsup = 0;
 	}
 	if (!XGetWMProtocols(karuiwm.dpy, c->win, &sup, (int signed *) &nsup)) {
@@ -400,27 +400,27 @@ client_supports_atom(struct client *c, Atom atom)
 }
 
 static int
-get_name(char *buf, Window win)
+get_name(char *buf, size_t buflen, Window win)
 {
 	XTextProperty text_prop;
 	int n, ret, fret = 0;
 	char **list;
 
 	XGetTextProperty(karuiwm.dpy, win, &text_prop, netatoms[_NET_WM_NAME]);
-	if (text_prop.nitems == 0) {
+	if (text_prop.nitems == 0)
 		return -1;
-	}
 	if (text_prop.encoding == XA_STRING) {
 		strncpy(buf, (char const *) text_prop.value, 255);
-		goto get_name_out;
+	} else {
+		ret = XmbTextPropertyToTextList(karuiwm.dpy, &text_prop, &list,
+		                                &n);
+		if (ret != Success || n <= 0) {
+			fret = -1;
+			goto get_name_out;
+		}
+		strncpy(buf, list[0], buflen);
+		XFreeStringList(list);
 	}
-	ret = XmbTextPropertyToTextList(karuiwm.dpy, &text_prop, &list, &n);
-	if (ret != Success || n <= 0) {
-		fret = -1;
-		goto get_name_out;
-	}
-	strncpy(buf, list[0], 255);
-	XFreeStringList(list);
  get_name_out:
 	XFree(text_prop.value);
 	return fret;

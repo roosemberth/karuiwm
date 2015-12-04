@@ -77,8 +77,8 @@ workspace_new(char const *name)
 
 	/* create workspace */
 	ws = smalloc(sizeof(struct workspace), "workspace");
-	strncpy(ws->name, name, BUFSIZ);
-	ws->name[BUFSIZ - 1] = '\0';
+	strncpy(ws->name, name, WORKSPACE_NAMELEN);
+	ws->name[WORKSPACE_NAMELEN - 1] = '\0';
 	ws->nd = 0;
 	ws->desktops = NULL;
 

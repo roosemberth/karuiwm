@@ -12,7 +12,7 @@ struct desktop {
 	struct workspace *workspace;
 	struct monitor *monitor;
 	size_t nt, nf, nmaster;
-	struct client *tiled, *floating, *selcli, *seltiled;
+	struct client *tiled, *floating, *selcli;
 	struct workspace *ws;
 	struct layout *sellayout;
 	float mfact;

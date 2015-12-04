@@ -1,12 +1,11 @@
 karuiwm
 =======
 
-karuiwm is an attempt to write a lightweight, dynamically tiling window manager
-for X.
+karuiwm is a lightweight, dynamically tiling window manager for X11.
 
-**karuiwm is currently under heavy development and not usable.** It is a
-complete rewrite of the currently used (but rather buggy) [legacy
-version](https://github.com/ayekat/karuiwm/tree/legacy).
+The master branch holds the new version (which is still in early development
+phase). The [legacy](https://github.com/ayekat/karuiwm/tree/legacy) branch holds
+the old, usable (but buggy) version.
 
 
 build
@@ -42,8 +41,8 @@ To run it with valgrind in Xephyr, you can use the `valphyr` target:
 	make valphyr
 
 Alternatively, `make run` will launch karuiwm normally, however it is
-discouraged to run from within an existing X session, as it may cause an X
-hickup.
+discouraged to run from within an existing X session, as it will likely cause an
+X hickup.
 
 See the [doc](doc) folder for the documentation.
 
@@ -51,15 +50,16 @@ See the [doc](doc) folder for the documentation.
 configuration
 -------------
 
-The configuration happens through X resources. Here is a sample X resources
-configuration snippet that can be used and modified:
+The configuration happens through [X
+resources](https://en.wikipedia.org/wiki/X_resources). Here is a sample X
+resources configuration snippet that can be used and modified:
 
 ``` Xresources
-! Use windows key as the principal modifier ('M'):
 karuiwm.border.width       : 2
 karuiwm.border.colour      : #FF0000
 karuiwm.border.colour_focus: #00FF00
 
+! Use windows key as the principal modifier ('M'):
 karuiwm.modifier           : W
 
 karuiwm.keysym.M-k         : stepclient:prev

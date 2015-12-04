@@ -36,8 +36,8 @@ layout_new(layout_func apply, char const *name)
 
 	l = smalloc(sizeof(struct layout), "layout");
 	l->apply = apply;
-	strncpy(l->name, name, BUFSIZ);
-	l->name[BUFSIZ - 1] = '\0';
+	strncpy(l->name, name, LAYOUT_NAMELEN);
+	l->name[LAYOUT_NAMELEN - 1] = '\0';
 	return l;
 }
 
