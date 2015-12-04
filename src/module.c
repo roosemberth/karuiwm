@@ -1,9 +1,13 @@
 #include "module.h"
 #include "util.h"
 #include "api.h"
+
 #include <stdbool.h>
 #include <stdio.h>
 #include <dlfcn.h>
+
+#define MODULE_BUFLEN 512
+#define MODULE_PATHLEN 512
 
 static bool file_exists(char const *path);
 static void *find_shared(char const *name);
@@ -28,21 +32,19 @@ static void *
 find_shared(char const *name)
 {
 	int unsigned i;
-	char so_path[512]; /* FIXME magic number */
-	void *so_handler;
+	char so_path[MODULE_PATHLEN];
+	void *so_handler = NULL;
 
-	for (i = 0; i < api.npaths; ++i) {
-		if (snprintf(so_path, 512, "%s/%s.so", /* FIXME magic number */
+	for (i = 0; i < api.npaths && so_handler == NULL; ++i) {
+		if (snprintf(so_path, MODULE_PATHLEN, "%s/%s.so",
 		             api.paths[i], name) < 0) {
-			WARN("snprintf() < 0");
+			ERROR("snprintf() < 0");
 			return NULL;
 		}
 		DEBUG("checking for shared object at %s", so_path);
 		so_handler = load_shared(so_path);
-		if (so_handler != NULL)
-			return so_handler;
 	}
-	return NULL;
+	return so_handler;
 }
 
 static void *
@@ -80,8 +82,7 @@ load_shared(char const *path)
 void
 module_delete(struct module *mod)
 {
-	if (mod->term != NULL)
-		mod->term(mod);
+	mod->term();
 	dlclose(mod->so_handler);
 	sfree(mod->name);
 	sfree(mod->so_path);
@@ -93,7 +94,8 @@ module_new(char const *name)
 {
 	struct module *mod;
 	void *so_handler;
-	int (*init)(struct module *mod);
+	int (*init)(void) = NULL;
+	void (*term)(void) = NULL;
 
 	so_handler = find_shared(name);
 	if (so_handler == NULL) {
@@ -107,10 +109,17 @@ module_new(char const *name)
 		return NULL;
 	}
 
+	*(void **) &term = load_shared_function(so_handler, "term");
+	if (term == NULL) {
+		ERROR("%s: does not contain a term function", name);
+		return NULL;
+	}
+
 	mod = smalloc(sizeof(struct module), "module");
 	mod->name = strdupf(name);
 	mod->so_handler = so_handler;
 	mod->init = init;
+	mod->term = term;
 
 	return mod;
 }

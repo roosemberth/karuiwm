@@ -5,6 +5,7 @@
 #include "util.h"
 #include "cursor.h"
 #include "api.h"
+
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
@@ -41,8 +42,6 @@ action_mousemove(union argument *arg)
 	struct client *c;
 	Window win = *((Window *) arg->v);
 
-	//EVENT("movemouse(%lu)", c->win);
-
 	if (session_locate_window(karuiwm.session, &c, win) < 0) {
 		WARN("attempt to mouse-move unhandled window %lu", win);
 		return;
@@ -55,8 +54,6 @@ action_mouseresize(union argument *arg)
 {
 	struct client *c;
 	Window win = *((Window *) arg->v);
-
-	//EVENT("resizemouse(%lu)", c->win);
 
 	if (session_locate_window(karuiwm.session, &c, win) < 0) {
 		WARN("attempt to mouse-resize unhandled window %lu", win);

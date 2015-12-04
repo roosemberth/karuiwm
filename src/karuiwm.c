@@ -410,14 +410,11 @@ init(void)
 	                KeyPressMask | PointerMotionMask | StructureNotifyMask;
 	XChangeWindowAttributes(karuiwm.dpy, karuiwm.root, CWEventMask, &wa);
 
-	/* API */
+	/* API, configuration */
 	if (api_init() < 0)
 		FATAL("could not initialise API");
-
-	/* core */
-	core_init();
-
-	/* user configuration */
+	if (core_init() < 0)
+		FATAL("could not initialise core actions");
 	if (config_init() < 0)
 		FATAL("could not initialise X resources");
 
@@ -509,6 +506,7 @@ term(void)
 {
 	char sid[BUFSIZ];
 
+	core_term();
 	api_term();
 	focus_delete(karuiwm.focus);
 	if (karuiwm.restarting)

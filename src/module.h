@@ -12,12 +12,9 @@ struct module {
 	char *so_path;
 	void *so_handler;
 
-	/* module-specific data */
-	void *data;
-
 	/* callback functions */
-	int (*init)(struct module *mod);
-	void (*term)(struct module *mod);
+	int (*init)(void);
+	void (*term)(void);
 };
 
 void module_delete(struct module *mod);

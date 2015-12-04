@@ -5,6 +5,8 @@
 #include "config.h"
 #include <string.h>
 
+#define API_BUFLEN 512
+
 static int init_actions(void);
 static int init_modules(void);
 static int init_modules_paths(void);
@@ -14,6 +16,10 @@ static void term_modules(void);
 void
 api_add_action(struct action *a)
 {
+	if (a == NULL) {
+		WARN("attempt to add NULL action to API");
+		return;
+	}
 	LIST_APPEND(&api.actions, a);
 	++api.nactions;
 }
@@ -21,8 +27,10 @@ api_add_action(struct action *a)
 int
 api_init(void)
 {
-	if (init_modules() < 0)
+	if (init_modules() < 0) {
+		/* TODO shall become ERROR and returns -1 */
 		WARN("failed to initialise modules");
+	}
 	if (init_actions() < 0) {
 		ERROR("failed to initialise actions");
 		return -1;
@@ -48,28 +56,40 @@ init_actions(void)
 static int
 init_modules(void)
 {
-	char modlist[512];
-	char const *modname, *delim = ", ";
+	char modlist[API_BUFLEN];
+	char const *modname;
 	struct module *mod;
-
-	init_modules_paths();
-	(void) config_get_string("modules", "core", modlist, 512);
+	int unsigned i;
 
 	api.nmodules = 0;
-	modname = strtok(modlist, delim);
-	while (modname != NULL) {
+	api.modules = NULL;
+
+	(void) init_modules_paths();
+	(void) config_get_string("modules", "core", modlist, API_BUFLEN);
+
+	/* load modules */
+	modname = strtok(modlist, ", ");
+	do {
 		mod = module_new(modname);
 		if (mod == NULL) {
 			WARN("could not create module '%s'", modname);
-		} else {
-			LIST_APPEND(api.modules, mod);
-			++api.nmodules;
+			continue;
 		}
-		modname = strtok(NULL, delim);
-	}
-	if (api.modules == NULL) {
+		LIST_APPEND(&api.modules, mod);
+		++api.nmodules;
+	} while ((modname = strtok(NULL, ", ")) != NULL);
+	if (api.nmodules == 0) {
 		ERROR("no modules loaded");
 		return -1;
+	}
+
+	/* initialise modules */
+	for (i = 0, mod = api.modules; i < api.nmodules; ++i, mod = mod->next) {
+		if (mod->init() < 0) {
+			ERROR("module `%s` failed to initialise", mod->name);
+			LIST_REMOVE(&api.modules, mod);
+			--api.modules;
+		}
 	}
 	return 0;
 }
@@ -77,24 +97,28 @@ init_modules(void)
 static int
 init_modules_paths(void)
 {
-	char path[128];
+	char path[API_BUFLEN];
 	char *modulepath;
 	api.npaths = 0;
 	api.paths = NULL;
 
 	modulepath = strdupf("share/%s/modules", karuiwm.env.APPNAME);
-	if (config_get_string("modules.path", NULL, path, 128) < 0) {
+	if (config_get_string("modules.path", NULL, path, API_BUFLEN) == 0) {
 		++api.npaths;
-		api.paths = scalloc(api.npaths, sizeof(char *), "module path");
+		api.paths = scalloc(api.npaths, sizeof(char *), "module paths");
 		api.paths[0] = strdupf("%s", path);
 	}
-	api.npaths += 2 + (karuiwm.env.HOME != NULL) ? 1 : 0;
-	api.paths = srealloc(api.paths, api.npaths*sizeof(char *), "module paths");
 	if (karuiwm.env.HOME != NULL) {
-		api.paths[api.npaths - 3] = strdupf("%s/.local/%s",
+		++api.npaths;
+		api.paths = srealloc(api.paths, api.npaths*sizeof(char *),
+		                     "module paths");
+		api.paths[api.npaths - 1] = strdupf("%s/.local/%s",
 		                                    karuiwm.env.HOME,
 		                                    modulepath);
 	}
+	api.npaths += 2;
+	api.paths = srealloc(api.paths, api.npaths*sizeof(char *),
+	                     "module paths");
 	api.paths[api.npaths - 2] = strdupf("/usr/local/%s", modulepath);
 	api.paths[api.npaths - 1] = strdupf("/usr/%s", modulepath);
 	sfree(modulepath);
@@ -122,9 +146,10 @@ term_modules(void)
 	struct module *mod;
 
 	/* modules */
-	while (api.modules != NULL) {
+	while (api.nmodules > 0) {
 		mod = api.modules;
 		LIST_REMOVE(api.modules, mod);
+		--api.nmodules;
 		module_delete(mod);
 	}
 
