@@ -15,6 +15,7 @@
 #include "argument.h"
 #include "keybind.h"
 #include "buttonbind.h"
+#include "api.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -569,6 +570,10 @@ init(void)
 	                KeyPressMask | PointerMotionMask | StructureNotifyMask;
 	XChangeWindowAttributes(karuiwm.dpy, karuiwm.root, CWEventMask, &wa);
 
+	/* API */
+	if (api_init() < 0)
+		FATAL("could not initialise API");
+
 	/* actions */
 	init_actions();
 
@@ -589,22 +594,20 @@ init(void)
 static void
 init_actions(void)
 {
-	actions = NULL;
-	LIST_APPEND(&actions, action_new("killclient",  action_killclient, ARGTYPE_NONE));
-	LIST_APPEND(&actions, action_new("mousemove",   action_mousemove,  ARGTYPE_NONE));
-	LIST_APPEND(&actions, action_new("mouseresize", action_mouseresize,ARGTYPE_NONE));
-	LIST_APPEND(&actions, action_new("restart",     action_restart,    ARGTYPE_NONE));
-	LIST_APPEND(&actions, action_new("setmfact",    action_setmfact,   ARGTYPE_FLOATING));
-	LIST_APPEND(&actions, action_new("setnmaster",  action_setnmaster, ARGTYPE_INTEGER));
-	LIST_APPEND(&actions, action_new("shiftclient", action_shiftclient,ARGTYPE_LIST_DIRECTION));
-	LIST_APPEND(&actions, action_new("spawn",       action_spawn,      ARGTYPE_STRING));
-	LIST_APPEND(&actions, action_new("stepclient",  action_stepclient, ARGTYPE_LIST_DIRECTION));
-	LIST_APPEND(&actions, action_new("stepdesktop", action_stepdesktop,ARGTYPE_DIRECTION));
-	LIST_APPEND(&actions, action_new("steplayout",  action_steplayout, ARGTYPE_LIST_DIRECTION));
-	LIST_APPEND(&actions, action_new("stop",        action_stop,       ARGTYPE_NONE));
-	LIST_APPEND(&actions, action_new("togglefloat", action_togglefloat,ARGTYPE_NONE));
-	LIST_APPEND(&actions, action_new("zoom",        action_zoom,       ARGTYPE_NONE));
-	nactions = LIST_SIZE(actions);
+	api_add_action(action_new("killclient",  action_killclient, ARGTYPE_NONE));
+	api_add_action(action_new("mousemove",   action_mousemove,  ARGTYPE_NONE));
+	api_add_action(action_new("mouseresize", action_mouseresize,ARGTYPE_NONE));
+	api_add_action(action_new("restart",     action_restart,    ARGTYPE_NONE));
+	api_add_action(action_new("setmfact",    action_setmfact,   ARGTYPE_FLOATING));
+	api_add_action(action_new("setnmaster",  action_setnmaster, ARGTYPE_INTEGER));
+	api_add_action(action_new("shiftclient", action_shiftclient,ARGTYPE_LIST_DIRECTION));
+	api_add_action(action_new("spawn",       action_spawn,      ARGTYPE_STRING));
+	api_add_action(action_new("stepclient",  action_stepclient, ARGTYPE_LIST_DIRECTION));
+	api_add_action(action_new("stepdesktop", action_stepdesktop,ARGTYPE_DIRECTION));
+	api_add_action(action_new("steplayout",  action_steplayout, ARGTYPE_LIST_DIRECTION));
+	api_add_action(action_new("stop",        action_stop,       ARGTYPE_NONE));
+	api_add_action(action_new("togglefloat", action_togglefloat,ARGTYPE_NONE));
+	api_add_action(action_new("zoom",        action_zoom,       ARGTYPE_NONE));
 }
 
 static void
@@ -843,14 +846,8 @@ static void
 term(void)
 {
 	char sid[BUFSIZ];
-	struct action *a;
 
-	while (nactions > 0) {
-		a = actions;
-		LIST_REMOVE(&actions, a);
-		--nactions;
-		action_delete(a);
-	}
+	api_term();
 	focus_delete(karuiwm.focus);
 	if (karuiwm.restarting)
 		session_save(karuiwm.session, sid, sizeof(sid));

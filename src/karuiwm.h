@@ -59,7 +59,5 @@ struct {
 		char const *APPNAME;
 	} env;
 } karuiwm;
-struct action *actions;
-size_t nactions;
 
 #endif /* ndef _KARUIWM_H */

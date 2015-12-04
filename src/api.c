@@ -5,15 +5,26 @@
 #include "config.h"
 #include <string.h>
 
+static int init_actions(void);
 static int init_modules(void);
 static int init_modules_paths(void);
+static void term_actions(void);
 static void term_modules(void);
+
+void
+api_add_action(struct action *a)
+{
+	LIST_APPEND(&api.actions, a);
+	++api.nactions;
+}
 
 int
 api_init(void)
 {
-	if (init_modules() < 0) {
-		ERROR("failed to initialise modules");
+	if (init_modules() < 0)
+		WARN("failed to initialise modules");
+	if (init_actions() < 0) {
+		ERROR("failed to initialise actions");
 		return -1;
 	}
 	return 0;
@@ -23,6 +34,15 @@ void
 api_term(void)
 {
 	term_modules();
+	term_actions();
+}
+
+static int
+init_actions(void)
+{
+	api.actions = NULL;
+	api.nactions = 0;
+	return 0;
 }
 
 static int
@@ -80,6 +100,19 @@ init_modules_paths(void)
 	sfree(modulepath);
 
 	return 0;
+}
+
+static void
+term_actions(void)
+{
+	struct action *a;
+
+	while (api.nactions > 0) {
+		a = api.actions;
+		LIST_REMOVE(&api.actions, a);
+		--api.nactions;
+		action_delete(a);
+	}
 }
 
 static void

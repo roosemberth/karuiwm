@@ -7,6 +7,7 @@
 #include "strings.h"
 #include "keybind.h"
 #include "buttonbind.h"
+#include "api.h"
 
 #define CONFIG_BUFSIZE 256
 
@@ -168,10 +169,10 @@ extract_action_argument(struct action **action, union argument *arg,
 	argstr = (i == actionargstrlen) ? actionstr + i : actionstr + i + 1;
 
 	/* action */
-	for (i = 0, *action = actions;
-	     i < nactions && strcmp((*action)->name, actionstr) != 0;
+	for (i = 0, *action = api.actions;
+	     i < api.nactions && strcmp((*action)->name, actionstr) != 0;
 	     ++i, *action = (*action)->next);
-	if (i == nactions) {
+	if (i == api.nactions) {
 		WARN("action not found: `%s`", actionstr);
 		goto extract_action_argument_out;
 	}
