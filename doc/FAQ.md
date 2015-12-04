@@ -7,14 +7,13 @@ primarly targeted at developers who may look at a piece of code and wonder:
 *why* that code is so weird.
 
 
-* **Why not start managing windows in `createnotify`, and not in `mapnotify`?**
+* **Why not start managing windows in `createnotify` instead of `mapnotify`?**
 
   This is due to some applications not mapping their windows immediately after
   creating them. This would cause awkward holes in the window layout, as we only
   handle mapped windows.
 
-* **Why not stop managing windows in `unmapnotify`, and not in
-  `destroynotify`?**
+* **Why not stop managing windows in `unmapnotify` instead of `destroynotify`?**
 
   This is due to desktop switching: we unmap all windows from invisible
   desktops, so if we would stop managing all unmapped windows there, we would
@@ -37,4 +36,5 @@ primarly targeted at developers who may look at a piece of code and wonder:
       application.
 
   Of course, catching an X error will hide whenever there *truly* is an issue in
-  our code. But we can't change that.
+  our code. But we can't change that. If someone finds an elegant way to
+  circumvent catching any of the errors above, (s)he is welcome to solve that.
