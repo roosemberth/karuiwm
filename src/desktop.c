@@ -85,14 +85,16 @@ desktop_delete(struct desktop *d)
 void
 desktop_detach_client(struct desktop *d, struct client *c)
 {
-	struct client *next = d->selcli;
+	struct client *next = c->next;
 
-	if (next == c) {
-		if (next->next != c)
-			next = c->next;
-		else
-			next = c->floating ? d->tiled : d->floating;
-	}
+	/* determine next focused */
+	if (next == d->tiled)
+		next = c->prev;
+	if (next == c)
+		next = c->floating ? d->tiled : d->floating;
+	d->selcli = next;
+
+	/* detach */
 	if (c->floating) {
 		LIST_REMOVE(&d->floating, c);
 		--d->nf;
@@ -100,7 +102,6 @@ desktop_detach_client(struct desktop *d, struct client *c)
 		LIST_REMOVE(&d->tiled, c);
 		--d->nt;
 	}
-	d->selcli = next;
 }
 
 void
