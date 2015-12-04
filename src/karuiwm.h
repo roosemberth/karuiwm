@@ -2,7 +2,6 @@
 #define _KARUIWM_H
 
 #include <stdbool.h>
-#include <stdlib.h>
 #include <X11/Xlib.h>
 #include "action.h"
 
@@ -10,9 +9,6 @@
 #define CLIENTMASK (EnterWindowMask | PropertyChangeMask | StructureNotifyMask)
 #define BUTTONMASK (ButtonPressMask | ButtonReleaseMask)
 #define MOUSEMASK (BUTTONMASK | PointerMotionMask)
-
-#define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
-#define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
 
 /* atoms */
 #define _NET_WM_STATE_REMOVE 0
@@ -49,8 +45,7 @@ struct {
 	int screen;
 	int xfd;
 	Colormap cm;
-	bool running;
-	bool restarting;
+	bool running, restarting;
 	struct focus *focus;
 	struct session *session;
 	struct cursor *cursor;
@@ -59,5 +54,8 @@ struct {
 		char const *APPNAME;
 	} env;
 } karuiwm;
+
+/* X event handler */
+extern void (*handle[])(XEvent *);
 
 #endif /* ndef _KARUIWM_H */

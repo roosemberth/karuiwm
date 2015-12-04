@@ -15,6 +15,9 @@
 #define FATAL(...) { print(stderr,LOG_FATAL,  __FILE__,__LINE__,__VA_ARGS__); \
                      exit(EXIT_FAILURE); }
 
+#define MAX(X, Y) ((X) < (Y) ? (Y) : (X))
+#define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
+
 /* enumerations */
 enum log_level { LOG_FATAL, LOG_ERROR, LOG_WARN, LOG_NOTICE, LOG_NORMAL,
                  LOG_VERBOSE, LOG_EVENT, LOG_DEBUG };

@@ -1,4 +1,3 @@
-#include "karuiwm.h"
 #include "desktop.h"
 #include "util.h"
 #include "monitor.h"

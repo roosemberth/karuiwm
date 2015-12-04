@@ -2,7 +2,6 @@
 #define _KARUIWM_WORKSPACE_H
 
 #include "desktop.h"
-#include "karuiwm.h"
 
 #define WORKSPACE_NAMELEN 512
 
