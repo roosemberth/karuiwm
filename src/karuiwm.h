@@ -53,9 +53,10 @@ struct {
 		char *HOME;
 		char const *APPNAME;
 	} env;
+	XEvent *event;
 } karuiwm;
 
 /* X event handler */
-extern void (*handle[])(XEvent *);
+void handle_event(XEvent *xe);
 
 #endif /* ndef _KARUIWM_H */

@@ -1,15 +1,16 @@
-#include "core.h"
-#include "argument.h"
-#include "karuiwm.h"
-#include "desktop.h"
-#include "util.h"
-#include "cursor.h"
-#include "api.h"
+#include <karuiwm/argument.h>
+#include <karuiwm/karuiwm.h>
+#include <karuiwm/desktop.h>
+#include <karuiwm/util.h>
+#include <karuiwm/cursor.h>
+#include <karuiwm/api.h>
 
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
 
+int init(void);
+void term(void);
 static void action_killclient(union argument *arg);
 static void action_mousemove(union argument *arg);
 static void action_mouseresize(union argument *arg);
@@ -27,6 +28,32 @@ static void action_zoom(union argument *arg);
 static void mouse_move(struct client *c, int mx, int my);
 static void mouse_moveresize(struct client *c, void (*mh)(struct client *, int, int));
 static void mouse_resize(struct client *c, int mx, int my);
+
+int
+init(void)
+{
+	api_add_action(action_new("killclient",  action_killclient,  ARGTYPE_NONE));
+	api_add_action(action_new("mousemove",   action_mousemove,   ARGTYPE_NONE));
+	api_add_action(action_new("mouseresize", action_mouseresize, ARGTYPE_NONE));
+	api_add_action(action_new("restart",     action_restart,     ARGTYPE_NONE));
+	api_add_action(action_new("setmfact",    action_setmfact,    ARGTYPE_FLOATING));
+	api_add_action(action_new("setnmaster",  action_setnmaster,  ARGTYPE_INTEGER));
+	api_add_action(action_new("shiftclient", action_shiftclient, ARGTYPE_LIST_DIRECTION));
+	api_add_action(action_new("spawn",       action_spawn,       ARGTYPE_STRING));
+	api_add_action(action_new("stepclient",  action_stepclient,  ARGTYPE_LIST_DIRECTION));
+	api_add_action(action_new("stepdesktop", action_stepdesktop, ARGTYPE_DIRECTION));
+	api_add_action(action_new("steplayout",  action_steplayout,  ARGTYPE_LIST_DIRECTION));
+	api_add_action(action_new("stop",        action_stop,        ARGTYPE_NONE));
+	api_add_action(action_new("togglefloat", action_togglefloat, ARGTYPE_NONE));
+	api_add_action(action_new("zoom",        action_zoom,        ARGTYPE_NONE));
+	return 0;
+}
+
+void
+term(void)
+{
+	/* API cleans itself, no need to remove actions */
+}
 
 static void
 action_killclient(union argument *arg)
@@ -167,32 +194,6 @@ action_zoom(union argument *arg)
 	desktop_arrange(d);
 }
 
-int
-core_init(void)
-{
-	api_add_action(action_new("killclient",  action_killclient, ARGTYPE_NONE));
-	api_add_action(action_new("mousemove",   action_mousemove,  ARGTYPE_NONE));
-	api_add_action(action_new("mouseresize", action_mouseresize,ARGTYPE_NONE));
-	api_add_action(action_new("restart",     action_restart,    ARGTYPE_NONE));
-	api_add_action(action_new("setmfact",    action_setmfact,   ARGTYPE_FLOATING));
-	api_add_action(action_new("setnmaster",  action_setnmaster, ARGTYPE_INTEGER));
-	api_add_action(action_new("shiftclient", action_shiftclient,ARGTYPE_LIST_DIRECTION));
-	api_add_action(action_new("spawn",       action_spawn,      ARGTYPE_STRING));
-	api_add_action(action_new("stepclient",  action_stepclient, ARGTYPE_LIST_DIRECTION));
-	api_add_action(action_new("stepdesktop", action_stepdesktop,ARGTYPE_DIRECTION));
-	api_add_action(action_new("steplayout",  action_steplayout, ARGTYPE_LIST_DIRECTION));
-	api_add_action(action_new("stop",        action_stop,       ARGTYPE_NONE));
-	api_add_action(action_new("togglefloat", action_togglefloat,ARGTYPE_NONE));
-	api_add_action(action_new("zoom",        action_zoom,       ARGTYPE_NONE));
-	return 0;
-}
-
-void
-core_term(void)
-{
-	/* empty */
-}
-
 static void
 mouse_move(struct client *c, int mx, int my)
 {
@@ -212,7 +213,7 @@ mouse_move(struct client *c, int mx, int my)
 		case ConfigureRequest:
 		case Expose:
 		case MapRequest:
-			handle[ev.type](&ev);
+			handle_event(&ev);
 			break;
 		case MotionNotify:
 			dx = ev.xmotion.x - mx;
@@ -300,7 +301,7 @@ mouse_resize(struct client *c, int mx, int my)
 		case ConfigureRequest:
 		case Expose:
 		case MapRequest:
-			handle[ev.type](&ev);
+			handle_event(&ev);
 			break;
 		case MotionNotify:
 			dx = ev.xmotion.x - mx;

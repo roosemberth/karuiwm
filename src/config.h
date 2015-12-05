@@ -1,6 +1,7 @@
 #ifndef _KARUIWM_CONFIG_H
 #define _KARUIWM_CONFIG_H
 
+#include "xresource.h"
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -11,10 +12,8 @@ struct {
 		int unsigned width;
 	} border;
 	int unsigned modifier;
-	struct buttonbind *buttonbinds;
-	size_t nbuttonbinds;
-	struct keybind *keybinds;
-	size_t nkeybinds;
+	struct xresource *xresources;
+	size_t nxresources;
 } config;
 
 int config_get_bool(char const *key, bool def, bool *ret);

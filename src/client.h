@@ -26,7 +26,6 @@ struct client {
 };
 
 void client_delete(struct client *);
-void client_grab_buttons(struct client *c, size_t nb, struct buttonbind *buttons);
 void client_kill(struct client *c);
 void client_move(struct client *c, int x, int y);
 void client_moveresize(struct client *c, int x, int y, int unsigned w, int unsigned h);

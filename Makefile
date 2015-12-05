@@ -7,6 +7,7 @@ APPNAME = karuiwm
 # Installation prefix:
 INSTALLDIR ?= /usr/local
 BINDIR ?= ${INSTALLDIR}/bin
+INCDIR ?= ${INSTALLDIR}/include/${APPNAME}
 
 # Compilation flags:
 _CFLAGS = -std=c99
@@ -17,6 +18,7 @@ _CFLAGS += -Winit-self -Wuninitialized -Wmaybe-uninitialized -Wshadow
 _CFLAGS += -Wstrict-prototypes -Wmissing-declarations -Wmissing-prototypes
 #_CFLAGS += -Wpadded
 _CFLAGS += $(shell pkg-config --cflags x11)
+_CFLAGS += -I${HOME}/.local/include
 
 _CFLAGS_ASAN = -fsanitize=address -fno-omit-frame-pointer
 _CFLAGS_DEBUG = -Werror -g -O1 -DMODE_DEBUG
@@ -31,7 +33,7 @@ _LIBS_RELEASE =
 _LIBS_XINERAMA = $(shell pkg-config --libs xinerama)
 
 # Linker flags:
-_LDFLAGS =
+_LDFLAGS = -Wl,--export-dynamic
 _LDFLAGS_ASAN = -fsanitize=address
 _LDFLAGS_DEBUG =
 _LDFLAGS_RELEASE =
@@ -48,45 +50,53 @@ XINITRC = xinitrc
 -include config.mk
 
 # Default: Release + Xinerama
+.PHONY: all
 all: release_xinerama
 
 # Release:
+.PHONY: release
 release: _CFLAGS += ${_CFLAGS_RELEASE}
 release: _LIBS += ${_LIBS_RELEASE}
 release: _LDFLAGS += ${_LDFLAGS_RELEASE}
 release: build
 
 # Release + Xinerama:
+.PHONY: release_xinerama
 release_xinerama: _CFLAGS += ${_CFLAGS_XINERAMA}
 release_xinerama: _LIBS += ${_LIBS_XINERAMA}
 release_xinerama: _LDFLAGS += ${_LDFLAGS_XINERAMA}
 release_xinerama: release
 
 # Debug:
+.PHONY: debug
 debug: _CFLAGS += ${_CFLAGS_DEBUG}
 debug: _LIBS += ${_LIBS_DEBUG}
 debug: _LDFLAGS += ${_LDFLAGS_DEBUG}
 debug: build
 
 # Debug + Xinerama:
+.PHONY: debug_xinerama
 debug_xinerama: _CFLAGS += ${_CFLAGS_XINERAMA}
 debug_xinerama: _LIBS += ${_LIBS_XINERAMA}
 debug_xinerama: _LDFLAGS += ${_LDFLAGS_XINERAMA}
 debug_xinerama: debug
 
 # Address Sanitizer:
+.PHONY: asan
 asan: _CFLAGS += ${_CFLAGS_ASAN}
 asan: _LIBS += ${_LIBS_ASAN}
 asan: _LDFLAGS += ${_LDFLAGS_ASAN}
 asan: debug
 
 # Address Sanitizer + Xinerama:
+.PHONY: asan_xinerama
 asan_xinerama: _CFLAGS += ${_CFLAGS_XINERAMA}
 asan_xinerama: _LIBS += ${_LIBS_XINERAMA}
 asan_xinerama: _LDFLAGS += ${_LDFLAGS_XINERAMA}
 asan_xinerama: asan
 
 # Basic actions:
+.PHONY: build clean mrproper install uninstall
 build: $(APPNAME)
 clean:
 	rm -rf ${BUILDDIR}
@@ -94,8 +104,12 @@ mrproper: clean
 	rm -f ${APPNAME}
 install:
 	install ${APPNAME} ${BINDIR}/${APPNAME}
+install-headers:
+	mkdir -p ${INCDIR}
+	install -m 644 ${SRCDIR}/*.h ${INCDIR}/
 uninstall:
 	rm -f ${BINDIR}/${APPNAME}
+	rm -rf ${INCDIR}
 
 # Ctags:
 ctags:
@@ -121,15 +135,10 @@ $(APPNAME): $(OBJECTS)
 	$(CC) ${_LDFLAGS} ${OBJECTS} ${_LIBS} -o $@
 
 # karuiwm-specific actions:
+.PHONY: run xephyr valphyr
 run:
 	startx ${XINITRC} -- :1
 xephyr:
 	xinit ${XINITRC} -- $(shell which Xephyr) :1
 valphyr:
 	VALGRIND=1 xinit ${XINITRC} -- $(shell which Xephyr) :1
-
-# Phony targets:
-.PHONY: all
-.PHONY: release release_xinerama debug debug_xinerama asan asan_xinerama
-.PHONY: build clean mrproper install uninstall
-.PHONY: run xephyr valphyr

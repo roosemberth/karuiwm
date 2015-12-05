@@ -27,13 +27,13 @@ api_add_action(struct action *a)
 int
 api_init(void)
 {
-	if (init_modules() < 0) {
-		/* TODO shall become ERROR and returns -1 */
-		WARN("failed to initialise modules");
-	}
 	if (init_actions() < 0) {
 		ERROR("failed to initialise actions");
 		return -1;
+	}
+	if (init_modules() < 0) {
+		/* TODO shall become ERROR and returns -1 */
+		WARN("failed to initialise modules");
 	}
 	return 0;
 }
@@ -67,6 +67,7 @@ init_modules(void)
 	(void) init_modules_paths();
 	(void) config_get_string("modules", "core", modlist, API_BUFLEN);
 
+	DEBUG("karuiwm.modules: %s", modlist);
 	/* load modules */
 	modname = strtok(modlist, ", ");
 	do {
@@ -148,7 +149,8 @@ term_modules(void)
 	/* modules */
 	while (api.nmodules > 0) {
 		mod = api.modules;
-		LIST_REMOVE(api.modules, mod);
+		mod->term();
+		LIST_REMOVE(&api.modules, mod);
 		--api.nmodules;
 		module_delete(mod);
 	}

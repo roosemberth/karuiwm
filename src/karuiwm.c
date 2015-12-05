@@ -16,7 +16,7 @@
 #include "keybind.h"
 #include "buttonbind.h"
 #include "api.h"
-#include "core.h"
+#include "input.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -40,19 +40,18 @@
 
 /* functions */
 static void check_restart(char **argv);
-static void grabkeys(void);
-static void handle_buttonpress(XEvent *xe);
-static void handle_clientmessage(XEvent *xe);
-static void handle_configurerequest(XEvent *xe);
-static void handle_configurenotify(XEvent *xe);
-static void handle_destroynotify(XEvent *xe);
-static void handle_enternotify(XEvent *xe);
-static void handle_expose(XEvent *xe);
-static void handle_focusin(XEvent *xe);
-static void handle_keypress(XEvent *xe);
-static void handle_mappingnotify(XEvent *xe);
-static void handle_maprequest(XEvent *xe);
-static void handle_propertynotify(XEvent *xe);
+static void handle_buttonpress(void);
+static void handle_clientmessage(void);
+static void handle_configurerequest(void);
+static void handle_configurenotify(void);
+static void handle_destroynotify(void);
+static void handle_enternotify(void);
+static void handle_expose(void);
+static void handle_focusin(void);
+static void handle_keypress(void);
+static void handle_mappingnotify(void);
+static void handle_maprequest(void);
+static void handle_propertynotify(void);
 static int handle_xerror(Display *dpy, XErrorEvent *xe);
 static void init(void);
 static void init_atoms(void);
@@ -62,7 +61,7 @@ static void sigchld(int);
 static void term(void);
 
 /* event handlers, as array to allow O(1) access; numeric codes are in X.h */
-void (*handle[LASTEvent])(XEvent *) = {
+void (*handle[LASTEvent])(void) = {
 	[ButtonPress]      = handle_buttonpress,      /* 4*/
 	[ClientMessage]    = handle_clientmessage,    /*33*/
 	[ConfigureNotify]  = handle_configurenotify,  /*22*/
@@ -92,25 +91,9 @@ check_restart(char **argv)
 }
 
 static void
-grabkeys(void)
+handle_buttonpress(void)
 {
-	int unsigned i;
-	struct keybind *kb;
-
-	XUngrabKey(karuiwm.dpy, AnyKey, AnyModifier, karuiwm.root);
-	for (i = 0, kb = config.keybinds; i < config.nkeybinds;
-	     ++i, kb = kb->next)
-		XGrabKey(karuiwm.dpy, XKeysymToKeycode(karuiwm.dpy, kb->key),
-		         kb->mod, karuiwm.root, True, GrabModeAsync,
-		         GrabModeAsync);
-}
-
-static void
-handle_buttonpress(XEvent *xe)
-{
-	int unsigned i;
-	struct buttonbind *bb;
-	XButtonEvent *e = &xe->xbutton;
+	XButtonEvent *e = &karuiwm.event->xbutton;
 
 	//EVENT("buttonpress(%lu)", e->window);
 
@@ -118,21 +101,15 @@ handle_buttonpress(XEvent *xe)
 	if (e->window == karuiwm.root)
 		return;
 
-	for (i = 0, bb = config.buttonbinds; i < config.nbuttonbinds;
-	     ++i, bb = bb->next) {
-		if (bb->mod == e->state && bb->button == e->button) {
-			bb->action->function(&((union argument) {.v = &e->window}));
-			break;
-		}
-	}
+	input_handle_buttonpress(e->state, e->button);
 }
 
 static void
-handle_clientmessage(XEvent *xe)
+handle_clientmessage(void)
 {
 	bool fullscreen;
 	struct client *c;
-	XClientMessageEvent *e = &xe->xclient;
+	XClientMessageEvent *e = &karuiwm.event->xclient;
 
 	//EVENT("clientmessage(%lu)", e->window);
 
@@ -154,9 +131,9 @@ handle_clientmessage(XEvent *xe)
 }
 
 static void
-handle_configurenotify(XEvent *xe)
+handle_configurenotify(void)
 {
-	XConfigureEvent *e = &xe->xconfigure;
+	XConfigureEvent *e = &karuiwm.event->xconfigure;
 
 	//EVENT("configurenotify(%lu)", e->window);
 
@@ -165,10 +142,10 @@ handle_configurenotify(XEvent *xe)
 }
 
 static void
-handle_configurerequest(XEvent *xe)
+handle_configurerequest(void)
 {
 	XWindowChanges wc;
-	XConfigureRequestEvent *e = &xe->xconfigurerequest;
+	XConfigureRequestEvent *e = &karuiwm.event->xconfigurerequest;
 
 	//EVENT("configurerequest(%lu)", e->window);
 
@@ -186,11 +163,11 @@ handle_configurerequest(XEvent *xe)
 }
 
 static void
-handle_destroynotify(XEvent *xe)
+handle_destroynotify(void)
 {
 	struct client *c;
 	struct desktop *d;
-	XDestroyWindowEvent *e = &xe->xdestroywindow;
+	XDestroyWindowEvent *e = &karuiwm.event->xdestroywindow;
 	bool was_transient;
 
 	//EVENT("destroynotify(%lu)", e->window);
@@ -208,10 +185,10 @@ handle_destroynotify(XEvent *xe)
 }
 
 static void
-handle_enternotify(XEvent *xe)
+handle_enternotify(void)
 {
 	struct client *c;
-	XEnterWindowEvent *e = &xe->xcrossing;
+	XEnterWindowEvent *e = &karuiwm.event->xcrossing;
 
 	//EVENT("enternotify(%lu)", e->window);
 
@@ -226,10 +203,19 @@ handle_enternotify(XEvent *xe)
 	desktop_focus_client(c->desktop, c);
 }
 
-static void
-handle_expose(XEvent *xe)
+void
+handle_event(XEvent *xe)
 {
-	XExposeEvent *e = &xe->xexpose;
+	karuiwm.event = xe;
+	if (handle[xe->type] != NULL)
+		handle[xe->type]();
+	karuiwm.event = NULL;
+}
+
+static void
+handle_expose(void)
+{
+	XExposeEvent *e = &karuiwm.event->xexpose;
 
 	//EVENT("expose(%lu)", e->window);
 
@@ -238,9 +224,9 @@ handle_expose(XEvent *xe)
 }
 
 static void
-handle_focusin(XEvent *xe)
+handle_focusin(void)
 {
-	XFocusInEvent *e = &xe->xfocus;
+	XFocusInEvent *e = &karuiwm.event->xfocus;
 	struct desktop *seldt = karuiwm.focus->selmon->seldt;
 	struct client *selcli = seldt->selcli;
 
@@ -256,28 +242,19 @@ handle_focusin(XEvent *xe)
 }
 
 static void
-handle_keypress(XEvent *xe)
+handle_keypress(void)
 {
-	int unsigned i;
-	struct keybind *kb;
-	XKeyPressedEvent *e = &xe->xkey;
+	XKeyPressedEvent *e = &karuiwm.event->xkey;
 
 	//EVENT("keypress()");
 
-	KeySym keysym = XLookupKeysym(e, 0);
-	for (i = 0, kb = config.keybinds; i < config.nkeybinds;
-	     ++i, kb = kb->next) {
-		if (e->state == kb->mod && keysym == kb->key) {
-			kb->action->function(&kb->arg);
-			break;
-		}
-	}
+	input_handle_keypress(e->state, XLookupKeysym(e, 0));
 }
 
 static void
-handle_mappingnotify(XEvent *xe)
+handle_mappingnotify(void)
 {
-	XMappingEvent *e = &xe->xmapping;
+	XMappingEvent *e = &karuiwm.event->xmapping;
 
 	//EVENT("mappingnotify(%lu)", e->window);
 
@@ -286,11 +263,11 @@ handle_mappingnotify(XEvent *xe)
 }
 
 static void
-handle_maprequest(XEvent *xe)
+handle_maprequest(void)
 {
 	struct client *c;
 	struct desktop *d;
-	XMapRequestEvent *e = &xe->xmaprequest;
+	XMapRequestEvent *e = &karuiwm.event->xmaprequest;
 
 	//EVENT("maprequest(%lu)", e->window);
 
@@ -314,14 +291,14 @@ handle_maprequest(XEvent *xe)
 		                     MIN(c->floath, d->monitor->h));
 	desktop_arrange(d);
 	XMapWindow(karuiwm.dpy, c->win);
-	client_grab_buttons(c, config.nbuttonbinds, config.buttonbinds);
+	input_grab_buttons(c);
 	desktop_focus_client(d, c);
 }
 
 static void
-handle_propertynotify(XEvent *xe)
+handle_propertynotify(void)
 {
-	XPropertyEvent *e = &xe->xproperty;
+	XPropertyEvent *e = &karuiwm.event->xproperty;
 	struct client *c;
 
 	//EVENT("propertynotify(%lu)", e->window);
@@ -410,17 +387,19 @@ init(void)
 	                KeyPressMask | PointerMotionMask | StructureNotifyMask;
 	XChangeWindowAttributes(karuiwm.dpy, karuiwm.root, CWEventMask, &wa);
 
-	/* API, configuration */
-	if (api_init() < 0)
-		FATAL("could not initialise API");
-	if (core_init() < 0)
-		FATAL("could not initialise core actions");
+	/* configuration */
 	if (config_init() < 0)
 		FATAL("could not initialise X resources");
 
+	/* API */
+	if (api_init() < 0)
+		FATAL("could not initialise API");
+
 	/* input (mouse, keyboard) */
 	karuiwm.cursor = cursor_new();
-	grabkeys();
+	if (input_init() < 0)
+		FATAL("could not initialise input");
+	input_grab_keys();
 
 	/* layouts, session, focus */
 	layout_init();
@@ -484,8 +463,7 @@ run(void)
 			break;
 		}
 		//DEBUG("run(): e.type = %d", xe.type);
-		if (handle[xe.type] != NULL)
-			handle[xe.type](&xe);
+		handle_event(&xe);
 	}
 }
 
@@ -506,7 +484,6 @@ term(void)
 {
 	char sid[BUFSIZ];
 
-	core_term();
 	api_term();
 	focus_delete(karuiwm.focus);
 	if (karuiwm.restarting)
