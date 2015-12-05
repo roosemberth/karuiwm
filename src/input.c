@@ -180,6 +180,21 @@ input_parse_modstr(char const *modstr)
 void
 input_term(void)
 {
+	struct buttonbind *bb;
+	struct keybind *kb;
+
+	while (nbuttonbinds > 0) {
+		bb = buttonbinds;
+		LIST_REMOVE(&buttonbinds, bb);
+		--nbuttonbinds;
+		buttonbind_delete(bb);
+	}
+	while (nkeybinds > 0) {
+		kb = keybinds;
+		LIST_REMOVE(&keybinds, kb);
+		--nkeybinds;
+		keybind_delete(kb);
+	}
 }
 
 static void
