@@ -88,25 +88,27 @@ karuiwm.border.colour_focus: #00FF00
 ! Use windows key as the principal modifier ('M'):
 karuiwm.modifier           : W
 
-karuiwm.keysym.M-k         : stepclient:prev
-karuiwm.keysym.M-j         : stepclient:next
-karuiwm.keysym.M-S-k       : shiftclient:prev
-karuiwm.keysym.M-S-j       : shiftclient:next
-karuiwm.keysym.M-Return    : zoom
-karuiwm.keysym.M-S-c       : killclient
+karuiwm.modules            : core
 
-karuiwm.keysym.M-C-h       : stepdesktop:left
-karuiwm.keysym.M-C-j       : stepdesktop:down
-karuiwm.keysym.M-C-k       : stepdesktop:up
-karuiwm.keysym.M-C-l       : stepdesktop:right
+karuiwm.keysym.M-k         : core.stepclient:prev
+karuiwm.keysym.M-j         : core.stepclient:next
+karuiwm.keysym.M-S-k       : core.shiftclient:prev
+karuiwm.keysym.M-S-j       : core.shiftclient:next
+karuiwm.keysym.M-Return    : core.zoom
+karuiwm.keysym.M-S-c       : core.killclient
 
-karuiwm.keysym.M-q         : restart
-karuiwm.keysym.M-S-q       : stop
+karuiwm.keysym.M-C-h       : core.stepdesktop:left
+karuiwm.keysym.M-C-j       : core.stepdesktop:down
+karuiwm.keysym.M-C-k       : core.stepdesktop:up
+karuiwm.keysym.M-C-l       : core.stepdesktop:right
 
-karuiwm.keysym.M-n         : spawn:urxvt
+karuiwm.keysym.M-q         : core.restart
+karuiwm.keysym.M-S-q       : core.stop
 
-karuiwm.button.M-1         : mousemove
-karuiwm.button.M-3         : mouseresize
+karuiwm.keysym.M-n         : core.spawn:urxvt
+
+karuiwm.button.M-1         : core.mousemove
+karuiwm.button.M-3         : core.mouseresize
 ```
 
 Documentation will follow.

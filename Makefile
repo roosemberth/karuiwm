@@ -125,10 +125,9 @@ $(APPNAME): $(OBJECTS)
 
 # ==============================================================================
 
-.PHONY: modules
+.PHONY: modules modules-install
 modules:
 	for m in ${MODULEDIR}/*/; do cd "$$m"; make; cd -; done
-
 modules-install:
 	for m in ${MODULEDIR}/*/; do cd "$$m"; make install; cd -; done
 
@@ -150,6 +149,7 @@ uninstall:
 	rm -rf ${INCLUDEDIR}
 
 # Ctags:
+.PHONY: ctags
 ctags:
 	rm -f tags
 	find ${SRCDIR} -name '*.[ch]' | ctags --append -L -

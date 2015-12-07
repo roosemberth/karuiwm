@@ -32,8 +32,8 @@ api_init(void)
 		return -1;
 	}
 	if (init_modules() < 0) {
-		/* TODO shall become ERROR and returns -1 */
-		WARN("failed to initialise modules");
+		ERROR("failed to initialise modules");
+		return -1;
 	}
 	return 0;
 }
@@ -67,7 +67,6 @@ init_modules(void)
 	(void) init_modules_paths();
 	(void) config_get_string("modules", "core", modlist, API_BUFLEN);
 
-	DEBUG("karuiwm.modules: %s", modlist);
 	/* load modules */
 	modname = strtok(modlist, ", ");
 	do {

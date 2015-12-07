@@ -32,20 +32,20 @@ static void mouse_resize(struct client *c, int mx, int my);
 int
 init(void)
 {
-	api_add_action(action_new("killclient",  action_killclient,  ARGTYPE_NONE));
-	api_add_action(action_new("mousemove",   action_mousemove,   ARGTYPE_NONE));
-	api_add_action(action_new("mouseresize", action_mouseresize, ARGTYPE_NONE));
-	api_add_action(action_new("restart",     action_restart,     ARGTYPE_NONE));
-	api_add_action(action_new("setmfact",    action_setmfact,    ARGTYPE_FLOATING));
-	api_add_action(action_new("setnmaster",  action_setnmaster,  ARGTYPE_INTEGER));
-	api_add_action(action_new("shiftclient", action_shiftclient, ARGTYPE_LIST_DIRECTION));
-	api_add_action(action_new("spawn",       action_spawn,       ARGTYPE_STRING));
-	api_add_action(action_new("stepclient",  action_stepclient,  ARGTYPE_LIST_DIRECTION));
-	api_add_action(action_new("stepdesktop", action_stepdesktop, ARGTYPE_DIRECTION));
-	api_add_action(action_new("steplayout",  action_steplayout,  ARGTYPE_LIST_DIRECTION));
-	api_add_action(action_new("stop",        action_stop,        ARGTYPE_NONE));
-	api_add_action(action_new("togglefloat", action_togglefloat, ARGTYPE_NONE));
-	api_add_action(action_new("zoom",        action_zoom,        ARGTYPE_NONE));
+	api_add_action(action_new("core.killclient",  action_killclient,  ARGTYPE_NONE));
+	api_add_action(action_new("core.mousemove",   action_mousemove,   ARGTYPE_NONE));
+	api_add_action(action_new("core.mouseresize", action_mouseresize, ARGTYPE_NONE));
+	api_add_action(action_new("core.restart",     action_restart,     ARGTYPE_NONE));
+	api_add_action(action_new("core.setmfact",    action_setmfact,    ARGTYPE_FLOATING));
+	api_add_action(action_new("core.setnmaster",  action_setnmaster,  ARGTYPE_INTEGER));
+	api_add_action(action_new("core.shiftclient", action_shiftclient, ARGTYPE_LIST_DIRECTION));
+	api_add_action(action_new("core.spawn",       action_spawn,       ARGTYPE_STRING));
+	api_add_action(action_new("core.stepclient",  action_stepclient,  ARGTYPE_LIST_DIRECTION));
+	api_add_action(action_new("core.stepdesktop", action_stepdesktop, ARGTYPE_DIRECTION));
+	api_add_action(action_new("core.steplayout",  action_steplayout,  ARGTYPE_LIST_DIRECTION));
+	api_add_action(action_new("core.stop",        action_stop,        ARGTYPE_NONE));
+	api_add_action(action_new("core.togglefloat", action_togglefloat, ARGTYPE_NONE));
+	api_add_action(action_new("core.zoom",        action_zoom,        ARGTYPE_NONE));
 	return 0;
 }
 
