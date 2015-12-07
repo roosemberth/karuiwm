@@ -1,11 +1,11 @@
 karuiwm
 =======
 
-karuiwm is a lightweight, dynamically tiling window manager for X11.
+karuiwm is a lightweight, modular, dynamically tiling window manager for X11.
 
-The master branch holds the new version (which is still in early development
-phase). The [legacy](https://github.com/ayekat/karuiwm/tree/legacy) branch holds
-the old, usable (but buggy) version.
+The master branch holds the newest version, which is still in early development
+phase. Check out the [legacy](https://github.com/ayekat/karuiwm/tree/legacy)
+branch if you want to see what it might look like.
 
 
 build
@@ -19,13 +19,39 @@ build karuiwm for release mode, debug mode, and debug mode with address
 sanitizer, each with and without Xinerama support.
 
 
+build modules
+-------------
+
+karuiwm on its own is pretty useless - the *modules* are the components doing
+the real job. They are situated in the [modules](modules) directory, and each of
+them can be compiled as easy as the main program:
+
+	cd modules/$modulename/
+	make
+
+For building all modules at once, you can also simply run
+
+	make modules
+
+from the project root.
+
+
 install
 -------
 
 	make install
 
 will install karuiwm to /usr/local. Pass `INSTALLDIR=...` to install karuiwm to
-a different location.
+a different location. The modules can be installed similarly:
+
+	cd modules/$modulename/
+	make install
+
+Or for installing all modules at once:
+
+	make modules-install
+
+from the project root.
 
 
 for developers

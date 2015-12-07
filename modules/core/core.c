@@ -1,9 +1,9 @@
-#include <karuiwm/argument.h>
-#include <karuiwm/karuiwm.h>
-#include <karuiwm/desktop.h>
-#include <karuiwm/util.h>
-#include <karuiwm/cursor.h>
-#include <karuiwm/api.h>
+#include "karuiwm/argument.h"
+#include "karuiwm/karuiwm.h"
+#include "karuiwm/desktop.h"
+#include "karuiwm/util.h"
+#include "karuiwm/cursor.h"
+#include "karuiwm/api.h"
 
 #include <unistd.h>
 #include <string.h>

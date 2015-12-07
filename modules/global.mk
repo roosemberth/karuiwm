@@ -14,7 +14,7 @@ DEPENDS = $(OBJECTS:%.o=%.d)
 -include config.mk
 
 # Global configuration:
--include ../config.mk
+-include ../../config.mk
 
 # Compiler:
 CC ?= gcc

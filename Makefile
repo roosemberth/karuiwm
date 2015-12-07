@@ -4,10 +4,21 @@ CC ?= gcc
 # Application name:
 APPNAME = karuiwm
 
-# Installation prefix:
+# Files:
+SRCDIR = src
+BUILDDIR = build
+MODULEDIR = modules
+SOURCES = $(shell find ${SRCDIR} -name '*.c')
+OBJECTS = $(SOURCES:${SRCDIR}/%.c=${BUILDDIR}/%.o)
+DEPENDS = $(OBJECTS:%.o=%.d)
+XINITRC = xinitrc
+
+# Installation:
 INSTALLDIR ?= /usr/local
 BINDIR ?= ${INSTALLDIR}/bin
-INCDIR ?= ${INSTALLDIR}/include/${APPNAME}
+INCLUDEDIR ?= ${INSTALLDIR}/include/${APPNAME}
+
+# ==============================================================================
 
 # Compilation flags:
 _CFLAGS = -std=c99
@@ -39,15 +50,12 @@ _LDFLAGS_DEBUG =
 _LDFLAGS_RELEASE =
 _LDFLAGS_XINERAMA =
 
-# File names:
-SRCDIR = src
-BUILDDIR = build
-SOURCES = $(shell find ${SRCDIR} -name '*.c')
-OBJECTS = $(SOURCES:${SRCDIR}/%.c=${BUILDDIR}/%.o)
-DEPENDS = $(OBJECTS:%.o=%.d)
-XINITRC = xinitrc
+# ==============================================================================
 
+# Configuration:
 -include config.mk
+
+# ==============================================================================
 
 # Default: Release + Xinerama
 .PHONY: all
@@ -58,7 +66,7 @@ all: release_xinerama
 release: _CFLAGS += ${_CFLAGS_RELEASE}
 release: _LIBS += ${_LIBS_RELEASE}
 release: _LDFLAGS += ${_LDFLAGS_RELEASE}
-release: build
+release: $(APPNAME)
 
 # Release + Xinerama:
 .PHONY: release_xinerama
@@ -72,7 +80,7 @@ release_xinerama: release
 debug: _CFLAGS += ${_CFLAGS_DEBUG}
 debug: _LIBS += ${_LIBS_DEBUG}
 debug: _LDFLAGS += ${_LDFLAGS_DEBUG}
-debug: build
+debug: $(APPNAME)
 
 # Debug + Xinerama:
 .PHONY: debug_xinerama
@@ -95,28 +103,9 @@ asan_xinerama: _LIBS += ${_LIBS_XINERAMA}
 asan_xinerama: _LDFLAGS += ${_LDFLAGS_XINERAMA}
 asan_xinerama: asan
 
-# Basic actions:
-.PHONY: build clean mrproper install uninstall
-build: $(APPNAME)
-clean:
-	rm -rf ${BUILDDIR}
-mrproper: clean
-	rm -f ${APPNAME}
-install:
-	install ${APPNAME} ${BINDIR}/${APPNAME}
-install-headers:
-	mkdir -p ${INCDIR}
-	install -m 644 ${SRCDIR}/*.h ${INCDIR}/
-uninstall:
-	rm -f ${BINDIR}/${APPNAME}
-	rm -rf ${INCDIR}
+# ==============================================================================
 
-# Ctags:
-ctags:
-	rm -f tags
-	find ${SRCDIR} -name '*.[ch]' | ctags --append -L -
-
-# Build dependencies:
+# Build-dependencies:
 -include ${DEPENDS}
 
 # Compile:
@@ -133,6 +122,39 @@ $(APPNAME): _LDFLAGS += ${LDFLAGS}
 $(APPNAME): $(OBJECTS)
 	@printf "linking \033[1m%s\033[0m ...\n" $@
 	$(CC) ${_LDFLAGS} ${OBJECTS} ${_LIBS} -o $@
+
+# ==============================================================================
+
+.PHONY: modules
+modules:
+	for m in ${MODULEDIR}/*/; do cd "$$m"; make; cd -; done
+
+modules-install:
+	for m in ${MODULEDIR}/*/; do cd "$$m"; make install; cd -; done
+
+# ==============================================================================
+
+# Generic actions:
+.PHONY: clean mrproper install uninstall
+clean:
+	rm -rf ${BUILDDIR}
+mrproper: clean
+	rm -f ${APPNAME}
+install:
+	install ${APPNAME} ${BINDIR}/${APPNAME}
+install-headers:
+	mkdir -p ${INCLUDEDIR}
+	install -m 644 ${SRCDIR}/*.h ${INCLUDEDIR}/
+uninstall:
+	rm -f ${BINDIR}/${APPNAME}
+	rm -rf ${INCLUDEDIR}
+
+# Ctags:
+ctags:
+	rm -f tags
+	find ${SRCDIR} -name '*.[ch]' | ctags --append -L -
+
+# ==============================================================================
 
 # karuiwm-specific actions:
 .PHONY: run xephyr valphyr
