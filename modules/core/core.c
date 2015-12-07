@@ -33,8 +33,8 @@ int
 init(void)
 {
 	api_add_action(action_new("core.killclient",  action_killclient,  ARGTYPE_NONE));
-	api_add_action(action_new("core.mousemove",   action_mousemove,   ARGTYPE_NONE));
-	api_add_action(action_new("core.mouseresize", action_mouseresize, ARGTYPE_NONE));
+	api_add_action(action_new("core.mousemove",   action_mousemove,   ARGTYPE_MOUSE));
+	api_add_action(action_new("core.mouseresize", action_mouseresize, ARGTYPE_MOUSE));
 	api_add_action(action_new("core.restart",     action_restart,     ARGTYPE_NONE));
 	api_add_action(action_new("core.setmfact",    action_setmfact,    ARGTYPE_FLOATING));
 	api_add_action(action_new("core.setnmaster",  action_setnmaster,  ARGTYPE_INTEGER));
@@ -135,10 +135,10 @@ action_spawn(union argument *arg)
 	pid_t pid = fork();
 	if (pid == 0) {
 		execl("/bin/sh", "sh", "-c", cmd, (char *) NULL);
-		FATAL("execl(%s) failed: %s", cmd, strerror(errno));
+		ERROR("execl(%s) failed: %s", cmd, strerror(errno));
 	}
 	if (pid < 0)
-		WARN("fork() failed with code %d", pid);
+		ERROR("fork() failed with code %d", pid);
 }
 
 static void

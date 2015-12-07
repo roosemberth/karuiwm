@@ -235,6 +235,13 @@ scan_binds(void)
 			continue;
 		}
 
+		/* check compatibility */
+		if (iskey && action->argtype == ARGTYPE_MOUSE) {
+			WARN("cannot bind keyboard to mouse action `%s`",
+			     action->name);
+			continue;
+		}
+
 		/* add to list */
 		if (isbutton) {
 #pragma GCC diagnostic push

@@ -11,6 +11,7 @@ argument_fromstring(union argument *arg, char const *str,
 {
 	switch (type) {
 	case ARGTYPE_NONE:
+	case ARGTYPE_MOUSE:
 		return -((int signed) strlen(str));
 	case ARGTYPE_CHARACTER:
 		if (strlen(str) != 1) {
@@ -95,6 +96,7 @@ argument_typestring(enum argument_type type)
 		[ARGTYPE_DIRECTION] = "ARGTYPE_DIRECTION",
 		[ARGTYPE_LIST_DIRECTION] = "ARGTYPE_LIST_DIRECTION",
 		[ARGTYPE_STRING] = "ARGTYPE_STRING",
+		[ARGTYPE_MOUSE] = "ARGTYPE_MOUSE",
 	};
 	return argument_type_names[type];
 }
