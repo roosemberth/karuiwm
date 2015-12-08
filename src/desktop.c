@@ -1,7 +1,6 @@
 #include "desktop.h"
 #include "util.h"
 #include "list.h"
-#include "layout.h"
 
 static struct client *get_head(struct desktop *d, struct client *c);
 static struct client *get_last(struct desktop *d, struct client *c);
@@ -19,7 +18,7 @@ desktop_arrange(struct desktop *d)
 
 	desktop_set_clientmask(d, 0);
 
-	/* fullscreen windows on top */
+	/* fullscreen clients */
 	for (i = 0, c = d->floating; i < d->nf; ++i, c = c->next)
 		if (c->state == STATE_FULLSCREEN)
 			stack[is++] = c->win;
@@ -27,21 +26,24 @@ desktop_arrange(struct desktop *d)
 		if (c->state == STATE_FULLSCREEN)
 			stack[is++] = c->win;
 
-	/* non-fullscreen windows below */
+	/* floating clients */
 	for (i = 0, c = d->floating; i < d->nf; ++i, c = c->next) {
 		client_moveresize(c, c->floatx, c->floaty, c->floatw, c->floath);
 		if (c->state != STATE_FULLSCREEN)
 			stack[is++] = c->win;
 	}
-	if (d->nt > 0) {
-		/* FIXME strut (left, right, bottom, top) != 0 break this */
-		d->sellayout->apply(d->tiled, d->nt, MIN(d->nmaster, d->nt),
-		                    d->mfact, d->monitor->x, d->monitor->y,
-		                    d->monitor->w, d->monitor->h);
-		for (i = 0, c = d->tiled; i < d->nt; ++i, c = c->next)
-			if (c->state != STATE_FULLSCREEN)
-				stack[is++] = c->win;
-	}
+
+	/* tiled clients */
+	d->layout->apply(d->tiled, d->nt, MIN(d->nmaster, d->nt), d->mfact,
+	                 d->monitor->x, d->monitor->y,
+	                 d->monitor->w, d->monitor->h);
+	for (i = 0, c = d->tiled; i < d->nt; ++i, c = c->next)
+		if (c->state != STATE_FULLSCREEN)
+			stack[is++] = c->win;
+
+	if (is != d->nf + d->nt)
+		WARN("client number mismatch when building stack (%u != %u)",
+		     is, d->nf + d->nt);
 	XRestackWindows(karuiwm.dpy, stack, (int signed) (d->nt + d->nf));
 	desktop_set_clientmask(d, CLIENTMASK);
 }
@@ -172,7 +174,7 @@ desktop_new(void)
 	d->nt = d->nf = 0;
 	d->tiled = d->floating = NULL;
 	d->selcli = NULL;
-	d->sellayout = layouts;
+	d->layout = layouts;
 	d->focus = false;
 	d->workspace = NULL;
 	d->monitor = NULL;
@@ -198,6 +200,12 @@ desktop_set_focus(struct desktop *d, bool focus)
 {
 	d->focus = focus;
 	desktop_update_focus(d);
+}
+
+void
+desktop_set_layout(struct desktop *d, struct layout *l)
+{
+	d->layout = l;
 }
 
 void
@@ -254,7 +262,7 @@ desktop_step_client(struct desktop *d, enum list_direction dir)
 void
 desktop_step_layout(struct desktop *d, enum list_direction dir)
 {
-	d->sellayout = (dir == PREV) ? d->sellayout->prev : d->sellayout->next;
+	d->layout = dir == PREV ? d->layout->prev : d->layout->next;
 }
 
 void

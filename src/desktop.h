@@ -2,6 +2,7 @@
 #define _KARUIWM_DESKTOP_H
 
 #include "client.h"
+#include "layout.h"
 #include "workspace.h"
 #include "monitor.h"
 #include "argument.h"
@@ -14,7 +15,7 @@ struct desktop {
 	size_t nt, nf, nmaster;
 	struct client *tiled, *floating, *selcli;
 	struct workspace *ws;
-	struct layout *sellayout;
+	struct layout *layout;
 	float mfact;
 	int posx, posy;
 	bool focus;
@@ -33,6 +34,7 @@ int desktop_locate_window(struct desktop *d, struct client **c, Window win);
 struct desktop *desktop_new(void);
 void desktop_set_clientmask(struct desktop *d, long);
 void desktop_set_focus(struct desktop *d, bool focus);
+void desktop_set_layout(struct desktop *d, struct layout *l);
 void desktop_set_mfact(struct desktop *d, float mfact);
 void desktop_set_nmaster(struct desktop *d, size_t nmaster);
 void desktop_shift_client(struct desktop *d, int dir);

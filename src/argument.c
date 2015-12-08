@@ -77,26 +77,32 @@ argument_fromstring(union argument *arg, char const *str,
 	case ARGTYPE_STRING:
 		arg->v = strdupf("%s", str);
 		return 0;
+	default:
+		WARN("attempt to parse unknown argument type %d", type);
+		return -1;
 	}
-	return -1; /* shouldn't happen */
 }
 
 char const *
 argument_typestring(enum argument_type type)
 {
-	char const *argument_type_names[] = {
-		[ARGTYPE_NONE] = "ARGTYPE_NONE",
-		[ARGTYPE_CHARACTER] = "ARGTYPE_CHARACTER",
-		[ARGTYPE_INTEGER] = "ARGTYPE_INTEGER",
-		[ARGTYPE_INTEGER_UNSIGNED] = "ARGTYPE_INTEGER_UNSIGNED",
-		[ARGTYPE_INTEGER_LONG] = "ARGTYPE_INTEGER_LONG",
-		[ARGTYPE_INTEGER_LONG_UNSIGNED] = "ARGTYPE_INTEGER_LONG_UNSIGNED",
-		[ARGTYPE_FLOATING] = "ARGTYPE_FLOATING",
-		[ARGTYPE_FLOATING_DOUBLE] = "ARGTYPE_FLOATING_DOUBLE",
-		[ARGTYPE_DIRECTION] = "ARGTYPE_DIRECTION",
-		[ARGTYPE_LIST_DIRECTION] = "ARGTYPE_LIST_DIRECTION",
-		[ARGTYPE_STRING] = "ARGTYPE_STRING",
-		[ARGTYPE_MOUSE] = "ARGTYPE_MOUSE",
+	char const *typestrings[] = {
+		[ARGTYPE_NONE] = "NONE",
+		[ARGTYPE_CHARACTER] = "CHARACTER",
+		[ARGTYPE_INTEGER] = "INTEGER",
+		[ARGTYPE_INTEGER_UNSIGNED] = "INTEGER_UNSIGNED",
+		[ARGTYPE_INTEGER_LONG] = "INTEGER_LONG",
+		[ARGTYPE_INTEGER_LONG_UNSIGNED] = "INTEGER_LONG_UNSIGNED",
+		[ARGTYPE_FLOATING] = "FLOATING",
+		[ARGTYPE_FLOATING_DOUBLE] = "FLOATING_DOUBLE",
+		[ARGTYPE_DIRECTION] = "DIRECTION",
+		[ARGTYPE_LIST_DIRECTION] = "LIST_DIRECTION",
+		[ARGTYPE_STRING] = "STRING",
+		[ARGTYPE_MOUSE] = "MOUSE",
 	};
-	return argument_type_names[type];
+	if (type >= sizeof(typestrings) / sizeof(typestrings[0])) {
+		WARN("attempt to stringify unknown argument type %d", type);
+		return NULL;
+	}
+	return typestrings[type];
 }
