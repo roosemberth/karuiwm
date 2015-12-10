@@ -34,15 +34,19 @@ desktop_arrange(struct desktop *d)
 	}
 
 	/* tiled clients */
-	d->layout->apply(d->tiled, d->nt, MIN(d->nmaster, d->nt), d->mfact,
-	                 d->monitor->x, d->monitor->y,
-	                 d->monitor->w, d->monitor->h);
-	for (i = 0, c = d->tiled; i < d->nt; ++i, c = c->next)
-		if (c->state != STATE_FULLSCREEN)
-			stack[is++] = c->win;
+	if (d->nt > 0) {
+		d->layout->apply(d->tiled, d->nt, MIN(d->nmaster, d->nt),
+		                 d->mfact, d->monitor->x, d->monitor->y,
+		                 d->monitor->w, d->monitor->h);
+		stack[is++] = d->seltiled->win;
+		for (i = 0, c = d->tiled; i < d->nt; ++i, c = c->next)
+			if (c->state != STATE_FULLSCREEN
+			&& c != d->seltiled)
+				stack[is++] = c->win;
+	}
 
 	if (is != d->nf + d->nt)
-		WARN("client number mismatch when building stack (%u != %u)",
+		WARN("client number mismatch when building stack (%u != %lu)",
 		     is, d->nf + d->nt);
 	XRestackWindows(karuiwm.dpy, stack, (int signed) (d->nt + d->nf));
 	desktop_set_clientmask(d, CLIENTMASK);
@@ -57,6 +61,7 @@ desktop_attach_client(struct desktop *d, struct client *c)
 	} else {
 		LIST_APPEND(&d->tiled, c);
 		++d->nt;
+		d->seltiled = c;
 	}
 	d->selcli = c;
 	c->desktop = d;
@@ -96,6 +101,12 @@ desktop_detach_client(struct desktop *d, struct client *c)
 		next = c->floating ? d->tiled : d->floating;
 	d->selcli = next;
 
+	/* determine selected tiled */
+	if (c == d->seltiled)
+		d->seltiled = NULL;
+	if (d->selcli != NULL && !d->selcli->floating)
+		d->seltiled = d->selcli;
+
 	/* detach */
 	if (c->floating) {
 		LIST_REMOVE(&d->floating, c);
@@ -120,6 +131,8 @@ void
 desktop_focus_client(struct desktop *d, struct client *c)
 {
 	d->selcli = c;
+	if (!c->floating)
+		d->seltiled = c;
 	desktop_update_focus(d);
 }
 
@@ -173,7 +186,7 @@ desktop_new(void)
 	d->nmaster = 1;
 	d->nt = d->nf = 0;
 	d->tiled = d->floating = NULL;
-	d->selcli = NULL;
+	d->selcli = d->seltiled = NULL;
 	d->layout = layouts;
 	d->focus = false;
 	d->workspace = NULL;

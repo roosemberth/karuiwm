@@ -38,3 +38,10 @@ primarly targeted at developers who may look at a piece of code and wonder:
   Of course, catching an X error will hide whenever there *truly* is an issue in
   our code. But we can't change that. If someone finds an elegant way to
   circumvent catching any of the errors above, (s)he is welcome to solve that.
+
+* **Why is there a `seltiled`?**
+
+  The purpose of keeping a pointer to the selected tiled client is to be able to
+  put it on the top of the stack when arranging tiled windows. This may seem
+  unnecessary, but when applying layouts that overlap clients (such as the
+  monocle layout), we would like to keep the focused client on top.

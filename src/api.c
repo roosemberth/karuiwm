@@ -68,7 +68,7 @@ init_modules(void)
 	(void) config_get_string("modules", "core", modlist, API_BUFLEN);
 
 	/* load modules */
-	modname = strtok(modlist, ", ");
+	modname = strtok(modlist, ", \t");
 	do {
 		mod = module_new(modname);
 		if (mod == NULL) {
@@ -77,7 +77,7 @@ init_modules(void)
 		}
 		LIST_APPEND(&api.modules, mod);
 		++api.nmodules;
-	} while ((modname = strtok(NULL, ", ")) != NULL);
+	} while ((modname = strtok(NULL, ", \t")) != NULL);
 	if (api.nmodules == 0) {
 		ERROR("no modules loaded");
 		return -1;
