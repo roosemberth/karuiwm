@@ -16,6 +16,7 @@ enum argument_type {
 	ARGTYPE_LIST_DIRECTION, /* next, prev */
 	ARGTYPE_STRING,
 	ARGTYPE_MOUSE,
+	ARGTYPE_LAYOUT,
 };
 
 union argument {

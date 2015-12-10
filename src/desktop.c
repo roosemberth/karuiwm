@@ -1,6 +1,7 @@
 #include "desktop.h"
 #include "util.h"
 #include "list.h"
+#include "api.h"
 
 static struct client *get_head(struct desktop *d, struct client *c);
 static struct client *get_last(struct desktop *d, struct client *c);
@@ -187,7 +188,7 @@ desktop_new(void)
 	d->nt = d->nf = 0;
 	d->tiled = d->floating = NULL;
 	d->selcli = d->seltiled = NULL;
-	d->layout = layouts;
+	d->layout = api.layouts;
 	d->focus = false;
 	d->workspace = NULL;
 	d->monitor = NULL;

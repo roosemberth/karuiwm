@@ -16,9 +16,8 @@ static int extract_mod_sym(int unsigned *mod, int unsigned *buttonsym,
 static void scan_binds(void);
 
 static struct buttonbind *buttonbinds;
-static size_t nbuttonbinds;
 static struct keybind *keybinds;
-static size_t nkeybinds;
+static size_t nbuttonbinds, nkeybinds;
 
 static int
 extract_action_argument(struct action **action, union argument *arg,
@@ -213,9 +212,9 @@ scan_binds(void)
 	union argument arg;
 	bool isbutton, iskey;
 
-	nbuttonbinds = nkeybinds = 0;
 	buttonbinds = NULL;
 	keybinds = NULL;
+	nbuttonbinds = nkeybinds = 0;
 
 	for (i = 0, xr = config.xresources;
 	     i < config.nxresources;

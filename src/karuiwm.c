@@ -402,7 +402,6 @@ init(void)
 	input_grab_keys();
 
 	/* layouts, session, focus */
-	layout_init();
 	karuiwm.session = session_new();
 	karuiwm.focus = focus_new(karuiwm.session);
 }
@@ -490,7 +489,6 @@ term(void)
 		session_save(karuiwm.session, sid, sizeof(sid));
 	session_delete(karuiwm.session);
 	cursor_delete(karuiwm.cursor);
-	layout_term();
 	config_term();
 
 	XUngrabKey(karuiwm.dpy, AnyKey, AnyModifier, karuiwm.root);

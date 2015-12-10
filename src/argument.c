@@ -1,5 +1,6 @@
 #include "argument.h"
 #include "util.h"
+#include "api.h"
 #include <string.h>
 #include <strings.h>
 #include <errno.h>
@@ -9,6 +10,9 @@ int
 argument_fromstring(union argument *arg, char const *str,
                     enum argument_type type)
 {
+	int unsigned i;
+	struct layout *layout;
+
 	switch (type) {
 	case ARGTYPE_NONE:
 	case ARGTYPE_MOUSE:
@@ -77,6 +81,14 @@ argument_fromstring(union argument *arg, char const *str,
 	case ARGTYPE_STRING:
 		arg->v = strdupf("%s", str);
 		return 0;
+	case ARGTYPE_LAYOUT:
+		for (i = 0, layout = api.layouts;
+		     i < api.nlayouts && strcmp(str, layout->name) != 0;
+		     ++i, layout = layout->next);
+		if (i == api.nlayouts)
+			return -1;
+		arg->v = layout;
+		return 0;
 	default:
 		WARN("attempt to parse unknown argument type %d", type);
 		return -1;
@@ -99,6 +111,7 @@ argument_typestring(enum argument_type type)
 		[ARGTYPE_LIST_DIRECTION] = "LIST_DIRECTION",
 		[ARGTYPE_STRING] = "STRING",
 		[ARGTYPE_MOUSE] = "MOUSE",
+		[ARGTYPE_LAYOUT] = "ARGTYPE_LAYOUT",
 	};
 	if (type >= sizeof(typestrings) / sizeof(typestrings[0])) {
 		WARN("attempt to stringify unknown argument type %d", type);

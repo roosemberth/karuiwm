@@ -8,9 +8,11 @@
 #define API_BUFLEN 512
 
 static int init_actions(void);
+static int init_layouts(void);
 static int init_modules(void);
 static int init_modules_paths(void);
 static void term_actions(void);
+static void term_layouts(void);
 static void term_modules(void);
 
 void
@@ -24,11 +26,26 @@ api_add_action(struct action *a)
 	++api.nactions;
 }
 
+void
+api_add_layout(struct layout *l)
+{
+	if (l == NULL) {
+		WARN("attempt to add NULL layout to API");
+		return;
+	}
+	LIST_APPEND(&api.layouts, l);
+	++api.nlayouts;
+}
+
 int
 api_init(void)
 {
 	if (init_actions() < 0) {
 		ERROR("failed to initialise actions");
+		return -1;
+	}
+	if (init_layouts() < 0) {
+		ERROR("failed to initialise layouts");
 		return -1;
 	}
 	if (init_modules() < 0) {
@@ -42,6 +59,7 @@ void
 api_term(void)
 {
 	term_modules();
+	term_layouts();
 	term_actions();
 }
 
@@ -50,6 +68,14 @@ init_actions(void)
 {
 	api.actions = NULL;
 	api.nactions = 0;
+	return 0;
+}
+
+static int
+init_layouts(void)
+{
+	api.layouts = NULL;
+	api.nlayouts = 0;
 	return 0;
 }
 
@@ -136,6 +162,19 @@ term_actions(void)
 		LIST_REMOVE(&api.actions, a);
 		--api.nactions;
 		action_delete(a);
+	}
+}
+
+static void
+term_layouts(void)
+{
+	struct layout *l;
+
+	while (api.nlayouts > 0) {
+		l = api.layouts;
+		LIST_REMOVE(&api.layouts, l);
+		--api.layouts;
+		layout_delete(l);
 	}
 }
 

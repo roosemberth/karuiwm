@@ -1,4 +1,3 @@
-#include "karuiwm/argument.h"
 #include "karuiwm/karuiwm.h"
 #include "karuiwm/desktop.h"
 #include "karuiwm/util.h"
@@ -15,16 +14,22 @@ static void action_killclient(union argument *arg);
 static void action_mousemove(union argument *arg);
 static void action_mouseresize(union argument *arg);
 static void action_restart(union argument *arg);
+static void action_setlayout(union argument *arg);
 static void action_setmfact(union argument *arg);
 static void action_setnmaster(union argument *arg);
 static void action_shiftclient(union argument *arg);
 static void action_spawn(union argument *arg);
 static void action_stepclient(union argument *arg);
 static void action_stepdesktop(union argument *arg);
-static void action_steplayout(union argument *arg);
 static void action_stop(union argument *arg);
 static void action_togglefloat(union argument *arg);
 static void action_zoom(union argument *arg);
+static void layout_monocle(struct client *clients, size_t nc,
+                           size_t nmaster, float mfact,
+                           int sx, int sy, int unsigned sw, int unsigned sh);
+static void layout_rstack(struct client *clients, size_t nc,
+                          size_t nmaster, float mfact,
+                          int sx, int sy, int unsigned sw, int unsigned sh);
 static void mouse_move(struct client *c, int mx, int my);
 static void mouse_moveresize(struct client *c, void (*mh)(struct client *, int, int));
 static void mouse_resize(struct client *c, int mx, int my);
@@ -36,16 +41,18 @@ init(void)
 	api_add_action(action_new("core.mousemove",   action_mousemove,   ARGTYPE_MOUSE));
 	api_add_action(action_new("core.mouseresize", action_mouseresize, ARGTYPE_MOUSE));
 	api_add_action(action_new("core.restart",     action_restart,     ARGTYPE_NONE));
+	api_add_action(action_new("core.setlayout",   action_setlayout,   ARGTYPE_LAYOUT));
 	api_add_action(action_new("core.setmfact",    action_setmfact,    ARGTYPE_FLOATING));
 	api_add_action(action_new("core.setnmaster",  action_setnmaster,  ARGTYPE_INTEGER));
 	api_add_action(action_new("core.shiftclient", action_shiftclient, ARGTYPE_LIST_DIRECTION));
 	api_add_action(action_new("core.spawn",       action_spawn,       ARGTYPE_STRING));
 	api_add_action(action_new("core.stepclient",  action_stepclient,  ARGTYPE_LIST_DIRECTION));
 	api_add_action(action_new("core.stepdesktop", action_stepdesktop, ARGTYPE_DIRECTION));
-	api_add_action(action_new("core.steplayout",  action_steplayout,  ARGTYPE_LIST_DIRECTION));
 	api_add_action(action_new("core.stop",        action_stop,        ARGTYPE_NONE));
 	api_add_action(action_new("core.togglefloat", action_togglefloat, ARGTYPE_NONE));
 	api_add_action(action_new("core.zoom",        action_zoom,        ARGTYPE_NONE));
+	api_add_layout(layout_new("core.monocle",     layout_monocle));
+	api_add_layout(layout_new("core.rstack",      layout_rstack));
 	return 0;
 }
 
@@ -157,11 +164,12 @@ action_stepdesktop(union argument *arg)
 }
 
 static void
-action_steplayout(union argument *arg)
+action_setlayout(union argument *arg)
 {
 	struct desktop *d = karuiwm.focus->selmon->seldt;
+	struct layout *layout = (struct layout *) arg->v;
 
-	desktop_step_layout(d, arg->i);
+	desktop_set_layout(d, layout);
 	desktop_arrange(d);
 }
 
@@ -192,6 +200,53 @@ action_zoom(union argument *arg)
 
 	desktop_zoom(d);
 	desktop_arrange(d);
+}
+
+static void
+layout_monocle(struct client *clients, size_t nc, size_t nmaster, float mfact,
+               int sx, int sy, int unsigned sw, int unsigned sh)
+{
+	int unsigned i;
+	struct client *c;
+	(void) nmaster;
+	(void) mfact;
+
+	for (i = 0, c = clients; i < nc; ++i, c = c->next)
+		client_moveresize(c, sx, sy,
+		                  sw - 2*c->border, sh - 2*c->border);
+}
+
+static void
+layout_rstack(struct client *clients, size_t nc, size_t nmaster, float mfact,
+              int sx, int sy, int unsigned sw, int unsigned sh)
+{
+	int unsigned i = 0, w, h;
+	struct client *c = clients;
+	int x, y;
+
+	/* master area */
+	if (nmaster > 0) {
+		x = 0;
+		w = nmaster == nc ? sw : (int unsigned) (mfact * (float) sw);
+		h = sh / (int unsigned) nmaster;
+		for (; i < nmaster; ++i, c = c->next) {
+			y = (int signed) (i*h);
+			client_moveresize(c, sx + x, sy + y,
+			                  w - 2*c->border, h - 2*c->border);
+		}
+	}
+
+	/* stack area */
+	if (nc > nmaster) {
+		x = i > 0 ? (int) (mfact * (float) sw) : 0;
+		w = i > 0 ? sw - (int unsigned) x : sw;
+		h = sh / (int unsigned) (nc - nmaster);
+		for (; i < nc; ++i, c = c->next) {
+			y = (int signed) ((i - nmaster)*h);
+			client_moveresize(c, sx + x, sy + y,
+			                  w - 2*c->border, h - 2*c->border);
+		}
+	}
 }
 
 static void
