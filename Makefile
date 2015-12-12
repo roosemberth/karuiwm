@@ -93,7 +93,7 @@ clean:
 mrproper: clean
 	rm -f ${APPNAME}
 install:
-	install ${APPNAME} ${BINDIR}/${APPNAME}
+	install -D ${APPNAME} ${BINDIR}/${APPNAME}
 uninstall:
 	rm -f ${BINDIR}/${APPNAME}
 
